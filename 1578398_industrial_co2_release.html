@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1400, initial-scale=1.0">
+    <title>CO₂ Dispersion Simulation - Industrial Room (Direct Front View)</title>
+    <!-- 
+        Import map for p5.js library
+        This allows us to use modern ES6 import syntax for p5.js
+    -->
+    <script type="importmap">
+    {
+        "imports": {
+            "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"
+        }
+    }
+    </script>
+    <style>
+        /* ===== MAIN LAYOUT STYLES ===== */
+        /* Body styling with gradient background and flexbox layout */
+        body { 
+            margin: 0; 
+            padding: 15px; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72, #2a5298); 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            min-height: 100vh;
+        }
+        
+        /* Header section styling */
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { 
+            color: #fff; 
+            font-size: 32px; 
+            font-weight: 300; 
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .header p { 
+            color: #b3d9ff; 
+            margin-top: 5px; 
+            font-size: 16px;
+        }
+        
+        /* Main container for simulation and sidebar */
+        .simulation-container { 
+            display: flex; 
+            gap: 25px; 
+            max-width: 1800px; 
+            width: 100%;
+        }
+        
+        /* Canvas panel (left side) */
+        .main-panel { flex: 1; }
+        
+        /* Sidebar panel (right side) with glassmorphism effect */
+        .sidebar { 
+            width: 320px; 
+            background: rgba(255,255,255,0.1); 
+            backdrop-filter: blur(10px); 
+            border-radius: 15px; 
+            padding: 25px; 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        /* ===== SIDEBAR COMPONENT STYLES ===== */
+        /* Common styling for all sidebar sections */
+        .controls-section { 
+            background: rgba(0,0,0,0.3); 
+            border-radius: 12px; 
+            padding: 20px; 
+            margin-bottom: 25px;
+        }
+        
+        /* Section title styling with blue underline */
+        .section-title { 
+            font-size: 18px; 
+            font-weight: 600; 
+            margin-bottom: 20px; 
+            color: #fff; 
+            border-bottom: 2px solid #4a90e2; 
+            padding-bottom: 8px;
+        }
+        
+        /* Status panel, legend, indicators styling */
+        .status-panel, .concentration-legend, .fill-indicator, .sensors-panel { 
+            background: rgba(0,0,0,0.3); 
+            border-radius: 12px; 
+            padding: 20px; 
+            margin-bottom: 25px;
+        }
+        
+        /* Individual status item layout */
+        .status-item { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 15px; 
+            font-size: 16px;
+        }
+        
+        /* Status labels and values styling */
+        .status-label { color: #b3d9ff; font-weight: 500; }
+        .status-value { font-weight: 700; color: #fff; font-size: 18px; }
+        
+        /* ===== ALERT ANIMATIONS ===== */
+        /* High alert pulsing animation (red) */
+        .alert-high { 
+            color: #e74c3c !important; 
+            animation: pulse 1.5s infinite;
+        }
+        
+        /* Extreme alert pulsing animation (purple) */
+        .alert-extreme { 
+            color: #8e44ad !important; 
+            animation: pulse 1s infinite;
+        }
+        
+        /* Pulse keyframe animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; } 
+            50% { opacity: 0.5; }
+        }
+        
+        /* ===== LEGEND COMPONENT STYLES ===== */
+        /* Container for legend scale and labels */
+        .legend-container { 
+            display: flex; 
+            align-items: center; 
+            gap: 15px;
+        }
+        
+        /* Color gradient scale bar */
+        .legend-scale { 
+            height: 200px; 
+            width: 30px; 
+            background: linear-gradient(to top, #27ae60 0%, #f1c40f 20%, #e67e22 40%, #e74c3c 60%, #8e44ad 80%, #2c3e50 100%);
+            border-radius: 6px; 
+            border: 2px solid rgba(255,255,255,0.2);
+        }
+        
+        /* Legend labels container */
+        .legend-labels { 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: space-between; 
+            height: 200px; 
+        }
+        
+        /* Individual legend item styling */
+        .legend-item { 
+            font-size: 11px; 
+            color: #b3d9ff; 
+            font-weight: 500; 
+            line-height: 1.2;
+        }
+        
+        /* ===== SENSOR GRID STYLES ===== */
+        /* Grid layout for sensor display */
+        .sensor-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 12px; 
+            margin-top: 15px;
+        }
+        
+        /* Base sensor item styling */
+        .sensor-item { 
+            background: rgba(255,255,255,0.1); 
+            padding: 12px; 
+            border-radius: 8px; 
+            border-left: 4px solid #27ae60;
+        }
+        
+        /* Sensor status color indicators */
+        .sensor-danger { border-left-color: #e74c3c; }
+        .sensor-warning { border-left-color: #e67e22; }
+        .sensor-caution { border-left-color: #f1c40f; }
+        .sensor-critical { border-left-color: #8e44ad; }
+        
+        /* Sensor text styling */
+        .sensor-id { 
+            font-size: 12px; 
+            color: #b3d9ff; 
+            margin-bottom: 5px;
+        }
+        .sensor-reading { 
+            font-size: 16px; 
+            font-weight: 700; 
+            color: #fff;
+        }
+        
+        /* ===== CANVAS AND CONTROLS STYLES ===== */
+        /* P5.js canvas styling */
+        canvas { 
+            border-radius: 15px; 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4); 
+            background: #2c3e50;
+        }
+        
+        /* Warning banner at bottom */
+        .warning-banner { 
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white; 
+            padding: 15px 25px; 
+            border-radius: 12px; 
+            margin-top: 20px; 
+            font-size: 14px;
+            text-align: center; 
+            box-shadow: 0 4px 15px rgba(231,76,60,0.3); 
+            max-width: 1400px;
+        }
+        
+        /* ===== CONCENTRATION FILL INDICATOR ===== */
+        /* Container for concentration level display */
+        .fill-indicator { 
+            background: rgba(0,0,0,0.3); 
+            border-radius: 12px; 
+            padding: 20px; 
+            text-align: center; 
+            margin-bottom: 25px;
+        }
+        
+        /* Progress bar container */
+        .fill-bar { 
+            width: 100%; 
+            height: 35px; 
+            background: rgba(255,255,255,0.1); 
+            border-radius: 18px; 
+            overflow: hidden;
+            margin: 10px 0; 
+            border: 2px solid rgba(255,255,255,0.2);
+        }
+        
+        /* Animated progress bar fill */
+        .fill-progress { 
+            height: 100%; 
+            background: linear-gradient(90deg, #27ae60, #f1c40f, #e67e22, #e74c3c, #8e44ad);
+            transition: width 0.5s ease; 
+            border-radius: 15px;
+        }
+        
+        /* ===== BUTTON STYLES ===== */
+        /* Base button styling with gradient and hover effects */
+        .control-button { 
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: white; 
+            border: none; 
+            padding: 12px 20px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-family: inherit; 
+            font-size: 14px; 
+            font-weight: 500;
+            transition: all 0.3s ease; 
+            box-shadow: 0 4px 15px rgba(74,144,226,0.3); 
+            width: 100%; 
+            margin-bottom: 10px;
+        }
+        
+        /* Button hover effects */
+        .control-button:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(74,144,226,0.4);
+        }
+        
+        /* Reset button specific styling (red) */
+        .reset-button { 
+            background: linear-gradient(135deg, #e74c3c, #c0392b) !important; 
+            box-shadow: 0 4px 15px rgba(231,76,60,0.3) !important;
+        }
+        .reset-button:hover { 
+            box-shadow: 0 6px 20px rgba(231,76,60,0.4) !important; 
+        }
+        
+        /* ===== SIMULATION COMPLETE ALERT ===== */
+        /* Hidden alert that shows when lethal levels reached */
+        .simulation-complete { 
+            background: rgba(255,255,255,0.2); 
+            border-radius: 12px; 
+            padding: 15px; 
+            margin-bottom: 25px; 
+            text-align: center; 
+            border: 2px solid #e74c3c; 
+            display: none;
+        }
+        
+        /* Show alert with pulsing animation */
+        .simulation-complete.show { 
+            display: block; 
+            animation: alertPulse 2s infinite;
+        }
+        
+        /* Alert pulse animation */
+        @keyframes alertPulse {
+            0%, 100% {
+                background: rgba(231, 76, 60, 0.2); 
+                border-color: #e74c3c;
+            } 
+            50% {
+                background: rgba(231, 76, 60, 0.4); 
+                border-color: #c0392b;
+            }
+        }
+    </style>
+</head>
+<body>
+<!-- ===== MAIN HTML STRUCTURE ===== -->
+<!-- Header section with title and description -->
+<div class="header">
+    <h1>🏭 CO₂ Particle Simulation </h1>
+    <p>Dynamic Gas Visualization with Realistic Particle Settling Behavior</p>
+</div>
+
+<!-- Main container holding canvas and sidebar -->
+<div class="simulation-container">
+    <!-- Left panel - contains the P5.js canvas -->
+    <div class="main-panel">
+        <div id="canvas-container"></div>
+    </div>
+    
+    <!-- Right panel - contains all controls and displays -->
+    <div class="sidebar">
+        <!-- Reset button section -->
+        <div class="controls-section">
+            <div class="section-title">🎛️ Simulation Controls</div>
+            <button id="resetBtn" class="control-button reset-button">🔄 Reset Simulation</button>
+        </div>
+        
+        <!-- Lethal level alert (hidden by default) -->
+        <div class="simulation-complete" id="simulationComplete">
+            <div style="font-size: 18px; font-weight: bold; color: #e74c3c;">⚠️ LETHAL LEVELS REACHED</div>
+            <div style="font-size: 14px; margin-top: 5px;">Immediate evacuation required</div>
+        </div>
+        
+        <!-- Live system status display -->
+        <div class="status-panel">
+            <div class="section-title">📊 Live System Status</div>
+            <div class="status-item">
+                <span class="status-label">Runtime:</span>
+                <span class="status-value" id="timeDisplay">00:00:00</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Peak CO₂:</span>
+                <span class="status-value" id="ppmDisplay">0 PPM</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Particles:</span>
+                <span class="status-value" id="particleCount">0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Risk Level:</span>
+                <span class="status-value" id="riskDisplay">🟢 SAFE</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Air Quality:</span>
+                <span class="status-value" id="airQuality">GOOD</span>
+            </div>
+        </div>
+        
+        <!-- Gas concentration level progress bar -->
+        <div class="fill-indicator">
+            <div class="section-title">📈 Gas Concentration Level</div>
+            <div class="fill-bar">
+                <div class="fill-progress" id="fillProgress"></div>
+            </div>
+            <div id="fillText">Air Clear</div>
+            <div style="font-size: 12px; margin-top: 8px; color: #b3d9ff;" id="fillPercent">0 PPM Peak</div>
+        </div>
+        
+        <!-- CO₂ danger scale legend -->
+        <div class="concentration-legend">
+            <div class="section-title">🌡️ CO₂ Danger Scale</div>
+            <div class="legend-container">
+                <div class="legend-scale"></div>
+                <div class="legend-labels">
+                    <div class="legend-item">100,000+ PPM - LETHAL</div>
+                    <div class="legend-item">50,000 PPM - EXTREME</div>
+                    <div class="legend-item">30,000 PPM - CRITICAL</div>
+                    <div class="legend-item">10,000 PPM - DANGER</div>
+                    <div class="legend-item">5,000 PPM - WARNING</div>
+                    <div class="legend-item">1,000 PPM - CAUTION</div>
+                    <div class="legend-item">0 PPM - SAFE</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Gas sensor network display -->
+        <div class="sensors-panel">
+            <div class="section-title">🔍 Gas Sensor Network</div>
+            <div class="sensor-grid" id="sensorGrid"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Bottom warning banner -->
+<div class="warning-banner">
+    🌪️ PARTICLE SIMULATION: CO₂ particles now settle realistically in multiple layers from bottom up as concentration increases.
+</div>
+
+<!-- ===== JAVASCRIPT SIMULATION CODE ===== -->
+<script type="module">
+// Import P5.js library
+import 'p5';
+
+/* 
+====================================================================
+                    SIMULATION CONFIGURATION
+====================================================================
+*/
+
+// === CANVAS AND PARTICLE SYSTEM PARAMETERS ===
+const CANVAS_WIDTH = 1400;          // Simulation canvas width in pixels
+const CANVAS_HEIGHT = 900;          // Simulation canvas height in pixels
+const MAX_PARTICLES = 2000;         // Maximum number of particles in simulation
+const LEAK_RATE = 6.0;              // Particles per second emission rate from leak sources
+
+// === REALISTIC CO₂ PHYSICS CONSTANTS ===
+// These values simulate realistic CO₂ behavior in air
+// CO₂ is approximately 1.5x heavier than air, requiring balanced physics
+
+// === EVEN MORE REALISTIC CO₂ PHYSICS CONSTANTS ===
+const GRAVITY = 0.002;              // Much reduced - very gentle settling
+const BROWNIAN_MOTION_BASE = 0.020;  // Increased - more air mixing
+const CONVECTION_BASE = 0.012;       // Increased - stronger circulation
+const AIR_RESISTANCE = 0.997;        // Less resistance - particles float longer
+
+// === LAYERED SETTLING PARAMETERS ===
+const SETTLE_LAYER_HEIGHT = 25;      // Height of each settling layer
+const PARTICLES_PER_LAYER = 120;     // Max particles per layer before moving up
+const NUM_SETTLE_LAYERS = 8;         // Number of discrete settling layers
+const BOTTOM_LAYER_Y = CANVAS_HEIGHT - 150;  // Starting position of bottom layer
+
+// === PROGRESSIVE SETTLING PARAMETERS ===
+const SETTLING_ZONE_HEIGHT = 200;   
+const SETTLING_FADE_START = 850;     // Much lower - particles stay visible longer
+const SETTLING_DECAY_RATE = 0.999;   // Much slower fade when settled
+const MIN_OPACITY_THRESHOLD = 3;     // Lower threshold - particles last longer
+const ROOM_FILL_THRESHOLD = 800;     // Particle count when room is "filled"
+
+// === PPM (PARTS PER MILLION) THRESHOLD LEVELS ===
+// These define danger levels for CO₂ concentration
+const PPM_THRESHOLDS = {
+    SAFE: 1000,         // Normal outdoor air levels
+    CAUTION: 5000,      // OSHA workplace exposure limit
+    WARNING: 10000,     // Drowsiness, stuffiness
+    DANGER: 30000,      // Mild narcosis, increased heart rate
+    CRITICAL: 50000,    // Immediate danger to life and health
+    LETHAL: 100000      // Unconsciousness, convulsions, death
+};
+
+// === COLOR DEFINITIONS ===
+// RGB color arrays for different simulation elements
+const COLORS = {
+    BACKGROUND: [44, 62, 80],           // Dark blue-gray background
+    WALL: [180, 190, 200],              // Light gray walls
+    EQUIPMENT: [62, 88, 120],           // Dark blue equipment
+    PIPE: [140, 150, 160],              // Gray pipes
+    PANEL: [55, 80, 100],               // Dark panels
+    LEAK: [231, 76, 60],                // Red leak sources
+    PARTICLE_SAFE: [39, 174, 96, 80],   // Green particles (safe levels)
+    PARTICLE_CAUTION: [241, 196, 15, 110],    // Yellow particles (caution)
+    PARTICLE_WARNING: [230, 126, 34, 120],    // Orange particles (warning)
+    PARTICLE_DANGER: [231, 76, 60, 135],      // Red particles (danger)
+    PARTICLE_CRITICAL: [155, 89, 182, 170],   // Purple particles (critical)
+    PARTICLE_LETHAL: [44, 62, 80, 200]        // Dark particles (lethal)
+};
+
+/* 
+====================================================================
+                    SIMULATION STATE MANAGEMENT
+====================================================================
+*/
+
+// === MAIN SIMULATION STATE OBJECT ===
+// This object contains all dynamic simulation data
+let simulation = {
+    // === SIMULATION CONTROL FLAGS ===
+    running: true,                      // Is simulation currently running?
+    complete: false,                    // Has simulation reached lethal levels?
+    startTime: 0,                       // Timestamp when simulation started
+    elapsedTime: 0,                     // Total elapsed time in milliseconds
+    
+    // === LEAK SOURCES CONFIGURATION ===
+    // Three CO₂ emission points representing engine exhaust pipes
+    leakSources: [
+        { 
+            x: 320, y: 170,                    // Position coordinates
+            active: true,                       // Is this source emitting?
+            rate: LEAK_RATE,                   // Emission rate (particles/second)
+            name: "Left Engine Pipe",          // Display name
+            accumulator: 0                     // Fractional particle accumulator
+        },
+        { 
+            x: 700, y: 170, 
+            active: true, 
+            rate: LEAK_RATE, 
+            name: "Center Engine Pipe", 
+            accumulator: 0 
+        },
+        { 
+            x: 1080, y: 170, 
+            active: true, 
+            rate: LEAK_RATE, 
+            name: "Right Engine Pipe", 
+            accumulator: 0 
+        }
+    ],
+    
+    // === DYNAMIC SIMULATION DATA ===
+    particles: [],                      // Array of all CO₂ particles
+    sensors: [],                        // Array of gas sensors
+    maxPPM: 0,                         // Current maximum PPM reading
+    averagePPM: 0,                     // Current average PPM across all sensors
+    riskLevel: 'SAFE',                 // Current risk assessment
+    frameSkip: 0,                      // Frame skip counter for performance
+    
+    // === CONCENTRATION TRACKING ===
+    historicalMaxPPM: 0,               // Historical maximum (never decreases)
+    concentrationGrid: new Array(100).fill(0).map(() => new Array(100).fill(0)),  // 100x100 grid for persistent concentration tracking
+    
+    // === LAYER MANAGEMENT ===
+    layerCounts: new Array(NUM_SETTLE_LAYERS).fill(0),  // Track particles in each layer
+    settleLayerHeights: []  // Y coordinates for each layer
+};
+
+/* 
+====================================================================
+                    P5.JS MAIN FUNCTIONS
+====================================================================
+*/
+
+// === SETTLEMENT LAYER INITIALIZATION ===
+function initializeSettleLayers() {
+    simulation.settleLayerHeights = [];
+    for(let i = 0; i < NUM_SETTLE_LAYERS; i++) {
+        // Create layers from bottom up
+        simulation.settleLayerHeights.push(BOTTOM_LAYER_Y - (i * SETTLE_LAYER_HEIGHT));
+    }
+}
+
+// === DETERMINE AVAILABLE SETTLEMENT LAYER ===
+function getAvailableSettleLayer() {
+    // Update layer counts by scanning current particles
+    simulation.layerCounts.fill(0);
+    
+    simulation.particles.forEach(p => {
+        if(p.settled) {
+            // Find which layer this particle belongs to
+            for(let i = 0; i < NUM_SETTLE_LAYERS; i++) {
+                let layerY = simulation.settleLayerHeights[i];
+                let tolerance = SETTLE_LAYER_HEIGHT / 2;
+                
+                if(Math.abs(p.y - layerY) <= tolerance) {
+                    simulation.layerCounts[i]++;
+                    break;
+                }
+            }
+        }
+    });
+    
+    // Find the lowest available layer (bottom first)
+    for(let i = 0; i < NUM_SETTLE_LAYERS; i++) {
+        if(simulation.layerCounts[i] < PARTICLES_PER_LAYER) {
+            return {
+                layerIndex: i,
+                layerY: simulation.settleLayerHeights[i],
+                isFull: false
+            };
+        }
+    }
+    
+    // If all layers are full, use the top layer
+    return {
+        layerIndex: NUM_SETTLE_LAYERS - 1,
+        layerY: simulation.settleLayerHeights[NUM_SETTLE_LAYERS - 1],
+        isFull: true
+    };
+}
+
+// === DRAW SETTLEMENT LAYER GUIDES (OPTIONAL DEBUG) ===
+function drawSettlementLayers() {
+    if(simulation.particles.length > 30) {
+        
+        simulation.settleLayerHeights.forEach((layerY, i) => {
+            let particlesInLayer = simulation.layerCounts[i];
+            let fullness = particlesInLayer / PARTICLES_PER_LAYER;
+            
+            if(particlesInLayer > 0) {
+                // Layer base line
+                stroke(180, 180, 180, 60 + (fullness * 80));
+                strokeWeight(3);
+                line(80, layerY, CANVAS_WIDTH-80, layerY);
+                
+                // Layer fill indicator
+                fill(100, 150, 200, 40 + (fullness * 60));
+                noStroke();
+                rect(80, layerY, (CANVAS_WIDTH-160) * (fullness), 8);
+                
+                // Layer info
+                fill(220, 220, 220, 150);
+                textAlign(RIGHT, CENTER);
+                textSize(11);
+                text(`L${i+1}: ${particlesInLayer}`, CANVAS_WIDTH-90, layerY - 5);
+            }
+        });
+    }
+}
+
+// === SETUP FUNCTION ===
+// Called once when the simulation starts
+function setup() {
+    // Create P5.js canvas and attach to HTML container
+    let canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+    canvas.parent('canvas-container');
+    
+    // Initialize simulation components
+    initializeSensors();                // Set up gas sensor network
+    initializeSettleLayers();           // Set up settlement layers
+    simulation.startTime = millis();    // Record start time
+    colorMode(RGB);                     // Set color mode to RGB
+    
+    // Attach reset button event listener
+    document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+}
+
+// === DRAW FUNCTION ===
+// Called every frame (typically 60 FPS)
+function draw() {
+    // Only update physics if simulation is still running
+    if (!simulation.complete) {
+        updateParticleSystem();                         // Update all particles and physics
+        simulation.elapsedTime = millis() - simulation.startTime;  // Calculate elapsed time
+    }
+    
+    // Render all visual elements in order (back to front)
+    drawFrontViewBackground();          // Draw gradient background
+    drawFrontViewEngineRoom();          // Draw room structure
+    drawFrontViewEquipment();           // Draw engines and equipment
+    drawCO2Particles();                 // Draw CO₂ particles
+    drawLeakSources();                  // Draw emission sources with animations
+    drawSettlementLayers();             // Draw settlement layer guides
+    drawSensors();                      // Draw gas sensors with status
+    drawConcentrationBars();            // Draw local concentration indicators
+    updateDisplay();                    // Update all UI elements
+}
+
+/* 
+====================================================================
+                    REALISTIC CO₂ PHYSICS SYSTEM
+====================================================================
+*/
+
+// === DIFFUSION CALCULATION ===
+// Returns increasing diffusion forces over time for realistic spreading
+function getDiffusion() {
+    // Calculate simulation time in minutes (scaled for faster progression)
+    let minutes = (simulation.elapsedTime || 1) / 1000 / 25;
+    
+    return {
+        // Brownian motion: Random molecular movement (horizontal spreading)
+        b: BROWNIAN_MOTION_BASE + Math.min(minutes * 0.006, 0.020),
+        // Convection: Thermal air circulation (mixing)
+        c: CONVECTION_BASE + Math.min(minutes * 0.004, 0.012)
+    };
+}
+
+// === AIR CURRENT SIMULATION ===
+// Generates realistic air turbulence using Perlin noise
+function horizontalAirCurrent(x, y, t) {
+    // Air currents that only move horizontally, no upward movement
+    let pattern1 = noise(x*0.003, y*0.002, t*0.00003) - 0.5;
+    let pattern2 = noise((x+1000)*0.004, (y+500)*0.003, t*0.00004) - 0.5;
+    
+    // Only horizontal air movement
+    let avgX = (pattern1 + pattern2) * 0.08;
+    let avgY = Math.abs(pattern1 * 0.02); // Only allow gentle downward air movement
+    
+    return { x: avgX, y: avgY };
+}
+
+// === PARTICLE SYSTEM UPDATE ===
+// Main physics update function called every frame
+function updateParticleSystem() {
+    let dt = 1;  // Delta time (frame-based)
+    
+    // === PARTICLE EMISSION ===
+    // Spawn new particles from active leak sources
+    simulation.leakSources.forEach(src => {
+        if(src.active && simulation.particles.length < MAX_PARTICLES) {
+            // Accumulate fractional particles for smooth emission
+            src.accumulator += src.rate * (dt/60);
+            
+            // Emit whole particles when accumulator reaches 1.0
+            while (src.accumulator >= 1 && simulation.particles.length < MAX_PARTICLES) {
+                addParticle(src.x, src.y, src.rate);
+                src.accumulator -= 1;
+            }
+        }
+    });
+    
+    // === PARTICLE PHYSICS UPDATE ===
+    // Update physics for every particle in the simulation
+    let {b, c} = getDiffusion();  // Get current diffusion parameters
+    
+    for(let i = simulation.particles.length - 1; i >= 0; i--){
+        let p = simulation.particles[i];
+        applyRealisticPhysics(p, b, c);     // Apply physics forces
+        p.age++;                            // Increment particle age
+        updateConcentrationGrid(p);         // Update concentration tracking
+        
+        // === PARTICLE REMOVAL CHECK ===
+        // Remove particles that have faded below the minimum opacity threshold
+        if (p.opacity < MIN_OPACITY_THRESHOLD) {
+            simulation.particles.splice(i, 1);
+        }
+    }
+    
+    // === SENSOR AND RISK UPDATES ===
+    updateSensorReadings();     // Calculate new sensor readings
+    assessRiskLevel();          // Determine current risk level
+    
+    // === LETHAL LEVEL CHECK ===
+    // End simulation if lethal concentration reached
+    if(simulation.maxPPM >= PPM_THRESHOLDS.LETHAL && !simulation.complete){
+        simulation.complete = true; 
+        simulation.running = false;
+        document.getElementById('simulationComplete').classList.add('show');
+    }
+}
+
+// === REALISTIC PHYSICS APPLICATION ===
+// Applies all physics forces to a single particle
+function applyRealisticPhysics(p, BROWNIAN_MOTION, CONVECTION) {
+    let t = millis();
+    
+    // === RESET ACCELERATION EACH FRAME ===
+    let accelX = 0;
+    let accelY = 0;
+    
+    // === CONSISTENT DOWNWARD GRAVITY (CO₂ IS HEAVIER THAN AIR) ===
+    let roomFillFactor = Math.min(simulation.particles.length / 800, 1.0);
+    let baseGravity = 0.0015 * (0.5 + roomFillFactor * 0.8); // Always positive (downward)
+    accelY += baseGravity; // Always adds downward force
+    
+    // === HORIZONTAL BROWNIAN MOTION ONLY ===
+    let brownianStrength = Math.max(0.3, 1.0 - (p.age * 0.000002));
+    
+    // Strong horizontal mixing, minimal vertical mixing
+    let brownianX = (noise(p.x*0.005, p.y*0.003, t*0.00005) - 0.5) * 0.012 * brownianStrength;
+    let brownianY = (noise(p.y*0.004, p.x*0.006, t*0.00004) - 0.5) * 0.003 * brownianStrength; // Much reduced
+    
+    accelX += brownianX;
+    accelY += Math.abs(brownianY); // Ensure vertical brownian is downward only
+    
+    // === HORIZONTAL AIR CURRENTS ONLY ===
+    let airFlow = horizontalAirCurrent(p.x, p.y, t);
+    accelX += airFlow.x * 0.3;
+    accelY += Math.max(0, airFlow.y * 0.1); // Only allow downward air movement
+    
+    // === HORIZONTAL CONVECTION ONLY ===
+    let convectionStrength = Math.max(0.2, 1.0 - (p.age * 0.000002));
+    let convectionX = sin(t*0.0003 + p.y*0.004) * 0.006 * convectionStrength;
+    
+    accelX += convectionX;
+    // NO vertical convection to prevent upward movement
+    
+    // === NO THERMAL UPDRAFTS ===
+    // Completely remove thermal effects that cause upward movement
+    
+    // === APPLY ACCELERATION TO VELOCITY ===
+    p.vx += accelX;
+    p.vy += accelY;
+    
+    // === ENSURE DOWNWARD BIAS ===
+    // If somehow velocity becomes upward, reduce it
+    if (p.vy < 0) {
+        p.vy *= 0.5; // Dampen any upward velocity
+    }
+    
+    // === DAMPING ===
+    p.vx *= 0.994; // Horizontal damping
+    p.vy *= 0.996; // Vertical damping (less aggressive)
+    
+    // === VELOCITY LIMITING ===
+    let maxVelX = 1.5; // Horizontal movement limit
+    let maxVelY = 2.0; // Allow faster downward movement
+    
+    p.vx = Math.max(-maxVelX, Math.min(maxVelX, p.vx));
+    p.vy = Math.max(-0.5, Math.min(maxVelY, p.vy)); // Limit upward velocity severely
+    
+    // === UPDATE POSITION ===
+    p.x += p.vx;
+    p.y += p.vy;
+    
+    // === BOUNDARY CONDITIONS ===
+    if (p.x < 60) { 
+        p.x = 60; 
+        p.vx = Math.abs(p.vx) * 0.3;
+    }
+    
+    if (p.x > CANVAS_WIDTH-60) { 
+        p.x = CANVAS_WIDTH-60; 
+        p.vx = -Math.abs(p.vx) * 0.3;
+    }
+    
+    // === MINIMAL CEILING INTERACTION ===
+    if (p.y < 120) { 
+        p.y = 120; 
+        p.vy = Math.abs(p.vy) * 0.1; // Very weak bounce to prevent upward acceleration
+    }
+    
+    // === LAYERED GROUND BEHAVIOR ===
+    if (p.y > BOTTOM_LAYER_Y) {
+        if (!p.settled) {
+            // Particle is settling for the first time
+            let layerInfo = getAvailableSettleLayer();
+            p.settleLayerY = layerInfo.layerY;
+            p.layerIndex = layerInfo.layerIndex;
+            p.settled = true;
+            p.settledTime = 0;
+        }
+        
+        // Clamp to assigned settlement layer
+        p.y = p.settleLayerY;
+        p.vy = 0; // Stop all vertical movement
+        p.vx *= 0.98; // Light friction
+        
+        p.settledTime++;
+        
+        // Different fade rates based on layer fullness
+        let layerFullness = simulation.layerCounts[p.layerIndex] / PARTICLES_PER_LAYER;
+        let fadeRate = 0.998 - (layerFullness * 0.002); // Slower fade in fuller layers
+        p.opacity *= fadeRate;
+        
+        // Slight horizontal spreading in settled layers
+        if(p.settledTime < 300) {
+            p.vx += (noise(p.x * 0.01, millis() * 0.0001) - 0.5) * 0.01;
+        }
+    }
+    
+    // === PARTICLE PROPERTIES ===
+    if (p.size === undefined) p.size = random(8,14);
+    
+    let baseOpacity = map(p.baseConcentration, 0, 2000, 70, 140) * Math.max(0.95, 1.0 - (p.age * 0.0000002));
+    
+    if (!p.settled) {
+        p.opacity = baseOpacity;
+    }
+}
+
+// === THERMAL UPDRAFT CALCULATION ===
+// Simulates warm air rising near engines and equipment
+function getThermalUpdraft(x, y) {
+    let thermal = 0;
+    
+    // Define engine locations that generate thermal updrafts
+    let engines = [
+        {x: 250, y: 450},   // Left engine
+        {x: 705, y: 480},   // Center engine  
+        {x: 1150, y: 450}   // Right engine
+    ];
+    
+    // Calculate combined thermal effect from all engines
+    engines.forEach(engine => {
+        let distance = dist(x, y, engine.x, engine.y);
+        if(distance < 180) {
+            // Closer to engine = stronger thermal effect
+            thermal += (180 - distance) / 180 * 0.8;
+        }
+    });
+    
+    return Math.min(thermal, 0.8);  // Cap maximum thermal effect
+}
+
+// === CONCENTRATION GRID UPDATE ===
+// Tracks persistent CO₂ concentration in grid cells
+function updateConcentrationGrid(p) {
+    // Convert particle position to grid coordinates
+    let gridX = Math.floor(p.x / 14);
+    let gridY = Math.floor(p.y / 9);
+    
+    // Update grid cell if within bounds
+    if(gridX >= 0 && gridX < 100 && gridY >= 0 && gridY < 100) {
+        // Accumulate concentration (never decreases)
+        // Apply extra weighting for settled particles
+        let concentrationWeight = p.settled ? 1.5 : 1.0;
+        simulation.concentrationGrid[gridX][gridY] = Math.max(
+            simulation.concentrationGrid[gridX][gridY],
+            simulation.concentrationGrid[gridX][gridY] + p.baseConcentration * 0.002 * concentrationWeight
+        );
+    }
+}
+
+// === PARTICLE CREATION ===
+// Creates a new CO₂ particle at specified location
+function addParticle(x, y, rate) {
+    // Calculate base concentration based on emission rate
+    let base = rate*200+random(70,150);
+    let c = getParticleColor(base);  // Determine particle color
+    
+    // Create new particle object
+    simulation.particles.push({
+        x: x+random(-9,9),              // Position with slight randomness
+        y: y+random(-7,7),
+        vx: random(-0.5,0.5),           // Moderate initial horizontal velocity
+        vy: random(-0.1,0.3),           // Slight upward to neutral initial velocity
+        size: random(8,17),             // Random particle size
+        age: 0,                         // Start at age 0
+        baseConcentration: base,        // PPM concentration (constant)
+        color: c,                       // Visual color based on concentration
+        opacity: random(90,180),        // Initial opacity
+        settled: false,                 // Particle settling state
+        settledTime: 0,                 // Time spent settled at bottom
+        settleLayerY: 0,               // Assigned settlement layer Y coordinate
+        layerIndex: -1                 // Assigned layer index
+    });
+}
+
+// === PARTICLE COLOR DETERMINATION ===
+// Returns appropriate color based on concentration level
+function getParticleColor(c) {
+    if(c < PPM_THRESHOLDS.SAFE) return COLORS.PARTICLE_SAFE;
+    else if(c < PPM_THRESHOLDS.CAUTION) return COLORS.PARTICLE_CAUTION;
+    else if(c < PPM_THRESHOLDS.WARNING) return COLORS.PARTICLE_WARNING;
+    else if(c < PPM_THRESHOLDS.DANGER) return COLORS.PARTICLE_DANGER;
+    else if(c < PPM_THRESHOLDS.CRITICAL) return COLORS.PARTICLE_CRITICAL;
+    else return COLORS.PARTICLE_LETHAL;
+}
+
+/* 
+====================================================================
+                    RENDERING FUNCTIONS
+====================================================================
+*/
+
+// === BACKGROUND RENDERING ===
+// Draws gradient background from top to bottom
+function drawFrontViewBackground() {
+    for (let y = 0; y < height; y += 2) {
+        // Create gradient color from dark blue to blue-gray
+        let c = lerpColor(color(30, 45, 65), color(44, 62, 80), y / height);
+        stroke(c); 
+        strokeWeight(2); 
+        line(0, y, width, y);
+    }
+}
+
+// === ENGINE ROOM STRUCTURE ===
+// Draws the basic room layout with walls and floor
+function drawFrontViewEngineRoom() {
+    // Main walls
+    stroke(COLORS.WALL); 
+    strokeWeight(12);
+    fill(COLORS.BACKGROUND[0] - 20, COLORS.BACKGROUND[1] - 20, COLORS.BACKGROUND[2] - 20);
+    rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    
+    // Floor area
+    fill(COLORS.BACKGROUND[0] - 28, COLORS.BACKGROUND[1] - 28, COLORS.BACKGROUND[2] - 28);
+    rect(0, 750, CANVAS_WIDTH, 150);
+    
+    // Structural details (vertical supports)
+    stroke(COLORS.WALL[0] - 30, COLORS.WALL[1] - 30, COLORS.WALL[2] - 30);
+    strokeWeight(2);
+    for(let x=160; x<CANVAS_WIDTH-40; x+=160) {
+        line(x, 0, x, CANVAS_HEIGHT);
+    }
+    
+    // Floor grating pattern
+    for(let x=40; x<CANVAS_WIDTH; x+=80) {
+        line(x, 760, x, 890);
+    }
+    
+    // Ceiling beam and support columns
+    stroke(COLORS.WALL); 
+    strokeWeight(8);
+    line(0, 100, CANVAS_WIDTH, 100);
+    for(let x=200; x<CANVAS_WIDTH-100; x+=350) {
+        line(x, 100, x, 170);
+    }
+}
+
+// === EQUIPMENT AND MACHINERY ===
+// Draws engines, panels, and piping system
+function drawFrontViewEquipment() {
+    // === LEFT ENGINE ASSEMBLY ===
+    fill(COLORS.EQUIPMENT); 
+    stroke(COLORS.WALL); 
+    strokeWeight(5);
+    rect(130,290,240,330,18);  // Main engine block
+    
+    // Engine cylinders
+    fill(COLORS.EQUIPMENT[0]+22, COLORS.EQUIPMENT[1]+14, COLORS.EQUIPMENT[2]+20);
+    rect(160,330,60,240,8);    // Left cylinder
+    rect(240,330,60,240,8);    // Right cylinder
+    
+    // Control panel
+    fill(COLORS.PANEL); 
+    rect(60,150,80,110,8);
+    
+    // === CENTER ENGINE ASSEMBLY ===
+    fill(COLORS.EQUIPMENT); 
+    rect(580,320,250,350,18);  // Main engine block
+    
+    // Engine cylinders
+    fill(COLORS.EQUIPMENT[0]+22, COLORS.EQUIPMENT[1]+14, COLORS.EQUIPMENT[2]+20);
+    rect(600,375,70,220,8);    // Left cylinder
+    rect(730,375,70,220,8);    // Right cylinder
+    
+    // Control panel
+    fill(COLORS.PANEL); 
+    rect(645,170,110,120,8);
+    
+    // === RIGHT ENGINE ASSEMBLY ===
+    fill(COLORS.EQUIPMENT); 
+    rect(1030,290,240,330,18); // Main engine block
+    
+    // Engine cylinders
+    fill(COLORS.EQUIPMENT[0]+22, COLORS.EQUIPMENT[1]+14, COLORS.EQUIPMENT[2]+20);
+    rect(1060,330,60,240,8);   // Left cylinder
+    rect(1140,330,60,240,8);   // Right cylinder
+    
+    // Control panel
+    fill(COLORS.PANEL); 
+    rect(1240,150,80,110,8);
+    
+    // === PIPING SYSTEM ===
+    stroke(COLORS.PIPE); 
+    strokeWeight(14);
+    line(210,170,1170,170);    // Main horizontal pipe
+    
+    strokeWeight(10);
+    line(320,170,320,290);     // Left engine connection
+    line(700,170,700,320);     // Center engine connection
+    line(1080,170,1080,290);   // Right engine connection
+    
+    // Pipe connection points (leak sources)
+    strokeWeight(3);
+    fill(COLORS.PIPE); 
+    noStroke();
+    ellipse(320,170,18,18);    // Left leak source
+    ellipse(700,170,18,18);    // Center leak source
+    ellipse(1080,170,18,18);   // Right leak source
+    
+    // === ENGINE LABELS ===
+    fill(222,230,240); 
+    textSize(16); 
+    textAlign(CENTER,CENTER);
+    text("DIESEL ENGINE #1", 250,635); 
+    text("MARINE ENGINE #2", 705,645); 
+    text("GENERATOR #3", 1150,635);
+}
+
+// === CO₂ PARTICLE RENDERING ===
+// Draws all particles with motion trails and realistic settling behavior
+function drawCO2Particles() {
+    noStroke();
+    
+    simulation.particles.forEach(p => {
+        // Only render particles with sufficient opacity
+        if (p.opacity > MIN_OPACITY_THRESHOLD) {
+            // Main particle with realistic opacity
+            fill(...p.color.slice(0,3), p.opacity); 
+            ellipse(p.x, p.y, p.size, p.size);
+            
+            // Subtle motion trail for visual realism (reduced for settled particles)
+            let trailOpacity = p.settled ? p.opacity * 0.05 : p.opacity * 0.15;
+            if (trailOpacity > 5) {
+                fill(...p.color.slice(0,3), trailOpacity); 
+                ellipse(p.x-p.vx*1.8, p.y-p.vy*1.8, p.size*0.7, p.size*0.7);
+            }
+        }
+    });
+}
+
+// === LEAK SOURCE VISUALIZATION ===
+// Draws animated emission points at pipe connections
+function drawLeakSources() {
+    simulation.leakSources.forEach((source, idx) => {
+        if (source.active && !simulation.complete) {
+            // Animated pulsing effect
+            let pulse = 14+sin(millis()*0.032+idx)*5;
+            
+            // Inner glow
+            fill(COLORS.LEAK[0], COLORS.LEAK[1], COLORS.LEAK[2], 210); 
+            noStroke(); 
+            ellipse(source.x, source.y, pulse, pulse);
+            
+            // Outer ring animation
+            stroke(COLORS.LEAK); 
+            strokeWeight(3);
+            noFill(); 
+            ellipse(source.x, source.y, 32+sin(millis()*0.027)*7, 32+sin(millis()*0.027)*7);
+            
+            // Source label
+            fill('#fff'); 
+            noStroke(); 
+            textSize(11); 
+            textAlign(CENTER, CENTER);
+            text(source.name, source.x, source.y-25);
+        }
+    });
+}
+
+// === GAS SENSOR RENDERING ===
+// Draws sensor network with status indicators
+function drawSensors() {
+    simulation.sensors.forEach((sensor, idx) => {
+        // Sensor housing
+        fill(COLORS.PANEL[0]+50, COLORS.PANEL[1]+50, COLORS.PANEL[2]+50);
+        stroke(COLORS.WALL); 
+        strokeWeight(2);
+        rect(sensor.x-13, sensor.y-13, 26, 26, 7);
+        
+        // Status indicator light
+        let statusColor = getSensorStatusColor(sensor.status);
+        fill(statusColor); 
+        noStroke();
+        ellipse(sensor.x, sensor.y, 12, 12);
+        
+        // Warning pulse for dangerous readings
+        if(sensor.reading > PPM_THRESHOLDS.WARNING){
+            fill(red(statusColor),green(statusColor),blue(statusColor),180);
+            ellipse(sensor.x, sensor.y, 20+sin(millis()*0.06+idx)*5, 20+sin(millis()*0.06+idx)*5);
+        }
+        
+        // Sensor labels and readings
+        fill(255); 
+        textAlign(CENTER,CENTER); 
+        textSize(9);
+        text(sensor.id, sensor.x, sensor.y-18);
+        textSize(7);
+        text(`${Math.round(sensor.reading)} PPM`, sensor.x, sensor.y+15);
+    });
+}
+
+// === LOCAL CONCENTRATION BARS ===
+// Draws vertical concentration indicators at key locations
+function drawConcentrationBars() {
+    // Define positions for concentration monitoring
+    let positions = [
+        { x: 165, y: 600 },    // Left lower area
+        { x: 300, y: 210 },    // Left engine area
+        { x: 700, y: 230 },    // Center engine area
+        { x: 1090, y: 220 },   // Right engine area
+        { x: 1290, y: 650 }    // Right lower area
+    ];
+    
+    positions.forEach(pos => {
+        // Calculate local concentration
+        let local = getLocalConcentration(pos.x, pos.y);
+        let barHeight = 150;
+        let fillHeight = map(local, 0, PPM_THRESHOLDS.LETHAL, 0, barHeight);
+        fillHeight = constrain(fillHeight, 0, barHeight);
+        
+        // Draw bar background
+        stroke(COLORS.WALL); 
+        strokeWeight(2);
+        fill(25, 25, 25); 
+        rect(pos.x-10, pos.y-barHeight/2, 20, barHeight, 4);
+        
+        // Draw concentration fill
+        let c = getConcentrationBarColor(local);
+        fill(...c, 180); 
+        noStroke();
+        rect(pos.x-8, pos.y+barHeight/2-fillHeight-2, 16, fillHeight, 3);
+        
+        // Draw concentration value labels
+        fill(255); 
+        textAlign(CENTER,CENTER); 
+        textSize(9);
+        text(`${Math.round(local)}`, pos.x, pos.y+barHeight/2+12); 
+        text("PPM", pos.x, pos.y+barHeight/2+23);
+    });
+}
+
+// === LOCAL CONCENTRATION CALCULATION ===
+// Calculates CO₂ concentration at a specific point
+function getLocalConcentration(x, y) {
+    let total = 0;
+    
+    // === PARTICLE-BASED CONCENTRATION ===
+    // Sum concentration from nearby particles
+    simulation.particles.forEach(p => {
+        let d = dist(x, y, p.x, p.y);
+        if(d < 130) {
+            let weight = 1 - d/130;  // Distance-based weighting
+            // Apply opacity factor to simulate realistic concentration from visible particles
+            let opacityFactor = p.opacity / 180;
+            total += p.baseConcentration * weight * opacityFactor;
+        }
+    });
+    
+    // === PERSISTENT GRID CONCENTRATION ===
+    // Add accumulated concentration from grid
+    let gridX = Math.floor(x / 14);
+    let gridY = Math.floor(y / 9);
+    if(gridX >= 0 && gridX < 100 && gridY >= 0 && gridY < 100) {
+        total += simulation.concentrationGrid[gridX][gridY];
+    }
+    
+    return total;
+}
+
+// === CONCENTRATION BAR COLOR ===
+// Returns color based on concentration level
+function getConcentrationBarColor(c) {
+    if(c < PPM_THRESHOLDS.SAFE) return [39,174,96];       // Green (safe)
+    else if(c < PPM_THRESHOLDS.CAUTION) return [241,196,15];    // Yellow (caution)
+    else if(c < PPM_THRESHOLDS.WARNING) return [230,126,34];    // Orange (warning)
+    else if(c < PPM_THRESHOLDS.DANGER) return [231,76,60];      // Red (danger)
+    else if(c < PPM_THRESHOLDS.CRITICAL) return [155,89,182];   // Purple (critical)
+    else return [44,62,80];  // Dark (lethal)
+}
+
+/* 
+====================================================================
+                    SENSOR AND UI FUNCTIONS
+====================================================================
+*/
+
+// === SENSOR NETWORK INITIALIZATION ===
+// Sets up the gas sensor network at strategic locations
+function initializeSensors() {
+    simulation.sensors = [
+        { id: 'A1', x: 180, y: 210, reading: 0, status: 'safe' },    // Upper left
+        { id: 'A2', x: 400, y: 200, reading: 0, status: 'safe' },    // Left engine area
+        { id: 'B1', x: 700, y: 200, reading: 0, status: 'safe' },    // Center engine area
+        { id: 'C1', x: 1100, y: 200, reading: 0, status: 'safe' },   // Right engine area
+        { id: 'C2', x: 250, y: 530, reading: 0, status: 'safe' },    // Mid left
+        { id: 'D1', x: 700, y: 560, reading: 0, status: 'safe' },    // Center lower
+        { id: 'E1', x: 1100, y: 580, reading: 0, status: 'safe' }    // Right lower
+    ]; 
+    updateSensorDisplay();  // Initial display update
+}
+
+// === SENSOR READING UPDATE ===
+// Updates all sensor readings and determines overall risk level
+function updateSensorReadings() {
+    simulation.maxPPM = 0;
+    let totalPPM = 0, sensorCt = 0;
+    
+    // Update each sensor
+    simulation.sensors.forEach(sensor => {
+        let currentReading = getLocalConcentration(sensor.x, sensor.y);
+        
+        // === REALISTIC ACCUMULATION BEHAVIOR ===
+        // Sensor readings can only increase (realistic for gas accumulation)
+        if(currentReading > sensor.reading) {
+            sensor.reading = currentReading;
+        } else {
+            // Small increment for persistent accumulation effect
+            sensor.reading = Math.max(sensor.reading, sensor.reading + 0.8);
+        }
+        
+        // Update statistics
+        simulation.maxPPM = Math.max(simulation.maxPPM, sensor.reading);
+        totalPPM += sensor.reading; 
+        sensorCt++;
+        
+        // === SENSOR STATUS DETERMINATION ===
+        // Update sensor status based on current reading
+        if(sensor.reading < PPM_THRESHOLDS.SAFE) sensor.status = 'safe';
+        else if(sensor.reading < PPM_THRESHOLDS.CAUTION) sensor.status = 'caution';
+        else if(sensor.reading < PPM_THRESHOLDS.WARNING) sensor.status = 'warning';
+        else if(sensor.reading < PPM_THRESHOLDS.DANGER) sensor.status = 'danger';
+        else sensor.status = 'critical';
+    });
+    
+    // === HISTORICAL MAXIMUM TRACKING ===
+    // Ensure overall maximum always increases (realistic behavior)
+    simulation.historicalMaxPPM = Math.max(simulation.historicalMaxPPM, simulation.maxPPM);
+    simulation.maxPPM = simulation.historicalMaxPPM;
+    
+    // Calculate average PPM across all sensors
+    simulation.averagePPM = totalPPM / Math.max(sensorCt, 1);
+}
+
+// === SENSOR STATUS COLOR ===
+// Returns appropriate color for sensor status indicator
+function getSensorStatusColor(status) {
+    switch(status) {
+        case 'safe': return color(39, 174, 96);        // Green
+        case 'caution': return color(241, 196, 15);    // Yellow
+        case 'warning': return color(230, 126, 34);    // Orange
+        case 'danger': return color(231, 76, 60);      // Red
+        case 'critical': return color(155, 89, 182);   // Purple
+        default: return color(39,174,96);              // Default green
+    }
+}
+
+// === RISK LEVEL ASSESSMENT ===
+// Determines overall risk level based on maximum PPM reading
+function assessRiskLevel() {
+    if(simulation.maxPPM < PPM_THRESHOLDS.SAFE) simulation.riskLevel = 'SAFE';
+    else if(simulation.maxPPM < PPM_THRESHOLDS.CAUTION) simulation.riskLevel = 'CAUTION';
+    else if(simulation.maxPPM < PPM_THRESHOLDS.WARNING) simulation.riskLevel = 'WARNING';
+    else if(simulation.maxPPM < PPM_THRESHOLDS.DANGER) simulation.riskLevel = 'DANGER';
+    else if(simulation.maxPPM < PPM_THRESHOLDS.CRITICAL) simulation.riskLevel = 'CRITICAL';
+    else if(simulation.maxPPM < PPM_THRESHOLDS.LETHAL) simulation.riskLevel = 'EXTREME';
+    else simulation.riskLevel = 'LETHAL';
+}
+
+// === SIMULATION RESET ===
+// Resets all simulation state to initial conditions
+function resetSimulation() {
+    // Reset control flags
+    simulation.running = true; 
+    simulation.complete = false;
+    
+    // Clear all dynamic data
+    simulation.particles = []; 
+    simulation.maxPPM = 0; 
+    simulation.averagePPM = 0;
+    simulation.historicalMaxPPM = 0; 
+    
+    // Reset concentration grid
+    simulation.concentrationGrid = new Array(100).fill(0).map(() => new Array(100).fill(0));
+    
+    // Reset layer tracking
+    simulation.layerCounts.fill(0);
+    
+    // Reset timing and risk assessment
+    simulation.riskLevel = 'SAFE'; 
+    simulation.startTime = millis(); 
+    simulation.elapsedTime = 0;
+    
+    // Reset leak sources
+    simulation.leakSources.forEach(src => {
+        src.active = true; 
+        src.accumulator = 0;
+    });
+    
+    // Reset all sensors
+    simulation.sensors.forEach(s => {
+        s.reading = 0;
+        s.status = 'safe';
+    });
+    
+    // Hide lethal alert and update display
+    document.getElementById('simulationComplete').classList.remove('show');
+    updateSensorDisplay();
+}
+
+// === SENSOR DISPLAY UPDATE ===
+// Updates the HTML sensor grid display
+function updateSensorDisplay() {
+    const sensorGrid = document.getElementById('sensorGrid');
+    sensorGrid.innerHTML = '';  // Clear existing content
+    
+    // Create HTML elements for each sensor
+    simulation.sensors.forEach(sensor => {
+        let sensorDiv = document.createElement('div');
+        sensorDiv.className = `sensor-item sensor-${sensor.status}`;
+        sensorDiv.innerHTML = `
+            <div class="sensor-id">Sensor ${sensor.id}</div>
+            <div class="sensor-reading">${Math.round(sensor.reading)} PPM</div>
+        `;
+        sensorGrid.appendChild(sensorDiv);
+    });
+}
+
+// === UI DISPLAY UPDATE ===
+// Updates all HTML UI elements with current simulation data
+function updateDisplay() {
+    // === TIME DISPLAY UPDATE ===
+    // Convert elapsed time to HH:MM:SS format
+    let totalSeconds = Math.floor(simulation.elapsedTime/1000);
+    let hours = Math.floor(totalSeconds/3600);
+    let minutes = Math.floor((totalSeconds%3600)/60);
+    let seconds = totalSeconds%60;
+    document.getElementById('timeDisplay').textContent = 
+        `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
+    
+    // === PPM AND PARTICLE COUNT UPDATES ===
+    let ppmDisplay = Math.round(simulation.maxPPM).toLocaleString();
+    document.getElementById('ppmDisplay').textContent = ppmDisplay + ' PPM';
+    document.getElementById('particleCount').textContent = simulation.particles.length.toLocaleString();
+    
+    // === ALERT ANIMATIONS ===
+    // Add pulsing animations for dangerous levels
+    let ppmElement = document.getElementById('ppmDisplay');
+    if(simulation.maxPPM >= PPM_THRESHOLDS.LETHAL) {
+        ppmElement.classList.add('alert-extreme'); 
+        ppmElement.classList.remove('alert-high');
+    }
+    else if(simulation.maxPPM >= PPM_THRESHOLDS.CRITICAL){
+        ppmElement.classList.add('alert-high');
+        ppmElement.classList.remove('alert-extreme');
+    } 
+    else {
+        ppmElement.classList.remove('alert-high','alert-extreme');
+    }
+    
+    // === RISK LEVEL DISPLAY ===
+    // Update risk level with appropriate emoji
+    let riskElement = document.getElementById('riskDisplay');
+    let riskEmoji = {
+        'SAFE': '🟢', 'CAUTION': '🟡', 'WARNING': '🟠', 'DANGER': '🔴', 
+        'CRITICAL': '🟣', 'EXTREME': '⚫', 'LETHAL': '💀'
+    };
+    riskElement.textContent = `${riskEmoji[simulation.riskLevel]} ${simulation.riskLevel}`;
+    
+    // === AIR QUALITY ASSESSMENT ===
+    // Determine air quality description
+    let airQuality = 'GOOD';
+    if(simulation.maxPPM >= PPM_THRESHOLDS.LETHAL) airQuality = 'LETHAL';
+    else if(simulation.maxPPM >= PPM_THRESHOLDS.CRITICAL) airQuality = 'HAZARDOUS';
+    else if(simulation.maxPPM >= PPM_THRESHOLDS.DANGER) airQuality = 'DANGEROUS';
+    else if(simulation.maxPPM >= PPM_THRESHOLDS.WARNING) airQuality = 'UNHEALTHY';
+    else if(simulation.maxPPM >= PPM_THRESHOLDS.CAUTION) airQuality = 'MODERATE';
+    else if(simulation.maxPPM >= PPM_THRESHOLDS.SAFE) airQuality = 'FAIR';
+    document.getElementById('airQuality').textContent = airQuality;
+    
+    // === CONCENTRATION BAR UPDATE ===
+    // Update progress bar width based on concentration
+    let concentrationPercent = Math.min((simulation.maxPPM / PPM_THRESHOLDS.LETHAL)*100, 100);
+    document.getElementById('fillProgress').style.width = concentrationPercent + '%';
+    document.getElementById('fillPercent').textContent = Math.round(simulation.maxPPM) + ' PPM Peak';
+    
+    // === CONCENTRATION LEVEL TEXT ===
+    // Update descriptive text based on concentration level
+    let fillText = 'Air Clear';
+    if (simulation.maxPPM >= PPM_THRESHOLDS.LETHAL) fillText = 'LETHAL ATMOSPHERE';
+    else if (simulation.maxPPM >= PPM_THRESHOLDS.CRITICAL) fillText = 'EXTREME DANGER';
+    else if (simulation.maxPPM >= PPM_THRESHOLDS.DANGER) fillText = 'HIGH RISK';
+    else if (simulation.maxPPM >= PPM_THRESHOLDS.WARNING) fillText = 'DANGEROUS LEVELS';
+    else if (simulation.maxPPM >= PPM_THRESHOLDS.CAUTION) fillText = 'ELEVATED CO₂';
+    else if(simulation.maxPPM >= PPM_THRESHOLDS.SAFE) fillText = 'TRACE DETECTION';
+    document.getElementById('fillText').textContent = fillText;
+    
+    // Update sensor display
+    updateSensorDisplay();
+}
+
+/* 
+====================================================================
+                    P5.JS GLOBAL FUNCTION EXPORT
+====================================================================
+*/
+
+// Make main P5.js functions globally accessible
+window.setup = setup;
+window.draw = draw;
+
+</script>
+</body>
+</html>

@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Soccer Free-Kick Simulation - Direction Control (ESM)</title>
+  <style>
+    /* --- Layout and UI Styling --- */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #sidebar {
+      width: 350px;
+      background: #222;
+      padding: 20px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      border-right: 2px solid #333;
+      z-index: 2;
+      overflow-y: auto;
+    }
+    #sidebar h2 {
+      margin-top: 0;
+      font-size: 1.3em;
+      color: #ffd700;
+      text-align: center;
+    }
+    .control-group {
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #333;
+      border-radius: 8px;
+    }
+    .control-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 0.9em;
+      color: #ccc;
+      font-weight: bold;
+    }
+    .control-group input[type="range"] {
+      width: 100%;
+      margin: 5px 0;
+    }
+    .control-group .value-display {
+      font-size: 0.9em;
+      color: #ffd700;
+      text-align: center;
+      margin-top: 5px;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .btn {
+      flex: 1;
+      padding: 12px;
+      background: #ffd700;
+      color: #222;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #ffb300;
+    }
+    .btn.secondary {
+      background: #555;
+      color: #fff;
+    }
+    .btn.secondary:hover {
+      background: #666;
+    }
+    .btn.wind {
+      background: #4CAF50;
+      color: white;
+      font-size: 0.9em;
+      padding: 8px;
+    }
+    .btn.wind:hover {
+      background: #45a049;
+    }
+    #sketch-holder {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1a1a1a;
+      position: relative;
+    }
+    .preset-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+      margin-top: 10px;
+    }
+    .preset-btn {
+      padding: 8px;
+      background: #444;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.8em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .preset-btn:hover {
+      background: #555;
+    }
+    .instructions {
+      margin-top: 20px;
+      font-size: 0.85em;
+      color: #aaa;
+      line-height: 1.4;
+    }
+    .wind-info {
+      background: #2a4a2a;
+      padding: 8px;
+      border-radius: 5px;
+      margin-top: 5px;
+      font-size: 0.8em;
+      text-align: center;
+    }
+  </style>
+  <!-- Import map for p5.js ESM module -->
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- Sidebar: All controls and instructions -->
+  <div id="sidebar">
+    <h2>Realistic Free-Kick Controls</h2>
+    <!-- Ball velocity slider -->
+    <div class="control-group">
+      <label>Ball Velocity (km/h)</label>
+      <input type="range" id="velocitySlider" min="60" max="120" value="90" step="1">
+      <div class="value-display" id="velocityDisplay">90 km/h</div>
+    </div>
+    <!-- Shot angle slider -->
+    <div class="control-group">
+      <label>Shot Angle (degrees)</label>
+      <input type="range" id="angleSlider" min="-178" max="-2" value="-2" step="1">
+      <div class="value-display" id="angleDisplay">Straight (0°)</div>
+    </div>
+    <!-- Player position slider -->
+    <div class="control-group">
+      <label>Player Position (left ← → right)</label>
+      <input type="range" id="playerPosSlider" min="-200" max="200" value="0" step="10">
+      <div class="value-display" id="playerPosDisplay">Center (0m)</div>
+    </div>
+    <!-- Spin slider -->
+    <div class="control-group">
+      <label>Spin/Magnus Effect (Enhanced)</label>
+      <input type="range" id="spinSlider" min="-1" max="1" value="0" step="0.001">
+      <div class="value-display" id="spinDisplay">No Spin (0.00)</div>
+    </div>
+    <!-- Wind controls -->
+    <div class="control-group">
+      <label>Wind Conditions</label>
+      <button class="btn wind" id="randomWindBtn">Generate Random Wind</button>
+      <div class="wind-info" id="windInfo">Click to generate random wind</div>
+      <input type="range" id="windXSlider" min="-0.05" max="0.05" value="0" step="0.005" style="display:none;">
+      <input type="range" id="windYSlider" min="-0.03" max="0.03" value="0" step="0.003" style="display:none;">
+    </div>
+    <!-- Shoot and Reset buttons -->
+    <div class="button-group">
+      <button class="btn" id="shootBtn">SHOOT!</button>
+      <button class="btn secondary" id="resetBtn">Reset</button>
+    </div>
+
+    <!-- Instructions for the user -->
+    <div class="instructions">
+      <b>Instructions:</b><br>
+      • Adjust velocity for shot power<br>
+      • <strong>Angle controls the shot direction</strong><br>
+      • Negative angle = aim left<br>
+      • Positive angle = aim right<br>
+      • <strong>Enhanced spin creates dramatic curves!</strong><br>
+      • Ball can curve around defenders to goal<br>
+      • Random wind adds unpredictability<br>
+      • Try extreme angles with spin for amazing shots!
+    </div>
+  </div>
+  <!-- Main canvas area for p5.js sketch -->
+  <div id="sketch-holder"></div>
+  <script type="module">
+    import p5 from "p5";
+
+    // --- FIELD AND GAME CONSTANTS ---
+    // Canvas dimensions in pixels
+    const FIELD_W = 900, FIELD_H = 600;
+    // Conversion factor: 1 meter = 10 pixels
+    const METER_TO_PX = 10;
+    // Realistic goal dimensions scaled up
+    const GOAL_WIDTH_M = 7.32 * 3, GOAL_HEIGHT_M = 2.44 * 2;
+    const PENALTY_AREA_W_M = 40.32, PENALTY_AREA_D_M = 16.5;
+    const GOAL_AREA_W_M = 18.32, GOAL_AREA_D_M = 5.5;
+    const CENTER_CIRCLE_R_M = 9.15;
+    // Convert meters to pixels for drawing
+    const GOAL_W = GOAL_WIDTH_M * METER_TO_PX;
+    const GOAL_H = GOAL_HEIGHT_M * METER_TO_PX;
+    const PENALTY_AREA_W = PENALTY_AREA_W_M * METER_TO_PX;
+    const PENALTY_AREA_D = PENALTY_AREA_D_M * METER_TO_PX;
+    const GOAL_AREA_W = GOAL_AREA_W_M * METER_TO_PX;
+    const GOAL_AREA_D = GOAL_AREA_D_M * METER_TO_PX;
+    const CENTER_CIRCLE_R = CENTER_CIRCLE_R_M * METER_TO_PX;
+    // Field boundaries for out-of-bounds checks
+    const FIELD_LEFT = 50;
+    const FIELD_RIGHT = FIELD_W - 50;
+    const FIELD_TOP = 80;
+    const FIELD_BOTTOM = FIELD_H - 20;
+    // Horizon line for perspective effect
+    const HORIZON_Y = FIELD_H * 0.2;
+    // Scale factor for perspective (objects farther away appear smaller)
+    const PERSPECTIVE_SCALE = 0.5;
+    // Player, ball, and defender sizes
+    const PLAYER_RADIUS = 12;
+    const BALL_RADIUS = 6;
+    const DEFENDER_COUNT = 3;
+    const DEFENDER_SPACING = 22;
+    const DEFENDER_RADIUS = 12;
+    // Fixed Y positions for player, goal, and wall (defenders)
+    const PLAYER_Y = FIELD_H * 0.85;
+    const GOAL_Y = HORIZON_Y + 40;
+    const WALL_Y = FIELD_H * 0.55;
+    // X position of the goal center
+    const GOAL_X = FIELD_W / 2;
+
+    // --- GAME STATE VARIABLES ---
+    // Variables to hold current shot parameters and game state
+    let initialVelocity, shotAngle, spin, windX, windY;
+    let ball, defenders, goal, goalie;
+    let simActive = false;      // Is the simulation running?
+    let resultMessage = "";     // Message to display after shot
+    let playerX;                // Player's X position
+    let distanceToGoal;
+    let frameCounter = 0;       // Frame count for animations
+    let curveDirection;
+    let windParticles = [];     // Array to hold wind particle objects
+
+    // --- UI ELEMENTS ---
+    // Will hold references to sliders and controls
+    let velocitySlider, angleSlider, playerPosSlider, spinSlider, windXSlider, windYSlider;
+
+    // --- UTILITY FUNCTIONS ---
+
+    /**
+     * Applies perspective scaling to simulate 3D depth.
+     * Objects farther away appear smaller.
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} size - Base size of the object
+     * @returns {object} - Object with scaled x, y, size, and scale factor
+     */
+    function applyPerspective(x, y, size) {
+      // Calculate depth as a value between 0 (horizon) and 1 (bottom)
+      let depth = (y - HORIZON_Y) / (FIELD_H - HORIZON_Y);
+      depth = Math.max(0, Math.min(1, depth));
+      // Calculate scale based on depth
+      let scale = PERSPECTIVE_SCALE + (1 - PERSPECTIVE_SCALE) * depth;
+      return { x: x, y: y, size: size * scale, scale: scale };
+    }
+
+    /**
+     * Calculates Euclidean distance between two points in meters.
+     * @param {number} x1 - X coordinate of first point
+     * @param {number} y1 - Y coordinate of first point
+     * @param {number} x2 - X coordinate of second point
+     * @param {number} y2 - Y coordinate of second point
+     * @returns {number} - Distance in meters
+     */
+    function calculateDistance(x1, y1, x2, y2) {
+      let dx = (x2 - x1) / METER_TO_PX;
+      let dy = (y2 - y1) / METER_TO_PX;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * Checks if a point is outside the field boundaries.
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @returns {boolean} - True if out of bounds, else false
+     */
+    function isOutOfBounds(x, y) {
+      return x < FIELD_LEFT || x > FIELD_RIGHT || y < FIELD_TOP || y > FIELD_BOTTOM;
+    }
+
+    /**
+     * Returns a descriptive string for the type of out-of-bounds.
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @returns {string} - Description of out-of-bounds type
+     */
+    function getOutOfBoundsType(x, y) {
+      if (x < FIELD_LEFT) return "Out for Throw-in (Left)";
+      if (x > FIELD_RIGHT) return "Out for Throw-in (Right)";
+      if (y < FIELD_TOP) return "Out for Goal Kick";
+      if (y > FIELD_BOTTOM) return "Out for Corner Kick";
+      return "Out of Play";
+    }
+
+    /**
+     * Generates random wind values and updates UI accordingly.
+     * Wind affects ball trajectory.
+     */
+    function generateRandomWind() {
+      // Random windX between -0.04 and +0.04 approx
+      windX = (Math.random() - 0.5) * 0.08;
+      // Random windY between -0.025 and +0.025 approx
+      windY = (Math.random() - 0.5) * 0.05;
+      // Update hidden sliders (for possible future use)
+      windXSlider.value = windX;
+      windYSlider.value = windY;
+      // Prepare descriptive text for wind direction and strength
+      let windXText = windX === 0 ? "No Wind" : windX > 0 ? `Right Wind (+${windX.toFixed(3)})` : `Left Wind (${windX.toFixed(3)})`;
+      let windYText = windY === 0 ? "No Wind" : windY > 0 ? `Down Wind (+${windY.toFixed(3)})` : `Up Wind (${windY.toFixed(3)})`;
+      // Update wind info display in sidebar
+      document.getElementById('windInfo').innerHTML = `<strong>Wind X:</strong> ${windXText}<br><strong>Wind Y:</strong> ${windYText}`;
+      // Create wind particles for visual effect
+      createWindParticles();
+    }
+
+    /**
+     * Creates wind particles for visualizing wind direction and strength.
+     * Particles move across the field and fade out.
+     */
+    function createWindParticles() {
+      windParticles = [];
+      for (let i = 0; i < 25; i++) {
+        windParticles.push({
+          x: Math.random() * FIELD_W,
+          y: Math.random() * FIELD_H,
+          vx: windX * 4 + (Math.random() - 0.5) * 2,
+          vy: windY * 4 + (Math.random() - 0.5) * 2,
+          life: Math.random() * 120 + 80
+        });
+      }
+    }
+
+    /**
+     * Updates the display text for all sliders in the UI.
+     * Shows current values for velocity, angle, player position, and spin.
+     */
+    function updateDisplays() {
+      document.getElementById('velocityDisplay').textContent = velocitySlider.value + " km/h";
+      let angleVal = parseInt(angleSlider.value);
+      let angleText = "";
+      if (angleVal === 0) angleText = "Straight (0°)";
+      else if (angleVal < 0) angleText = `Left (${angleVal}°)`;
+      else angleText = `Right (+${angleVal}°)`;
+      document.getElementById('angleDisplay').textContent = angleText;
+      let playerPos = parseInt(playerPosSlider.value);
+      let posText = playerPos === 0 ? "Center (0m)" : playerPos < 0 ? `Left (${playerPos/10}m)` : `Right (+${playerPos/10}m)`;
+      document.getElementById('playerPosDisplay').textContent = posText;
+      let spinVal = parseFloat(spinSlider.value);
+      let spinText = spinVal === 0 ? "No Spin (0.00)" : spinVal > 0 ? `Right Curve (+${spinVal.toFixed(2)})` : `Left Curve (${spinVal.toFixed(2)})`;
+      document.getElementById('spinDisplay').textContent = spinText;
+    }
+
+    /**
+     * Sets up all UI controls and event listeners.
+     * Called once during setup.
+     */
+    function setupControls() {
+      // Get slider elements by ID
+      velocitySlider = document.getElementById('velocitySlider');
+      angleSlider = document.getElementById('angleSlider');
+      playerPosSlider = document.getElementById('playerPosSlider');
+      spinSlider = document.getElementById('spinSlider');
+      windXSlider = document.getElementById('windXSlider');
+      windYSlider = document.getElementById('windYSlider');
+      // Add input event listeners to update display text dynamically
+      [velocitySlider, angleSlider, playerPosSlider, spinSlider].forEach(slider => {
+        slider.addEventListener('input', updateDisplays);
+      });
+      // Button event listeners for shooting, resetting, and wind generation
+      document.getElementById('shootBtn').onclick = shootBall;
+      document.getElementById('resetBtn').onclick = resetSim;
+      document.getElementById('randomWindBtn').onclick = generateRandomWind;
+      // Initialize wind and display values
+      generateRandomWind();
+      updateDisplays();
+    }
+
+    /**
+     * Sets preset values for quick shot configurations.
+     * Called by preset buttons in the UI.
+     * @param {string} presetName - Name of the preset
+     */
+    window.setPreset = function(presetName) {
+      switch(presetName) {
+        case 'rightCurve':
+          playerPosSlider.value = -100;
+          angleSlider.value = -15;
+          velocitySlider.value = 85;
+          spinSlider.value = 1.0;
+          break;
+        case 'leftCurve':
+          playerPosSlider.value = 100;
+          angleSlider.value = 15;
+          velocitySlider.value = 85;
+          spinSlider.value = -1.0;
+          break;
+        case 'powerShot':
+          playerPosSlider.value = 0;
+          angleSlider.value = 0;
+          velocitySlider.value = 115;
+          spinSlider.value = 0.3;
+          break;
+        case 'placement':
+          playerPosSlider.value = -80;
+          angleSlider.value = 20;
+          velocitySlider.value = 75;
+          spinSlider.value = -0.7;
+          break;
+        case 'farRight':
+          playerPosSlider.value = -150;
+          angleSlider.value = 35;
+          velocitySlider.value = 95;
+          spinSlider.value = -0.5;
+          break;
+        case 'farLeft':
+          playerPosSlider.value = 150;
+          angleSlider.value = -35;
+          velocitySlider.value = 95;
+          spinSlider.value = 0.5;
+          break;
+      }
+      updateDisplays();
+    };
+
+    // --- BALL CLASS: Handles ball physics, drawing, and collision ---
+    class Ball {
+      /**
+       * Creates a new ball instance.
+       * @param {number} x - Initial X position
+       * @param {number} y - Initial Y position
+       * @param {number} speed - Initial speed in px/frame
+       * @param {number} angle - Shot angle in degrees
+       * @param {number} spin - Spin value (-1 to 1)
+       */
+      constructor(x, y, speed, angle, spin) {
+        this.startX = x;       // Starting X position
+        this.startY = y;       // Starting Y position
+        this.x = x;            // Current X position
+        this.y = y;            // Current Y position
+        this.spin = spin;      // Spin value for Magnus effect
+        this.path = [];        // Array to store trajectory points
+        this.stopped = false;  // Flag to indicate if ball stopped
+        this.airTime = 0;      // Frames since shot started
+        this.initialY = y;     // Used to detect if ball comes back
+        this.angle = angle;    // Shot angle in degrees
+        // Convert angle to radians for velocity calculation
+        let angleRad = (angle * Math.PI) / 180;
+        // Calculate initial velocity components (scaled for frame rate)
+        this.vx = speed * Math.cos(angleRad) / 60;
+        this.vy = speed * Math.sin(angleRad) / 60;
+        // Determine curve direction based on spin sign
+        curveDirection = this.spin > 0 ? "right" : "left";
+        this.lastVy = this.vy; // Store last vertical velocity for checks
+      }
+
+      /**
+       * Updates ball position and applies physics forces.
+       * Called every frame while simulation is active.
+       */
+      update() {
+        if (this.stopped) return; // Do nothing if ball stopped
+
+        // Calculate current speed magnitude
+        let speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+
+        // Stop ball if speed is very low (ball has lost momentum)
+        if (speed < 0.2) {
+          this.stopped = true;
+          return;
+        }
+
+        this.airTime++; // Increment air time counter
+
+        // Apply gravity (pulls ball downward)
+        this.vy += 0.015;
+
+        // Apply Magnus effect (curving due to spin)
+        if (Math.abs(this.spin) > 0.01) {
+          // Calculate perpendicular vector to velocity for curve direction
+          let perpX = -this.vy;
+          let perpY = this.vx;
+          let perpMag = Math.sqrt(perpX * perpX + perpY * perpY);
+          if (perpMag > 0) {
+            perpX /= perpMag;
+            perpY /= perpMag;
+          }
+          // Calculate strength of Magnus effect, decaying over time
+          let t = this.airTime / 100;
+          let magnusStrength = this.spin * speed * 0.025 * Math.max(0.3, 1 - t * 0.7);
+          // Add slight bias to curve toward goal center
+          let goalBias = (GOAL_X - this.x) * 0.00008 * (t + 0.2);
+          magnusStrength += goalBias;
+          // Apply Magnus force to velocity components
+          this.vx += perpX * magnusStrength;
+          this.vy += perpY * magnusStrength;
+        }
+
+        // Apply air resistance (slows ball gradually)
+        this.vx *= 0.9985;
+        this.vy *= 0.9985;
+
+        // Apply wind effect, increasing with air time
+        let windEffect = Math.min(1, this.airTime / 50);
+        this.vx += windX * 0.003 * windEffect;
+        this.vy += windY * 0.002 * windEffect;
+
+        // Update ball position based on velocity
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Store current position in path for drawing trajectory
+        this.path.push([this.x, this.y]);
+
+        // --- STOP BALL IF IT STARTS COMING BACK ---
+        // Prevents unrealistic boomerang effect
+        if (this.vy > 0 && this.y < this.initialY - 10) {
+          this.stopped = true;
+          return;
+        }
+
+        // Stop ball if it hits ground or goes out of bounds
+        if (this.y > this.initialY || isOutOfBounds(this.x, this.y)) {
+          this.stopped = true;
+        }
+      }
+
+      /**
+       * Draws the ball, its trajectory path, and info text.
+       * @param {object} p - p5 instance
+       */
+      draw(p) {
+        // Draw trajectory path as dashed green line
+        if (this.path.length > 1) {
+          p.stroke(100, 255, 100, 180);
+          p.strokeWeight(3);
+          p.noFill();
+          p.drawingContext.setLineDash([8, 4]);
+          p.beginShape();
+          for (let i = 0; i < this.path.length; i++) {
+            let point = this.path[i];
+            let pos = applyPerspective(point[0], point[1], 1);
+            p.vertex(pos.x, pos.y);
+          }
+          p.endShape();
+          p.drawingContext.setLineDash([]);
+        }
+
+        // Draw ball trail with color indicating spin direction
+        p.noFill();
+        p.strokeWeight(4);
+        let trailLength = Math.min(this.path.length, 30);
+        for (let i = this.path.length - trailLength; i < this.path.length - 1; i++) {
+          if (i >= 0) {
+            let alpha = ((i - (this.path.length - trailLength)) / trailLength) * 255;
+            if (Math.abs(this.spin) > 0.1) {
+              if (this.spin > 0) {
+                p.stroke(255, 150, 100, alpha); // Orange for right curve
+              } else {
+                p.stroke(100, 150, 255, alpha); // Blue for left curve
+              }
+            } else {
+              p.stroke(255, 200, 0, alpha); // Yellow for no spin
+            }
+            let pt1 = this.path[i];
+            let pt2 = this.path[i + 1];
+            let pos1 = applyPerspective(pt1[0], pt1[1], 1);
+            let pos2 = applyPerspective(pt2[0], pt2[1], 1);
+            p.line(pos1.x, pos1.y, pos2.x, pos2.y);
+          }
+        }
+
+        // Draw the ball with shadow and rotation for realism
+        let pos = applyPerspective(this.x, this.y, BALL_RADIUS * 2);
+        // Shadow ellipse below ball
+        p.fill(0, 0, 0, 60);
+        p.noStroke();
+        p.ellipse(pos.x + 2 * pos.scale, pos.y + 8 * pos.scale, pos.size * 0.8, pos.size * 0.3);
+        // Ball main circle
+        p.fill(255, 255, 255);
+        p.stroke(0, 0, 0, 150);
+        p.strokeWeight(2);
+        p.ellipse(pos.x, pos.y, pos.size, pos.size);
+        // Ball rotation lines
+        let rotation = this.airTime * (0.1 + Math.abs(this.spin) * 0.05);
+        p.push();
+        p.translate(pos.x, pos.y);
+        p.rotate(rotation);
+        p.stroke(0, 0, 0, 120);
+        p.strokeWeight(2 * pos.scale);
+        p.line(-pos.size / 3, -pos.size / 4, pos.size / 3, pos.size / 4);
+        p.line(-pos.size / 4, pos.size / 3, pos.size / 4, -pos.size / 3);
+        p.noFill();
+        p.ellipse(0, 0, pos.size * 0.6, pos.size * 0.6);
+        p.pop();
+
+        // Draw info text above ball for first 60 frames
+        if (this.airTime < 60) {
+          p.push();
+          p.translate(pos.x, pos.y - pos.size * 1.5);
+          p.fill(100, 200, 255, 200);
+          p.noStroke();
+          p.textAlign(p.CENTER, p.CENTER);
+          p.textSize(9 * pos.scale);
+          let angleText = this.angle === 0 ? "Straight" : this.angle < 0 ? `Left ${this.angle}°` : `Right +${this.angle}°`;
+          p.text(angleText, 0, -12);
+          if (Math.abs(this.spin) > 0.1) {
+            p.textSize(8 * pos.scale);
+            if (this.spin > 0) {
+              p.fill(255, 150, 100, 200);
+              p.text(`Right Curve (${this.spin.toFixed(1)})`, 0, 0);
+            } else {
+              p.fill(100, 150, 255, 200);
+              p.text(`Left Curve (${this.spin.toFixed(1)})`, 0, 0);
+            }
+          }
+          p.pop();
+        }
+      }
+
+      /**
+       * Checks collision with defenders (wall).
+       * @param {Array} defs - Array of defender objects
+       * @returns {boolean} - True if collision detected
+       */
+      collidesWithDefender(defs) {
+        for (let d of defs) {
+          let dx = this.x - d.x, dy = this.y - d.y;
+          if (dx * dx + dy * dy < (BALL_RADIUS + DEFENDER_RADIUS + 7) ** 2) return true;
+        }
+        return false;
+      }
+
+      /**
+       * Checks if ball is inside the goal area and moving forward.
+       * @param {object} goal - Goal object with position and size
+       * @returns {boolean} - True if ball is in goal
+       */
+      isInGoal(goal) {
+        let pos = applyPerspective(goal.x, goal.y, goal.w);
+        let goalLeft = pos.x - pos.size / 2;
+        let goalRight = pos.x + pos.size / 2;
+        let goalTop = pos.y - goal.h * pos.scale;
+        let goalBottom = pos.y;
+        return (
+          this.x >= goalLeft &&
+          this.x <= goalRight &&
+          this.y >= goalTop &&
+          this.y <= goalBottom &&
+          this.vy < 0 // Ball moving forward (up)
+        );
+      }
+
+      /**
+       * Checks collision with goalie.
+       * @param {object} goalie - Goalie object with position
+       * @returns {boolean} - True if collision detected
+       */
+      collidesWithGoalie(goalie) {
+        let dx = this.x - goalie.x, dy = this.y - goalie.y;
+        return dx * dx + dy * dy < (BALL_RADIUS + 20) ** 2;
+      }
+    }
+
+    // --- DEFENDERS, GOAL, GOALIE, AND DRAWING FUNCTIONS ---
+
+    /**
+     * Creates defenders (wall) positioned between player and goal.
+     * @returns {Array} - Array of defender objects
+     */
+    function makeDefenders() {
+      let defs = [];
+      // Position wall roughly 65% of distance from player to goal
+      let centerX = playerX + (GOAL_X - playerX) * 0.65;
+      // Calculate starting X for defenders to center the wall
+      let startX = centerX - ((DEFENDER_COUNT - 1) * DEFENDER_SPACING) / 2;
+      for (let i = 0; i < DEFENDER_COUNT; i++) {
+        defs.push({
+          x: startX + i * DEFENDER_SPACING,
+          y: WALL_Y,
+          jumpPhase: Math.random() * Math.PI * 2 // For jump animation phase
+        });
+      }
+      return defs;
+    }
+
+    /**
+     * Creates goal object with position and size.
+     * @returns {object} - Goal object
+     */
+    function makeGoal() {
+      return { x: GOAL_X, y: GOAL_Y, w: GOAL_W, h: GOAL_H };
+    }
+
+    /**
+     * Creates goalie object positioned near goal center.
+     * Goalie moves slightly toward player's side.
+     * @returns {object} - Goalie object
+     */
+    function makeGoalie() {
+      // Goalie X moves 10% toward player from goal center
+      let goalieX = GOAL_X + (playerX - GOAL_X) * 0.1;
+      // Clamp goalie within goal width limits
+      goalieX = Math.max(GOAL_X - GOAL_W / 2.5, Math.min(GOAL_X + GOAL_W / 2.5, goalieX));
+      return {
+        x: goalieX,
+        y: GOAL_Y + 30,
+        originalX: goalieX,
+        diving: false,
+        diveDirection: 0
+      };
+    }
+
+    /**
+     * Draws the player on the field with perspective.
+     * @param {object} p - p5 instance
+     */
+    function drawPlayer(p) {
+      let pos = applyPerspective(playerX, PLAYER_Y, PLAYER_RADIUS * 2);
+      p.push();
+      p.translate(pos.x, pos.y);
+      // Draw shadow ellipse under player
+      p.fill(0, 0, 0, 50);
+      p.noStroke();
+      p.ellipse(4 * pos.scale, 6 * pos.scale, pos.size * 1.4, pos.size * 0.5);
+      // Draw player body
+      p.fill(0, 120, 200);
+      p.stroke(255, 255, 255);
+      p.strokeWeight(2 * pos.scale);
+      p.ellipse(0, 0, pos.size, pos.size * 1.5);
+      // Draw player number
+      p.fill(255, 255, 255);
+      p.noStroke();
+      p.textAlign(p.CENTER, p.CENTER);
+      p.textSize(10 * pos.scale);
+      p.text("10", 0, 0);
+      // Draw head
+      p.fill(255, 220, 180);
+      p.stroke(0, 0, 0, 100);
+      p.strokeWeight(1 * pos.scale);
+      p.ellipse(0, -pos.size * 0.8, pos.size * 0.8, pos.size * 0.8);
+      // Draw hair
+      p.fill(80, 40, 0);
+      p.noStroke();
+      p.ellipse(0, -pos.size * 0.95, pos.size * 0.7, pos.size * 0.5);
+      // Draw arms
+      p.stroke(255, 220, 180);
+      p.strokeWeight(5 * pos.scale);
+      p.line(-pos.size * 0.6, -pos.size * 0.3, -pos.size * 0.9, pos.size * 0.5);
+      p.line(pos.size * 0.6, -pos.size * 0.3, pos.size * 0.9, pos.size * 0.5);
+      // Draw legs
+      p.strokeWeight(7 * pos.scale);
+      p.stroke(0, 120, 200);
+      p.line(-pos.size * 0.3, pos.size * 0.6, -pos.size * 0.3, pos.size * 1.1);
+      p.line(pos.size * 0.3, pos.size * 0.6, pos.size * 0.3, pos.size * 1.1);
+      // Draw shoes
+      p.fill(0, 0, 0);
+      p.noStroke();
+      p.ellipse(-pos.size * 0.3, pos.size * 1.15, pos.size * 0.4, pos.size * 0.25);
+      p.ellipse(pos.size * 0.3, pos.size * 1.15, pos.size * 0.4, pos.size * 0.25);
+      p.pop();
+    }
+
+    /**
+     * Draws the goalie with diving animation.
+     * @param {object} p - p5 instance
+     * @param {object} goalie - Goalie object
+     * @param {object} ball - Ball object
+     */
+    function drawGoalie(p, goalie, ball) {
+      let pos = applyPerspective(goalie.x, goalie.y, 35);
+      // Decide if goalie should dive based on ball position and movement
+      if (ball && ball.y < WALL_Y && !ball.stopped && !goalie.diving) {
+        let ballDirection = ball.x - goalie.originalX;
+        if (Math.abs(ballDirection) > 25) {
+          goalie.diving = true;
+          goalie.diveDirection = ballDirection > 0 ? 1 : -1;
+        }
+      }
+      p.push();
+      p.translate(pos.x, pos.y);
+      // Calculate dive offset for animation
+      let diveOffset = 0;
+      if (goalie.diving) {
+        diveOffset = goalie.diveDirection * 30 * pos.scale;
+      }
+      // Draw shadow ellipse under goalie
+      p.fill(0, 0, 0, 50);
+      p.noStroke();
+      p.ellipse(diveOffset + 4 * pos.scale, 6 * pos.scale, pos.size * 1.4, pos.size * 0.5);
+      // Draw goalie body
+      p.fill(255, 200, 0);
+      p.stroke(0, 0, 0);
+      p.strokeWeight(2 * pos.scale);
+      p.ellipse(diveOffset, 0, pos.size, pos.size * 1.7);
+      // Draw goalie number
+      p.fill(0, 0, 0);
+      p.noStroke();
+      p.textAlign(p.CENTER, p.CENTER);
+      p.textSize(10 * pos.scale);
+      p.text("1", diveOffset, 0);
+      // Draw goalie head
+      p.fill(255, 220, 180);
+      p.stroke(0, 0, 0, 100);
+      p.strokeWeight(1 * pos.scale);
+      p.ellipse(diveOffset, -pos.size * 0.85, pos.size * 0.8, pos.size * 0.8);
+      // Draw eyes
+      p.fill(255, 255, 255);
+      p.stroke(0, 0, 0);
+      p.strokeWeight(2 * pos.scale);
+      p.ellipse(diveOffset - pos.size * 0.8, -pos.size * 0.5, pos.size * 0.6, pos.size * 0.6);
+      p.ellipse(diveOffset + pos.size * 0.8, -pos.size * 0.5, pos.size * 0.6, pos.size * 0.6);
+      // Draw eyebrows
+      p.stroke(255, 200, 0);
+      p.strokeWeight(7 * pos.scale);
+      p.line(diveOffset - pos.size * 0.5, -pos.size * 0.5, diveOffset - pos.size * 1.0, -pos.size * 0.7);
+      p.line(diveOffset + pos.size * 0.5, -pos.size * 0.5, diveOffset + pos.size * 1.0, -pos.size * 0.7);
+      // Draw legs
+      p.strokeWeight(7 * pos.scale);
+      p.stroke(255, 200, 0);
+      p.line(diveOffset - pos.size * 0.3, pos.size * 0.8, diveOffset - pos.size * 0.3, pos.size * 1.3);
+      p.line(diveOffset + pos.size * 0.3, pos.size * 0.8, diveOffset + pos.size * 0.3, pos.size * 1.3);
+      p.pop();
+    }
+
+    /**
+     * Draws defenders (wall) with simple jump animation.
+     * @param {object} p - p5 instance
+     * @param {Array} defenders - Array of defender objects
+     */
+    function drawDefenders(p, defenders) {
+      for (let i = 0; i < defenders.length; i++) {
+        let d = defenders[i];
+        let pos = applyPerspective(d.x, d.y, DEFENDER_RADIUS * 2);
+        p.push();
+        p.translate(pos.x, pos.y);
+        // Calculate jump offset for animation (sinusoidal)
+        let jumpOffset = Math.sin((frameCounter * 0.08) + d.jumpPhase) * pos.size * 0.2;
+        p.translate(0, jumpOffset);
+        // Draw shadow ellipse under defender
+        p.fill(0, 0, 0, 50);
+        p.noStroke();
+        p.ellipse(4 * pos.scale, 6 * pos.scale - jumpOffset, pos.size * 1.4, pos.size * 0.5);
+        // Defender colors cycle through array
+        let colors = [[200, 60, 60], [60, 200, 60], [200, 60, 200]];
+        let color = colors[i % colors.length];
+        // Draw defender body
+        p.fill(color[0], color[1], color[2]);
+        p.stroke(255, 255, 255);
+        p.strokeWeight(2 * pos.scale);
+        p.ellipse(0, 0, pos.size, pos.size * 1.5);
+        // Draw defender number
+        p.fill(255, 255, 255);
+        p.noStroke();
+        p.textAlign(p.CENTER, p.CENTER);
+        p.textSize(8 * pos.scale);
+        p.text((i + 2).toString(), 0, 0);
+        // Draw defender head
+        p.fill(255, 220, 180);
+        p.stroke(0, 0, 0, 100);
+        p.strokeWeight(1 * pos.scale);
+        p.ellipse(0, -pos.size * 0.8, pos.size * 0.8, pos.size * 0.8);
+        // Draw hair
+        p.stroke(255, 220, 180);
+        p.strokeWeight(5 * pos.scale);
+        p.line(-pos.size * 0.5, -pos.size * 0.4, -pos.size * 0.8, -pos.size * 1.0);
+        p.line(pos.size * 0.5, -pos.size * 0.4, pos.size * 0.8, -pos.size * 1.0);
+        // Draw legs
+        p.strokeWeight(7 * pos.scale);
+        p.stroke(color[0], color[1], color[2]);
+        p.line(-pos.size * 0.3, pos.size * 0.8, -pos.size * 0.3, pos.size * 1.3);
+        p.line(pos.size * 0.3, pos.size * 0.8, pos.size * 0.3, pos.size * 1.3);
+        p.pop();
+      }
+    }
+
+    /**
+     * Draws wind particles moving across the field.
+     * @param {object} p - p5 instance
+     */
+    function drawWindParticles(p) {
+      for (let i = windParticles.length - 1; i >= 0; i--) {
+        let particle = windParticles[i];
+        // Update particle position based on velocity
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        // Decrease life counter
+        particle.life--;
+        // Remove particle if life expired or out of bounds
+        if (particle.life <= 0 || particle.x < 0 || particle.x > FIELD_W || particle.y < 0 || particle.y > FIELD_H) {
+          windParticles.splice(i, 1);
+          continue;
+        }
+        // Draw particle as a short line with fading alpha
+        let alpha = (particle.life / 200) * 100;
+        p.stroke(255, 255, 255, alpha);
+        p.strokeWeight(2);
+        p.line(particle.x, particle.y, particle.x - particle.vx * 5, particle.y - particle.vy * 5);
+      }
+    }
+
+    /**
+     * Draws the soccer field with grass, lines, penalty area, and center circle.
+     * @param {object} p - p5 instance
+     */
+    function drawField(p) {
+      // Draw sky gradient (top to horizon)
+      for (let y = 0; y < HORIZON_Y; y += 3) {
+        let alpha = y / HORIZON_Y;
+        p.stroke(135 + alpha * 50, 206 + alpha * 30, 250);
+        p.line(0, y, FIELD_W, y);
+      }
+      // Draw grass gradient (horizon to bottom)
+      for (let y = HORIZON_Y; y < FIELD_H; y += 2) {
+        let alpha = (y - HORIZON_Y) / (FIELD_H - HORIZON_Y);
+        p.stroke(30 + alpha * 40, 120 + alpha * 60, 40 + alpha * 40);
+        p.line(0, y, FIELD_W, y);
+      }
+      // Draw field boundary rectangle
+      p.stroke(255, 255, 255, 200);
+      p.strokeWeight(3);
+      p.noFill();
+      p.rect(FIELD_LEFT, FIELD_TOP, FIELD_RIGHT - FIELD_LEFT, FIELD_BOTTOM - FIELD_TOP);
+      // Draw penalty area with perspective
+      let penaltyPos = applyPerspective(GOAL_X, GOAL_Y + PENALTY_AREA_D / 2, PENALTY_AREA_W);
+      p.rect(penaltyPos.x - penaltyPos.size / 2, penaltyPos.y, penaltyPos.size, PENALTY_AREA_D * penaltyPos.scale);
+      // Draw goal area with perspective
+      let goalAreaPos = applyPerspective(GOAL_X, GOAL_Y + GOAL_AREA_D / 2, GOAL_AREA_W);
+      p.rect(goalAreaPos.x - goalAreaPos.size / 2, goalAreaPos.y, goalAreaPos.size, GOAL_AREA_D * goalAreaPos.scale);
+      // Draw penalty spot
+      let penaltySpotPos = applyPerspective(GOAL_X, GOAL_Y + 11 * METER_TO_PX, 1);
+      p.fill(255, 255, 255);
+      p.ellipse(penaltySpotPos.x, penaltySpotPos.y, 6 * penaltySpotPos.scale, 6 * penaltySpotPos.scale);
+      p.noFill();
+      // Draw center circle with perspective
+      let centerPos = applyPerspective(FIELD_W / 2, FIELD_H * 0.7, CENTER_CIRCLE_R * 2);
+      p.ellipse(centerPos.x, centerPos.y, centerPos.size, centerPos.size * 0.5);
+      // Draw center spot
+      p.fill(255, 255, 255);
+      p.ellipse(centerPos.x, centerPos.y, 6 * centerPos.scale, 6 * centerPos.scale);
+      p.noFill();
+    }
+
+    /**
+     * Draws the goal with posts, crossbar, and net.
+     * @param {object} p - p5 instance
+     * @param {object} goal - Goal object with position and size
+     */
+    function drawGoal(p, goal) {
+      let pos = applyPerspective(goal.x, goal.y, goal.w);
+      // Draw goal shadow behind net
+      p.fill(0, 0, 0, 100);
+      p.noStroke();
+      p.rect(pos.x - pos.size / 2 - 6, pos.y + 6, pos.size + 12, goal.h * pos.scale + 12);
+      // Draw goal posts and crossbar
+      p.stroke(255, 255, 255);
+      p.strokeWeight(10 * pos.scale);
+      p.line(pos.x - pos.size / 2, pos.y, pos.x - pos.size / 2, pos.y - goal.h * pos.scale);
+      p.line(pos.x + pos.size / 2, pos.y, pos.x + pos.size / 2, pos.y - goal.h * pos.scale);
+      p.line(pos.x - pos.size / 2, pos.y - goal.h * pos.scale, pos.x + pos.size / 2, pos.y - goal.h * pos.scale);
+      // Draw net grid lines vertically
+      p.stroke(255, 255, 255, 120);
+      p.strokeWeight(2 * pos.scale);
+      for (let i = 1; i < 12; i++) {
+        let netX = pos.x - pos.size / 2 + (pos.size / 12) * i;
+        p.line(netX, pos.y, netX, pos.y - goal.h * pos.scale);
+      }
+      // Draw net grid lines horizontally
+      for (let i = 1; i < 6; i++) {
+        let netY = pos.y - (goal.h * pos.scale / 6) * i;
+        p.line(pos.x - pos.size / 2, netY, pos.x + pos.size / 2, netY);
+      }
+    }
+
+    /**
+     * Starts a new shot with current UI values.
+     * Initializes ball, defenders, goalie, and resets simulation state.
+     */
+    function shootBall() {
+      // Read slider values
+      let velocity = parseInt(velocitySlider.value);
+      let angle = parseInt(angleSlider.value);
+      let playerPos = parseInt(playerPosSlider.value);
+      let spinVal = parseFloat(spinSlider.value);
+      // Calculate player X position, clamped within field
+      playerX = GOAL_X + playerPos;
+      playerX = Math.max(FIELD_LEFT + 80, Math.min(FIELD_RIGHT - 80, playerX));
+      // Calculate distance to goal (for realism, not used directly here)
+      distanceToGoal = calculateDistance(playerX, PLAYER_Y - 30, GOAL_X, GOAL_Y);
+      // Convert velocity from km/h to px/frame
+      initialVelocity = (velocity / 3.6) * (METER_TO_PX / 60);
+      shotAngle = angle;
+      spin = spinVal;
+      // Create new ball instance with initial parameters
+      ball = new Ball(playerX, PLAYER_Y - 30, initialVelocity * 60, angle, spin);
+      // Create defenders, goal, and goalie
+      defenders = makeDefenders();
+      goal = makeGoal();
+      goalie = makeGoalie();
+      // Activate simulation and reset messages and frame counter
+      simActive = true;
+      resultMessage = "";
+      frameCounter = 0;
+      // Create wind particles for visual effect
+      createWindParticles();
+    }
+
+    /**
+     * Resets the simulation to initial state.
+     * Clears ball, resets sliders, and recreates defenders and goalie.
+     */
+    function resetSim() {
+      simActive = false;
+      resultMessage = "";
+      ball = null;
+      windParticles = [];
+      frameCounter = 0;
+      // Reset sliders to default values
+      velocitySlider.value = 90;
+      angleSlider.value = 0;
+      playerPosSlider.value = 0;
+      spinSlider.value = 0;
+      // Generate new random wind and update displays
+      generateRandomWind();
+      updateDisplays();
+      // Reset player and objects
+      playerX = GOAL_X;
+      defenders = makeDefenders();
+      goal = makeGoal();
+      goalie = makeGoalie();
+    }
+
+    // --- P5 SKETCH CLASS (for ESM usage) ---
+    class FreeKickSketch {
+      constructor() {
+        // Bind methods to this instance
+        this.setup = this.setup.bind(this);
+        this.draw = this.draw.bind(this);
+      }
+      /**
+       * p5.js setup function.
+       * Creates canvas and initializes controls and simulation.
+       * @param {object} p - p5 instance
+       */
+      setup(p) {
+        let cnv = p.createCanvas(FIELD_W, FIELD_H);
+        cnv.parent('sketch-holder');
+        setupControls();
+        resetSim();
+      }
+      /**
+       * p5.js draw function.
+       * Called every frame to update and render the simulation.
+       * @param {object} p - p5 instance
+       */
+      draw(p) {
+        frameCounter++;
+        // Draw sky and field background
+        p.background(135, 206, 250);
+        drawField(p);
+        // Draw wind particles
+        drawWindParticles(p);
+        // Draw goal, defenders, goalie, and player
+        drawGoal(p, goal);
+        drawDefenders(p, defenders);
+        drawGoalie(p, goalie, ball);
+        drawPlayer(p);
+        // Draw ball and its trajectory path
+        if (ball) {
+          if (ball.path.length > 1) {
+            p.stroke(100, 255, 100, 180);
+            p.strokeWeight(3);
+            p.noFill();
+            p.drawingContext.setLineDash([8, 4]);
+            p.beginShape();
+            for (let i = 0; i < ball.path.length; i++) {
+              let point = ball.path[i];
+              let pos = applyPerspective(point[0], point[1], 1);
+              p.vertex(pos.x, pos.y);
+            }
+            p.endShape();
+            p.drawingContext.setLineDash([]);
+          }
+          ball.draw(p);
+        }
+        // Update ball physics and check for collisions and goal
+        if (simActive && ball && !ball.stopped) {
+          ball.update();
+          if (ball.collidesWithDefender(defenders)) {
+            simActive = false;
+            resultMessage = "Blocked by Wall!";
+          } else if (ball.collidesWithGoalie(goalie)) {
+            simActive = false;
+            resultMessage = "Great Save!";
+          } else if (ball.isInGoal(goal)) {
+            simActive = false;
+            resultMessage = "GOAL!";
+          } else if (ball.stopped) {
+            if (isOutOfBounds(ball.x, ball.y)) {
+              resultMessage = getOutOfBoundsType(ball.x, ball.y);
+            } else {
+              resultMessage = "Ball Stopped - No Goal";
+            }
+            simActive = false;
+          }
+        }
+        // Display result message on screen when simulation ends
+        if (!simActive && resultMessage) {
+          p.textAlign(p.CENTER, p.CENTER);
+          p.textSize(42);
+          p.strokeWeight(4);
+          p.fill(0, 0, 0, 180);
+          p.noStroke();
+          p.rect(FIELD_W / 2 - 280, 60, 560, 60, 15);
+          // Color code message based on result type
+          if (resultMessage === "GOAL!") {
+            p.stroke(255, 215, 0);
+            p.fill(255, 215, 0);
+          } else if (resultMessage.includes("Blocked") || resultMessage.includes("Save")) {
+            p.stroke(255, 100, 100);
+            p.fill(255, 100, 100);
+          } else if (resultMessage.includes("Out")) {
+            p.stroke(255, 165, 0);
+            p.fill(255, 165, 0);
+          } else {
+            p.stroke(255, 255, 255);
+            p.fill(255, 255, 255);
+          }
+          p.text(resultMessage, FIELD_W / 2, 90);
+        }
+      }
+    }
+
+    // --- LAUNCH THE P5 SKETCH (ESM instance mode) ---
+    new p5((p) => {
+      const sketch = new FreeKickSketch();
+      p.setup = () => sketch.setup(p);
+      p.draw = () => sketch.draw(p);
+    });
+  </script>
+</body>
+</html>

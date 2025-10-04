@@ -1,0 +1,1924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classic Billiards Simulation</title>
+    
+    <!-- Import map for ES6 modules from CDN -->
+    <script type="importmap">
+        {
+          "imports": {
+            "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm",
+            "matter-js": "https://cdn.jsdelivr.net/npm/matter-js@0.19.0/+esm"
+          }
+        }
+    </script>
+    
+    <style>
+        /* Global body styling with gradient background */
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #d66767 0%, #4b4bd1 50%, #3babc7 100%);
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        /* Main title styling with golden glow effect */
+        h1 {
+            color: #ffd700;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.8), 0 0 20px rgba(255,215,0,0.3);
+            margin-bottom: 20px;
+            font-size: 3em;
+            font-family: 'Georgia', serif;
+            letter-spacing: 2px;
+        }
+        
+        /* Control panel container styling */
+        #controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 15px;
+            border: 1px solid #ffd700;
+            margin-bottom: 20px;
+        }
+
+        /* Slider container and styling for power control */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #ffd700;
+            font-size: 16px;
+        }
+
+        /* Custom slider styling for WebKit browsers */
+        .slider-container input[type="range"] {
+            -webkit-appearance: none;
+            width: 150px;
+            height: 8px;
+            background: #555;
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        .slider-container input[type="range"]:hover {
+            opacity: 1;
+        }
+        .slider-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #ffd700;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #000;
+        }
+        /* Custom slider styling for Firefox */
+        .slider-container input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #ffd700;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #000;
+        }
+        
+        /* General button styling with gradient and glow effects */
+        button {
+            background: linear-gradient(45deg, #c9302c, #d9534f);
+            border: 2px solid #ffd700;
+            color: white;
+            padding: 15px 35px;
+            font-size: 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+            transition: all 0.3s ease;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* Button hover effects */
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5), 0 0 15px rgba(255,215,0,0.3);
+            background: linear-gradient(45deg, #d9534f, #e74c3c);
+        }
+        
+        button:active {
+            transform: translateY(-1px);
+        }
+        
+        /* Special styling for the shoot button */
+        button#shootButton {
+            background: linear-gradient(45deg, #28a745, #218838);
+        }
+        button#shootButton:hover {
+            background: linear-gradient(45deg, #218838, #1e7e34);
+        }
+        
+        /* Status text styling */
+        #status {
+            color: #ffd700;
+            font-size: 20px;
+            margin-top: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        
+        /* Main canvas container with fancy border effects */
+        main {
+            border-radius: 25px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.5), 0 0 30px rgba(255,215,0,0.1);
+            overflow: hidden;
+            border: 3px solid #2c1810;
+            position: relative;
+        }
+        
+        /* Animated border gradient effect */
+        main::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, #ffd700, #ff6b6b, #4ecdc4, #ffd700);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+            z-index: -1;
+            border-radius: 25px;
+            opacity: 0.3;
+        }
+        
+        /* Keyframes for animated gradient border */
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        /* Modal popup styling for fouls */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, rgba(0,0,0,0.95), rgba(50,0,0,0.95));
+            padding: 40px 60px;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.7), inset 0 0 20px rgba(255,215,0,0.2);
+            z-index: 1000;
+            text-align: center;
+            animation: fadeIn 0.3s ease-out;
+            border: 2px solid #ff4444;
+        }
+
+        .modal h2 {
+            color: #ff4444;
+            font-size: 42px;
+            margin: 0 0 20px 0;
+            text-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        .modal p {
+            color: #ffd700;
+            font-size: 20px;
+            margin: 0;
+            text-shadow: 0 0 10px rgba(255,215,0,0.5);
+        }
+
+        /* Animation keyframes for modal effects */
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, -60%); }
+            to { opacity: 1; transform: translate(-50%, -50%); }
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translate(-50%, -50%); }
+            to { opacity: 0; transform: translate(-50%, -60%); }
+        }
+
+        /* Score display container */
+        #score-container {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #ffd700;
+            border-radius: 15px;
+            padding: 0px;
+            margin-bottom: 10px;
+            width: 800px;
+            color: #fff;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+        }
+        #score-container h2 {
+            color: #ffd700;
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 16px;
+            text-transform: uppercase;
+        }
+        #score-container h3 {
+            color: #ffd700;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            border-top: 1px solid #ffd700;
+            padding-top: 15px;
+        }
+        
+        /* Individual score items */
+        .score-item {
+            display: inline-block;
+            font-size: 18px;
+            margin: 0 15px;
+        }
+        .score-item span:first-child {
+            color: #ccc;
+        }
+        .score-item span:last-child {
+            font-weight: bold;
+            color: #fff;
+        }
+        
+        /* Pocketed balls visual display */
+        #pocketed-balls-display {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            min-height: 30px;
+            margin-top: 10px;
+        }
+        
+        /* Individual pocketed ball icons */
+        .pocketed-ball-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: black;
+            border: 1px solid black;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* Stripe pattern for striped balls */
+        .pocketed-ball-icon.stripe .stripe-div {
+            position: absolute;
+            width: 100%;
+            height: 60%;
+            background-color: var(--ball-color);
+            top: 20%;
+        }
+        
+        /* Number display on balls */
+        .pocketed-ball-icon .number-div {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: white;
+            color: black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+        }
+        
+        /* Select dropdown styling */
+        #controls select {
+            background: #333;
+            color: #ffd700;
+            border: 1px solid #ffd700;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 16px;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            cursor: pointer;
+        }
+        #controls select:hover {
+            background: #444;
+        }
+
+        #winModal h2 {
+            color: #28a745; /* Green for win */
+            text-shadow: 0 0 15px rgba(40, 167, 69, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <!-- Main game title -->
+    <h1>🎱 Interactive Billiards 🎱</h1>
+    
+    <!-- Game controls panel -->
+    <div id="controls">
+        <button id="shootButton">💥 Shoot</button>
+        
+        <!-- Power control slider -->
+        <div class="slider-container">
+            <label for="powerSlider">Power:</label>
+            <input type="range" id="powerSlider" min="5" max="25" value="10" step="1">
+            <span id="powerValue">10</span>
+        </div>
+        
+        <!-- Table cloth selection -->
+        <div class="slider-container">
+            <label for="clothSelect">Table Cloth:</label>
+            <select id="clothSelect">
+                <option value="standard">Standard Green</option>
+                <option value="tournament">Tournament Blue</option>
+                <option value="fast">Fast Red</option>
+            </select>
+            <span id="frictionDisplay" style="margin-left: 15px; color: #FFFFFF; font-size: 18px; font-weight: bold;"></span>
+        </div>
+        
+        <button id="restartButton">🔄 Restart Game</button>
+    </div>
+    
+    <!-- Game status display -->
+    <div id="status">Aim with your mouse, then click Shoot!</div>
+
+    <!-- Score tracking container -->
+    <div id="score-container">
+        <h2>Score</h2>
+        <div style="display: flex; justify-content: center; gap: 20px;">
+            <div class="score-item">
+                <span>Pocketed:</span>
+                <span id="pocketed-count">0</span>
+            </div>
+            <div class="score-item">
+                <span>Remaining:</span>
+                <span id="remaining-count">15</span>
+            </div>
+        </div>
+        <h3>Pocketed Balls:</h3>
+        <div id="pocketed-balls-display"></div>
+    </div>
+
+    <!-- Foul notification modal -->
+    <div id="foulModal" class="modal">
+        <h2>FOUL!</h2>
+        <p>Cue Ball Pocketed</p>
+    </div>
+
+    <!-- Game Over modal -->
+    <div id="gameOverModal" class="modal">
+        <h2>Game Over</h2>
+        <p>8-Ball pocketed too early!</p>
+    </div>
+
+    <!-- Win modal -->
+    <div id="winModal" class="modal">
+        <h2>You Win!</h2>
+        <p>You cleared the table!</p>
+    </div>
+
+    <!-- Main game canvas container -->
+    <main></main>
+
+    <script type="module">
+        // Import required libraries
+        import p5 from "p5";
+        import Matter from "matter-js";
+  
+        // Initialize p5.js sketch with Matter.js physics
+        new p5(function (sketch) {
+            
+            // ===== MATTER.JS PHYSICS SETUP =====
+            // Import Matter.js modules for physics simulation
+            const Engine = Matter.Engine;
+            const World = Matter.World;
+            const Bodies = Matter.Bodies;
+            const Body = Matter.Body;
+            const Vector = Matter.Vector;
+            const Constraint = Matter.Constraint;
+
+            // ===== CORE GAME VARIABLES =====
+            let engine;              // Physics engine instance
+            let world;               // Physics world containing all bodies
+            let balls = [];          // Array of numbered pool balls
+            let walls = [];          // Array of table wall bodies
+            let pockets = [];        // Array of pocket objects
+            let pocketedBalls = [];  // Array tracking balls that have been pocketed
+            let cueBall;             // The white cue ball object
+            
+            // ===== GAME STATE VARIABLES =====
+            let simulationStarted = false;  // Whether the game has begun
+            let foulModalTimeout;           // Timer for foul message display
+            let isPlayerTurn = false;       // Whether it's the player's turn to shoot
+            let isAimLocked = false;        // Whether the aim direction is locked
+            let ballTrails = {};          // Stores position history for drawing trails
+            
+            // Animation state for cue stick striking
+            let animationState = {
+                startTime: 0,       // When the current animation started
+                hasStruck: false    // Whether the cue has actually hit the ball
+            };
+            
+            // ===== CLOTH PHYSICS PROPERTIES =====
+            // Different table cloth types with varying friction characteristics
+            const clothTypes = {
+                standard: {
+                    name: 'Standard Green',
+                    gradientStart: [34, 139, 34],    // RGB for gradient start
+                    gradientEnd: [0, 100, 0],        // RGB for gradient end
+                    friction: 0.02,                  // Surface friction
+                    frictionStatic: 0.05,            // Static friction threshold
+                    frictionAir: 0.015               // Air resistance
+                },
+                tournament: {
+                    name: 'Tournament Blue',
+                    gradientStart: [0, 105, 148],
+                    gradientEnd: [0, 65, 108],
+                    friction: 0.015,                 // Slightly less friction than standard
+                    frictionStatic: 0.03,
+                    frictionAir: 0.01
+                },
+                fast: {
+                    name: 'Fast Red',
+                    gradientStart: [178, 34, 34],
+                    gradientEnd: [139, 0, 0],
+                    friction: 0.01,                  // Lowest friction for fastest play
+                    frictionStatic: 0.02,
+                    frictionAir: 0.007
+                }
+            };
+
+            let currentCloth = clothTypes.standard;  // Currently selected cloth type
+            
+            // ===== CUE STICK PROPERTIES =====
+            let cueStick = {
+                visible: true,          // Whether to draw the cue stick
+                angle: 0,              // Current aiming angle in radians
+                power: 10,             // Shot power level (1-25)
+                isAnimating: false,    // Whether stick is currently animating
+                pullback: 0,           // Current pullback distance for animation
+                maxPullback: 60,       // Maximum pullback distance
+            };
+
+            // ===== TABLE DIMENSIONS =====
+            // Standard pool table proportions (2:1 ratio)
+            let tableWidth = 800;           // Table playing surface width
+            let tableHeight = 400;          // Table playing surface height
+            let ballRadius = 12;            // Radius of all balls
+            let wallThickness = 15;         // Thickness of table walls
+            let pocketRadius = 16;          // Radius of pocket openings
+            let tableMargin = 50;           // Margin around table
+
+            const POWER_MULT = 0.8;         // Power multiplication factor for shots
+
+            // ===== BALL COLOR DEFINITIONS =====
+            // Colors for solid balls (1-8)
+            const solidColors = [
+                '#FFD700', // 1 - Yellow
+                '#0000CD', // 2 - Blue
+                '#FF0000', // 3 - Red
+                '#800080', // 4 - Purple
+                '#FF8C00', // 5 - Orange
+                '#006400', // 6 - Green
+                '#8B0000', // 7 - Maroon
+                '#000000'  // 8 - Black
+            ];
+            
+            // Colors for striped balls (9-15)
+            const stripeColors = [
+                '#FFD700', // 9 - Yellow stripe
+                '#0000CD', // 10 - Blue stripe
+                '#FF0000', // 11 - Red stripe
+                '#800080', // 12 - Purple stripe
+                '#FF8C00', // 13 - Orange stripe
+                '#006400', // 14 - Green stripe
+                '#8B0000'  // 15 - Maroon stripe
+            ];
+
+            let lastTargetNumber = null;    // Track last selected target ball to avoid repetition
+
+            // ===== UTILITY FUNCTIONS =====
+            
+            /**
+             * Randomly selects a target ball from available balls
+             * Avoids selecting the same ball consecutively
+             * @param {Array} balls - Array of available balls
+             * @returns {Object} - Random ball object or null if no balls available
+             */
+            function pickRandomTargetBall(balls) {
+                if (balls.length === 0) return null;
+                let candidate;
+                do {                                   
+                    candidate = balls[Math.floor(Math.random() * balls.length)];
+                } while (candidate.ballNumber === lastTargetNumber && balls.length > 1);
+                lastTargetNumber = candidate.ballNumber;
+                return candidate;
+            }
+
+            /**
+             * Checks if all balls have stopped moving to determine if turn is over
+             * Sets player turn state and re-enables controls when motion stops
+             */
+            function checkIfTurnOver() {
+                const sleepThreshold = 0.1;  // Minimum speed to consider "stopped"
+                let allStopped = true;
+
+                // Check all numbered balls for motion
+                for (const ball of balls) {
+                    if (Matter.Vector.magnitude(ball.velocity) > sleepThreshold) {
+                        allStopped = false;
+                        break;
+                    }
+                }
+                
+                // Check cue ball for motion
+                if (cueBall && Matter.Vector.magnitude(cueBall.velocity) > sleepThreshold) {
+                    allStopped = false;
+                }
+
+                // If all balls stopped, start player turn
+                if (allStopped && !isPlayerTurn) {
+                    isPlayerTurn = true;
+                    isAimLocked = false;
+                    cueStick.visible = true;
+                    document.getElementById('shootButton').disabled = false;
+                    document.getElementById('status').textContent = 'Your turn! Aim, then click on the table to lock.';
+                }
+            }
+
+            /**
+             * Handles the cue stick animation sequence (pullback and strike)
+             * Manages timing and applies force to cue ball at the right moment
+             */
+            function handleCueAnimation() {
+                if (!cueStick.isAnimating) return;
+
+                // If cueball disappears mid-shot (e.g. foul), abort gracefully.
+                if (!cueBall || !world.bodies.includes(cueBall)) {
+                    cueStick.isAnimating = false;
+                    cueStick.pullback = 0;
+                    return; // Let checkIfTurnOver handle the reset on the next frame.
+                }
+
+                const pullBackDuration = 600;  // Milliseconds for pullback phase
+                const strikeDuration = 70;    // Milliseconds for strike phase - Increased for visibility
+                const totalDuration = pullBackDuration + strikeDuration;
+                
+                let elapsed = sketch.millis() - animationState.startTime;
+
+                // The animation is split into phases to ensure the strike always happens, even on slow frame rates.
+                
+                // Phase 1: Pullback
+                if (elapsed < pullBackDuration) {
+                    let pullBackProgress = elapsed / pullBackDuration;
+                    // Normalized power from 5-25 range to a 0-1 range for pullback distance
+                    cueStick.pullback = sketch.lerp(0, cueStick.maxPullback * (cueStick.power / 25), pullBackProgress);
+                    
+                } 
+                // Phase 2 & 3: Strike and follow-through
+                else {
+                    // Ensure the force is applied only ONCE, right after the pullback is complete.
+                    if (!animationState.hasStruck) {
+                        // Calculate force based on power and direction
+                        const forceMagnitude = cueStick.power * 0.003 * POWER_MULT;
+                        const force = Vector.mult(
+                            Vector.create(sketch.cos(cueStick.angle), sketch.sin(cueStick.angle)), 
+                            forceMagnitude
+                        );
+                
+                        // Apply linear and angular force to cue ball
+                        Body.applyForce(cueBall, cueBall.position, force);
+                        Body.setAngularVelocity(cueBall, forceMagnitude * 20);  // Add spin
+                        animationState.hasStruck = true;
+                    }
+                    
+                    // Animate the forward motion of the cue stick after the hit.
+                    if (elapsed < totalDuration) {
+                        let strikeProgress = (elapsed - pullBackDuration) / strikeDuration;
+                        cueStick.pullback = sketch.lerp(
+                            cueStick.maxPullback * (cueStick.power / 25), 
+                            -5, 
+                            strikeProgress
+                        );
+                    } else {
+                        // ANIMATION COMPLETE: Reset cue stick state
+                        cueStick.isAnimating = false;
+                        cueStick.visible = false;
+                        cueStick.pullback = 0;
+                    }
+                }
+            }
+
+            /**
+             * Updates cue stick aiming angle based on mouse position
+             * Only works when it's player's turn and aim isn't locked
+             */
+            function handleMouseAiming() {
+                if (isPlayerTurn && !cueStick.isAnimating && cueBall && !isAimLocked) {
+                    let angle = sketch.atan2(
+                        sketch.mouseY - cueBall.position.y, 
+                        sketch.mouseX - cueBall.position.x
+                    );
+                    cueStick.angle = angle;
+                }
+            }
+
+            // ===== P5.JS SETUP FUNCTION =====
+            /**
+             * Initial setup function called once when sketch starts
+             * Initializes canvas, physics engine, and event listeners
+             */
+            sketch.setup = function() {
+                // Create canvas and attach to main element
+                let canvas = sketch.createCanvas(900, 600);
+                let mainElement = document.querySelector('main');
+                if (mainElement) {
+                    canvas.parent(mainElement);
+                }
+                
+                // Initialize Matter.js physics engine
+                engine = Engine.create({
+                    // Increase physics engine accuracy to prevent balls from passing through walls at high speed (tunnelling).
+                    positionIterations: 1,
+                    velocityIterations: 4
+                });
+                world = engine.world;
+                engine.world.gravity.y = 0;  // No gravity for top-down pool table
+                
+                // ===== EVENT LISTENERS SETUP =====
+                
+                // Restart button
+                document.getElementById('restartButton').addEventListener('click', () => sketch.restartSimulation());
+                
+                // Shoot button
+                document.getElementById('shootButton').addEventListener('click', () => sketch.shoot());
+                
+                // Power slider controls
+                const powerSlider = document.getElementById('powerSlider');
+                const powerValue = document.getElementById('powerValue');
+
+                // Initialize power from slider value
+                cueStick.power = parseFloat(powerSlider.value);
+                powerValue.textContent = powerSlider.value;
+
+                // Update power when slider changes
+                powerSlider.addEventListener('input', (e) => {
+                    cueStick.power = parseFloat(e.target.value);
+                    powerValue.textContent = e.target.value;
+                });
+                
+                // Cloth selection dropdown
+                const clothSelect = document.getElementById('clothSelect');
+                const frictionDisplay = document.getElementById('frictionDisplay');
+
+                clothSelect.addEventListener('change', (e) => {
+                    currentCloth = clothTypes[e.target.value];
+                    sketch.restartSimulation();  // Restart to apply new cloth properties
+                });
+                
+                // Setup initial game state
+                sketch.setupTable();
+                simulationStarted = true;
+                isPlayerTurn = true;
+                document.getElementById('status').textContent = 'Aim with your mouse, and click on the table to lock aim.';
+            }
+
+            /**
+             * Handles mouse clicks for aim locking mechanism
+             * Toggles between aiming and locked states
+             */
+            sketch.mousePressed = function(event) {
+                // Only respond to clicks on the canvas during player turn
+                if (event.target.tagName === 'CANVAS' && isPlayerTurn && !cueStick.isAnimating) {
+                    isAimLocked = !isAimLocked;
+                    if (isAimLocked) {
+                        document.getElementById('status').textContent = 'Aim locked. Click Shoot!';
+                    } else {
+                        document.getElementById('status').textContent = 'Aim unlocked. Aim and click to lock.';
+                    }
+                }
+            }
+
+            /**
+             * Initiates the shooting sequence
+             * Starts cue stick animation and disables player controls
+             */
+            sketch.shoot = function() {
+                if (!isPlayerTurn || !cueBall || Matter.Vector.magnitude(cueBall.velocity) > 0.1) return;
+
+                // Transition from player turn to shot animation
+                isPlayerTurn = false;
+                cueStick.isAnimating = true;
+                animationState.startTime = sketch.millis();
+                animationState.hasStruck = false;
+                document.getElementById('shootButton').disabled = true;
+                document.getElementById('status').textContent = 'Shot in progress...';
+            }
+
+            /**
+             * Sets up the complete pool table including walls, pockets, and balls
+             * Clears existing world and creates fresh game state
+             */
+            sketch.setupTable = function() {
+                // Clear existing game objects
+                balls = [];
+                walls = [];
+                pockets = [];
+                pocketedBalls = [];
+                
+                // Remove all bodies from physics world
+                World.clear(world);
+                
+                // Create table components
+                sketch.createRectangularTable();
+                sketch.createPockets();
+                sketch.createBalls();
+            }
+
+            /**
+             * Creates the table walls with precise gaps for pockets
+             * Builds 6 separate wall segments to accommodate corner and side pockets
+             */
+            sketch.createRectangularTable = function() {
+                let centerX = sketch.width / 2;
+                let centerY = sketch.height / 2;
+                
+                // Calculate table boundaries
+                let tableLeft = centerX - tableWidth / 2;
+                let tableRight = centerX + tableWidth / 2;
+                let tableTop = centerY - tableHeight / 2;
+                let tableBottom = centerY + tableHeight / 2;
+
+                // Calculate gaps for pockets
+                let cornerGap = pocketRadius * 1.2;  // Gap size for corner pockets
+                let sideGap = pocketRadius * 1.2;    // Gap size for side pockets
+                let wallInset = wallThickness / 2;   // Wall positioning offset
+                
+                // ===== TOP WALLS =====
+                // Top-left wall (from left edge to left side of top-middle pocket)
+                let topLeftWall = Bodies.rectangle(
+                    tableLeft + cornerGap + (tableWidth/2 - sideGap - cornerGap)/2,
+                    tableTop - wallInset,
+                    tableWidth/2 - sideGap - cornerGap,
+                    wallThickness,
+                    { isStatic: true, restitution: 0.95, friction: 0.001 }
+                );
+                walls.push(topLeftWall);
+                World.add(world, topLeftWall);
+                
+                // Top-right wall (from right side of top-middle pocket to right edge)
+                let topRightWall = Bodies.rectangle(
+                    tableLeft + tableWidth/2 + sideGap + (tableWidth/2 - sideGap - cornerGap)/2,
+                    tableTop - wallInset,
+                    tableWidth/2 - sideGap - cornerGap,
+                    wallThickness,
+                    { isStatic: true, restitution: 0.95, friction: 0.001 }
+                );
+                walls.push(topRightWall);
+                World.add(world, topRightWall);
+                
+                // ===== BOTTOM WALLS =====
+                // Bottom-left wall
+                let bottomLeftWall = Bodies.rectangle(
+                    tableLeft + cornerGap + (tableWidth/2 - sideGap - cornerGap)/2,
+                    tableBottom + wallInset,
+                    tableWidth/2 - sideGap - cornerGap,
+                    wallThickness,
+                    { isStatic: true, restitution: 0.95, friction: 0.001 }
+                );
+                walls.push(bottomLeftWall);
+                World.add(world, bottomLeftWall);
+                
+                // Bottom-right wall
+                let bottomRightWall = Bodies.rectangle(
+                    tableLeft + tableWidth/2 + sideGap + (tableWidth/2 - sideGap - cornerGap)/2,
+                    tableBottom + wallInset,
+                    tableWidth/2 - sideGap - cornerGap,
+                    wallThickness,
+                    { isStatic: true, restitution: 0.95, friction: 0.001 }
+                );
+                walls.push(bottomRightWall);
+                World.add(world, bottomRightWall);
+                
+                // ===== SIDE WALLS =====
+                // Left wall (between top-left and bottom-left corner pockets)
+                let leftWall = Bodies.rectangle(
+                    tableLeft - wallInset,
+                    centerY,
+                    wallThickness,
+                    tableHeight - 2 * cornerGap,
+                    { isStatic: true, restitution: 0.95, friction: 0.001 }
+                );
+                walls.push(leftWall);
+                World.add(world, leftWall);
+                
+                // Right wall (between top-right and bottom-right corner pockets)
+                let rightWall = Bodies.rectangle(
+                    tableRight + wallInset,
+                    centerY,
+                    wallThickness,
+                    tableHeight - 2 * cornerGap,
+                    { isStatic: true, restitution: 0.95, friction: 0.001 }
+                );
+                walls.push(rightWall);
+                World.add(world, rightWall);
+            }
+
+            /**
+             * Creates 6 pockets: 4 corner pockets and 2 side pockets
+             * Stores pocket positions for collision detection
+             */
+            sketch.createPockets = function() {
+                let centerX = sketch.width / 2;
+                let centerY = sketch.height / 2;
+                let tableLeft = centerX - tableWidth / 2;
+                let tableRight = centerX + tableWidth / 2;
+                let tableTop = centerY - tableHeight / 2;
+                let tableBottom = centerY + tableHeight / 2;
+                
+                const cornerPocketOffset = 13; // Tucks the corner pockets inward for a better visual fit.
+                
+                // Define all 6 pocket positions
+                let pocketPositions = [
+                    // Corner pockets
+                    { x: tableLeft + cornerPocketOffset, y: tableTop + cornerPocketOffset, index: 0 },     // Top-left
+                    { x: tableRight - cornerPocketOffset, y: tableTop + cornerPocketOffset, index: 1 },   // Top-right
+                    { x: tableLeft + cornerPocketOffset, y: tableBottom - cornerPocketOffset, index: 2 }, // Bottom-left
+                    { x: tableRight - cornerPocketOffset, y: tableBottom - cornerPocketOffset, index: 3 }, // Bottom-right
+                    // Side pockets
+                    { x: centerX, y: tableTop, index: 4 },      // Top-middle
+                    { x: centerX, y: tableBottom, index: 5 }    // Bottom-middle
+                ];
+                
+                // Create pocket objects for collision detection
+                pocketPositions.forEach(pos => {
+                    let pocket = {
+                        x: pos.x,
+                        y: pos.y,
+                        radius: pocketRadius,
+                        index: pos.index
+                    };
+                    pockets.push(pocket);
+                });
+            }
+
+            /**
+             * Creates and positions all 15 numbered balls plus the cue ball
+             * Sets up standard 15-ball rack formation with proper ball properties
+             */
+            sketch.createBalls = function() {
+                let centerX = sketch.width / 2;
+                let centerY = sketch.height / 2;
+                
+                // Position rack on right side of table
+                let rackX = centerX + tableWidth / 4;
+                let rackY = centerY;
+                
+                let spacing = ballRadius * 2.1;  // Space between ball centers
+                let rows = 5;                    // 5 rows in standard rack
+                
+                // Define ball colors for easy reference
+                const ballColors = {
+                    1: '#FFD700',  // Yellow
+                    2: '#0000CD',  // Blue
+                    3: '#FF0000',  // Red
+                    4: '#800080',  // Purple
+                    5: '#FF8C00',  // Orange
+                    6: '#006400',  // Green
+                    7: '#8B0000',  // Maroon
+                    8: '#000000',  // Black
+                    9: '#FFD700',  // Yellow stripe
+                    10: '#0000CD', // Blue stripe
+                    11: '#FF0000', // Red stripe
+                    12: '#800080', // Purple stripe
+                    13: '#FF8C00', // Orange stripe
+                    14: '#006400', // Green stripe
+                    15: '#8B0000'  // Maroon stripe
+                };
+
+                // Standard rack formation layout
+                // 8-ball positioned in center according to rules
+                let ballPositions = [
+                    // Row 1 (apex ball)
+                    [1],
+                    // Row 2 
+                    [2, 3],
+                    // Row 3 (8-ball in center position)
+                    [4, 8, 5],
+                    // Row 4
+                    [6, 10, 11, 7],
+                    // Row 5 (base of rack)
+                    [12, 13, 9, 14, 15]
+                ];
+
+                // Create each ball in rack formation
+                let ballIndex = 0;
+                for (let row = 0; row < rows; row++) {
+                    let ballsInRow = ballPositions[row];
+                    let startY = rackY - (ballsInRow.length - 1) * spacing * 0.5;
+                    
+                    for (let col = 0; col < ballsInRow.length; col++) {
+                        let ballNumber = ballPositions[row][col];
+                        let isStripe = ballNumber > 8;  // Balls 9-15 are striped
+                        let ballColor = ballColors[ballNumber];
+                        
+                        // Calculate position using hexagonal packing
+                        let x = rackX + row * spacing * 0.866;  // 0.866 ≈ cos(30°)
+                        let y = startY + col * spacing;
+                        
+                        // Create physics body for ball
+                        let ball = Bodies.circle(x, y, ballRadius, {
+                            restitution: 0.95,                     // Bounce factor
+                            friction: currentCloth.friction,       // Surface friction
+                            frictionAir: currentCloth.frictionAir, // Air resistance
+                            frictionStatic: currentCloth.frictionStatic, // Static friction
+                            density: 0.001,                        // Mass properties
+                            render: { 
+                                fillStyle: ballColor,
+                                visible: true
+                            },
+                            slop: 0.01,          // Collision tolerance
+                            chamfer: { radius: 0 } // Sharp edges
+                        });
+                        
+                        // Attach ball metadata
+                        ball.ballNumber = ballNumber;
+                        ball.ballColor = ballColor;
+                        ball.isStripe = isStripe;
+                        
+                        balls.push(ball);
+                        World.add(world, ball);
+                    }
+                }
+
+                // ===== CREATE CUE BALL =====
+                // Position cue ball on left side of table
+                let cueBallX = centerX - tableWidth / 4;
+                let cueBallY = centerY;
+                
+                cueBall = Bodies.circle(cueBallX, cueBallY, ballRadius, {
+                    restitution: 0.95,
+                    friction: currentCloth.friction,
+                    frictionAir: currentCloth.frictionAir,
+                    frictionStatic: currentCloth.frictionStatic,
+                    density: 0.001,
+                    render: { 
+                        fillStyle: '#FFFFFF',  // White cue ball
+                        visible: true
+                    },
+                    slop: 0.01,
+                    chamfer: { radius: 0 }
+                });
+                
+                cueBall.isCueBall = true;
+                cueBall.render.visible = true;
+                World.add(world, cueBall);
+            }
+
+            // ===== MAIN DRAW LOOP =====
+            /**
+             * Main p5.js draw function called every frame
+             * Handles physics updates, rendering, and game state management
+             */
+            sketch.draw = function() {
+                // ===== BACKGROUND RENDERING =====
+                // Create gradient background effect
+                for(let i = 0; i <= sketch.height; i++) {
+                    let inter = sketch.map(i, 0, sketch.height, 0, 1);
+                    let c = sketch.lerpColor(sketch.color(10, 40, 10), sketch.color(5, 20, 5), inter);
+                    sketch.stroke(c);
+                    sketch.line(0, i, sketch.width, i);
+                }
+                
+                // ===== PHYSICS UPDATE =====
+                // By running the engine update multiple times per frame with a smaller time step (sub-stepping),
+                // we dramatically increase physics accuracy and prevent fast-moving balls from "tunneling" through walls.
+                // This uses p5.js's deltaTime to ensure the simulation speed is independent of the frame rate.
+                const subSteps = 4;
+                const dt = sketch.deltaTime / subSteps;
+                for (let i = 0; i < subSteps; i++) {
+                    Engine.update(engine, dt);
+                }
+                
+                // ===== FRICTION DISPLAY UPDATE =====
+                // Calculate and display current friction force on cue ball
+                if (cueBall) {
+                    const speed = Vector.magnitude(cueBall.velocity);
+                    const frictionForce = currentCloth.frictionAir * speed * speed * 100; 
+                    document.getElementById('frictionDisplay').textContent = `Friction: ${frictionForce.toFixed(4)}`;
+                } else {
+                    document.getElementById('frictionDisplay').textContent = `Friction: 0.0000`;
+                }
+
+                // ===== GAME STATE UPDATES =====
+                handleMouseAiming();     // Update cue stick aiming
+                handleCueAnimation();    // Handle cue stick animation
+
+                // Check if turn should end (when balls stop moving)
+                if (!cueStick.isAnimating) {
+                    checkIfTurnOver();
+                }
+                
+                // Check for balls falling into pockets
+                sketch.checkPocketCollisions();
+                
+                // ===== BALL ROTATION UPDATES =====
+                // Update visual rotation based on ball movement
+                if (cueBall) sketch.updateBallRotation(cueBall);
+                balls.forEach(ball => sketch.updateBallRotation(ball));
+                
+                // ===== RENDERING =====
+                // Draw all table components in proper order
+                sketch.drawTableFelt();       // Table surface
+                sketch.drawPockets();         // Pocket holes
+                sketch.drawWalls();           // Table walls
+                sketch.drawBallTrails();      // Visual trails behind moving balls
+                sketch.drawBalls();           // All balls
+                sketch.drawCueStick();        // Cue stick (if visible)
+                sketch.drawTableDecorations(); // Decorative elements
+            }
+
+            /**
+             * Renders fading trails behind moving balls to visualize their paths.
+             * Trails are automatically cleared when balls stop.
+             */
+            sketch.drawBallTrails = function() {
+                sketch.push();
+                sketch.strokeWeight(2);
+                
+                for (const id in ballTrails) {
+                    const trail = ballTrails[id];
+                    if (trail.length < 2) continue;
+
+                    // Fade out the trail by reducing alpha along its length
+                    for (let i = 0; i < trail.length - 1; i++) {
+                        let alpha = sketch.map(i, 0, trail.length - 1, 0, 80);
+                        sketch.stroke(255, 255, 255, alpha);
+                        sketch.line(trail[i].x, trail[i].y, trail[i+1].x, trail[i+1].y);
+                    }
+                }
+                sketch.pop();
+            }
+
+            /**
+             * Renders the cue stick with aiming line and realistic wood texture
+             * Includes pullback animation and trajectory prediction
+             */
+            sketch.drawCueStick = function() {
+                if (!cueStick.visible || !cueBall) return;
+                
+                sketch.push();
+                
+                let stickLength = 250;
+                let tipDistance = ballRadius + 5 + cueStick.pullback;  // Distance from ball
+                
+                // ===== AIMING LINE RENDERING =====
+                // Draw trajectory prediction line with bounces
+                if (!cueStick.isAnimating) {
+                    sketch.push();
+                    sketch.stroke(255, 255, 255, 100);
+                    sketch.strokeWeight(2);
+                    sketch.drawingContext.setLineDash([10, 10]);  // Dashed line
+
+                    let maxBounces = 2;           // Maximum number of wall bounces to show
+                    let remainingLength = 1500;   // Total line length
+                    let currentRay = {
+                        origin: Vector.clone(cueBall.position),
+                        direction: Vector.create(sketch.cos(cueStick.angle), sketch.sin(cueStick.angle))
+                    };
+                    let startOffset = ballRadius + 5;  // Start line away from ball surface
+
+                    // Calculate trajectory with bounces
+                    for (let i = 0; i < maxBounces; i++) {
+                        if (remainingLength <= 0) break;
+
+                        // Check for ball collisions along trajectory
+                        let closestBallDist = Infinity;
+                        for (const ball of balls) {
+                            const oc = Vector.sub(ball.position, currentRay.origin);
+                            const tca = Vector.dot(oc, currentRay.direction);
+                            if (tca < 0) continue;  // Ball is behind ray origin
+                            
+                            const d2 = Vector.dot(oc, oc) - tca * tca;
+                            if (d2 > ballRadius * ballRadius) continue;  // Ray misses ball
+                            
+                            const thc = Math.sqrt(ballRadius * ballRadius - d2);
+                            const t0 = tca - thc;
+                            if (t0 > 0.1 && t0 < closestBallDist) {
+                                closestBallDist = t0;
+                            }
+                        }
+
+                        // Calculate wall intersections
+                        let centerX = sketch.width / 2;
+                        let centerY = sketch.height / 2;
+                        let tableLeft = centerX - tableWidth / 2;
+                        let tableRight = centerX + tableWidth / 2;
+                        let tableTop = centerY - tableHeight / 2;
+                        let tableBottom = centerY + tableHeight / 2;
+                        
+                        let wallIntersection = { distance: Infinity, point: null, normal: null };
+
+                        // Check intersection with each wall
+                        let t_top = (tableTop - currentRay.origin.y) / currentRay.direction.y;
+                        if (t_top > 0.1) {
+                            let intersectX = currentRay.origin.x + t_top * currentRay.direction.x;
+                            if (intersectX > tableLeft && intersectX < tableRight && t_top < wallIntersection.distance) {
+                                wallIntersection = { distance: t_top, normal: Vector.create(0, 1) };
+                            }
+                        }
+                        
+                        // Similar calculations for other walls...
+                        let t_bottom = (tableBottom - currentRay.origin.y) / currentRay.direction.y;
+                        if (t_bottom > 0.1) {
+                            let intersectX = currentRay.origin.x + t_bottom * currentRay.direction.x;
+                            if (intersectX > tableLeft && intersectX < tableRight && t_bottom < wallIntersection.distance) {
+                                wallIntersection = { distance: t_bottom, normal: Vector.create(0, -1) };
+                            }
+                        }
+                        
+                        let t_left = (tableLeft - currentRay.origin.x) / currentRay.direction.x;
+                        if (t_left > 0.1) {
+                            let intersectY = currentRay.origin.y + t_left * currentRay.direction.y;
+                            if (intersectY > tableTop && intersectY < tableBottom && t_left < wallIntersection.distance) {
+                                wallIntersection = { distance: t_left, normal: Vector.create(1, 0) };
+                            }
+                        }
+                        
+                        let t_right = (tableRight - currentRay.origin.x) / currentRay.direction.x;
+                        if (t_right > 0.1) {
+                            let intersectY = currentRay.origin.y + t_right * currentRay.direction.y;
+                            if (intersectY > tableTop && intersectY < tableBottom && t_right < wallIntersection.distance) {
+                                wallIntersection = { distance: t_right, normal: Vector.create(-1, 0) };
+                            }
+                        }
+
+                        // Determine line segment end point
+                        let endDist = Math.min(closestBallDist, wallIntersection.distance, remainingLength);
+                        
+                        let startPoint;
+                        if (i === 0) {
+                            // First segment starts away from cue ball
+                            startPoint = Vector.add(currentRay.origin, Vector.mult(currentRay.direction, startOffset));
+                            if (endDist <= startOffset) continue;
+                        } else {
+                            startPoint = currentRay.origin;
+                        }
+
+                        let endPoint = Vector.add(currentRay.origin, Vector.mult(currentRay.direction, endDist));
+
+                        // Draw line segment if long enough
+                        if (sketch.dist(startPoint.x, startPoint.y, endPoint.x, endPoint.y) > 1) {
+                            sketch.line(startPoint.x, startPoint.y, endPoint.x, endPoint.y);
+                        }
+
+                        // Stop if we hit something or reached max length
+                        if (endDist >= remainingLength || closestBallDist < wallIntersection.distance) {
+                            break;
+                        }
+
+                        // Calculate reflection for next bounce
+                        remainingLength -= endDist;
+                        let V = currentRay.direction;
+                        let N = wallIntersection.normal;
+                        let V_dot_N = Vector.dot(V, N);
+                        let R = Vector.sub(V, Vector.mult(N, 2 * V_dot_N));  // Reflection formula
+                        currentRay.origin = endPoint;
+                        currentRay.direction = R;
+                    }
+                    
+                    sketch.drawingContext.setLineDash([]);  // Reset line dash
+                    sketch.pop();
+                }
+                
+                // ===== CUE STICK RENDERING =====
+                // Calculate cue stick position
+                let cueX = cueBall.position.x - sketch.cos(cueStick.angle) * tipDistance;
+                let cueY = cueBall.position.y - sketch.sin(cueStick.angle) * tipDistance;
+                
+                sketch.translate(cueX, cueY);
+                sketch.rotate(cueStick.angle);
+                
+                let stickWidth = 10;
+                
+                // Cue stick shadow for depth
+                sketch.fill(0, 0, 0, 50);
+                sketch.noStroke();
+                sketch.rect(-stickLength, 3, stickLength, stickWidth, 5);
+                
+                // Main cue stick body with wood gradient
+                for(let i = 0; i < stickLength; i++) {
+                    let inter = i / stickLength;
+                    let c = sketch.lerpColor(sketch.color(92, 51, 23), sketch.color(205, 133, 63), 1 - inter);
+                    sketch.stroke(c);
+                    sketch.line(-stickLength + i, -stickWidth/2, -stickLength + i, stickWidth/2);
+                }
+                
+                // Ferrule (white metal band near tip)
+                sketch.fill(255, 255, 255);
+                sketch.noStroke();
+                sketch.rect(-25, -stickWidth/2, 20, stickWidth);
+                
+                // Cue tip (blue chalk)
+                sketch.fill(70, 130, 180);
+                sketch.noStroke();
+                sketch.arc(0, 0, stickWidth, stickWidth, -sketch.PI/2, sketch.PI/2);
+                sketch.rect(-5, -stickWidth/2, 5, stickWidth);
+                
+                // Decorative rings
+                sketch.stroke(255, 215, 0);
+                sketch.strokeWeight(2);
+                for(let i = 0; i < 3; i++) {
+                    let x = -stickLength + 40 + i * 35;
+                    sketch.line(x, -stickWidth/2, x, stickWidth/2);
+                }
+                
+                // Wrap/grip area
+                sketch.fill(139, 69, 19);
+                sketch.noStroke();
+                sketch.rect(-stickLength, -stickWidth/2 * 0.8, 80, stickWidth * 0.8, 3);
+                
+                // Grip texture lines
+                sketch.stroke(92, 51, 23);
+                sketch.strokeWeight(1);
+                for(let i = 0; i < 80; i += 5) {
+                    sketch.line(-stickLength + i, -stickWidth/2 * 0.6, -stickLength + i + 3, stickWidth/2 * 0.6);
+                }
+                
+                sketch.pop();
+            }
+
+            /**
+             * Displays foul modal when cue ball is pocketed
+             * Auto-hides after 2 seconds with fade animation
+             */
+            sketch.showFoulModal = function() {
+                const modal = document.getElementById('foulModal');
+                modal.style.display = 'block';
+                
+                // Clear any existing timeout
+                if (foulModalTimeout) {
+                    clearTimeout(foulModalTimeout);
+                }
+                
+                // Auto-hide after 2 seconds
+                foulModalTimeout = setTimeout(() => {
+                    modal.style.animation = 'fadeOut 0.3s ease-out';
+                    setTimeout(() => {
+                        modal.style.display = 'none';
+                        modal.style.animation = 'fadeIn 0.3s ease-out';  // Reset for next time
+                    }, 300);
+                }, 2000);
+            }
+
+            /**
+             * Displays Game Over modal when 8-ball is pocketed early
+             * Auto-hides after 3 seconds and restarts the game
+             */
+            sketch.showGameOverModal = function() {
+                const modal = document.getElementById('gameOverModal');
+                modal.style.display = 'block';
+                
+                // Restart game after 3 seconds
+                setTimeout(() => {
+                    modal.style.animation = 'fadeOut 0.3s ease-out';
+                    setTimeout(() => {
+                        modal.style.display = 'none';
+                        modal.style.animation = 'fadeIn 0.3s ease-out'; // Reset for next time
+                        sketch.restartSimulation();
+                    }, 300);
+                }, 3000);
+            }
+
+            /**
+             * Displays You Win modal when 8-ball is legally pocketed last
+             * Auto-hides after 3 seconds and restarts the game
+             */
+            sketch.showWinModal = function() {
+                const modal = document.getElementById('winModal');
+                modal.style.display = 'block';
+                
+                // Restart game after 3 seconds
+                setTimeout(() => {
+                    modal.style.animation = 'fadeOut 0.3s ease-out';
+                    setTimeout(() => {
+                        modal.style.display = 'none';
+                        modal.style.animation = 'fadeIn 0.3s ease-out'; // Reset for next time
+                        sketch.restartSimulation();
+                    }, 300);
+                }, 3000);
+            }
+
+            /**
+             * Checks for ball-pocket collisions and handles ball removal/respawning
+             * Handles both cue ball fouls and successful ball pocketing
+             */
+            sketch.checkPocketCollisions = function() {
+                // ===== CUE BALL POCKET CHECK =====
+                if (cueBall) {
+                    pockets.forEach(pocket => {
+                        let distance = sketch.dist(cueBall.position.x, cueBall.position.y, pocket.x, pocket.y);
+                        if (distance < pocket.radius) {
+                            // FOUL: Cue ball pocketed
+                            sketch.showFoulModal();
+                            
+                            // If a shot was in progress, cancel it cleanly.
+                            if (cueStick.isAnimating) {
+                                cueStick.isAnimating = false;
+                                cueStick.pullback = 0;
+                            }
+
+                            // Remove cue ball from physics world
+                            World.remove(world, cueBall);
+                            
+                            // Respawn cue ball at starting position
+                            let centerX = sketch.width / 2;
+                            let centerY = sketch.height / 2;
+                            let respawnX = centerX - tableWidth / 4;
+                            let respawnY = centerY;
+                            
+                            cueBall = Bodies.circle(respawnX, respawnY, ballRadius, {
+                                restitution: 0.95,
+                                friction: currentCloth.friction,
+                                frictionAir: currentCloth.frictionAir,
+                                frictionStatic: currentCloth.frictionStatic,
+                                density: 0.001,
+                                render: { 
+                                    fillStyle: '#FFFFFF',
+                                    visible: true
+                                },
+                                slop: 0.01,
+                                chamfer: { radius: 0 }
+                            });
+                            cueBall.isCueBall = true;
+                            cueBall.render.visible = true;
+                            
+                            World.add(world, cueBall);
+                        }
+                    });
+                }
+
+                // ===== NUMBERED BALLS POCKET CHECK =====
+                // Check each ball for pocket collisions (iterate backwards for safe removal)
+                for (let i = balls.length - 1; i >= 0; i--) {
+                    let ball = balls[i];
+                    for (const pocket of pockets) {
+                        let distance = sketch.dist(ball.position.x, ball.position.y, pocket.x, pocket.y);
+                        
+                        if (distance < pocket.radius) {
+                            // Ball successfully pocketed
+                            let is8Ball = ball.ballNumber === 8;
+
+                            pocketedBalls.push({
+                                ball: ball,
+                                pocket: pocket.index,
+                                color: ball.ballColor,
+                                number: ball.ballNumber,
+                                isStripe: ball.isStripe
+                            });
+                            
+                            // Remove ball from physics world and game array
+                            World.remove(world, ball);
+                            balls.splice(i, 1);
+                            sketch.updateScoreDisplay();
+                            
+                            // If the 8-ball was pocketed, check for win/loss condition.
+                            if (is8Ball) {
+                                // Disable controls and wait 3 seconds before ending the game.
+                                // This allows the user to see the outcome of the shot.
+                                isPlayerTurn = false;
+                                document.getElementById('shootButton').disabled = true;
+
+                                setTimeout(() => {
+                                    if (balls.length === 0) {
+                                        // WIN: 8-ball was the last one.
+                                        sketch.showWinModal();
+                                    } else {
+                                        // LOSS: 8-ball pocketed too early.
+                                        sketch.showGameOverModal();
+                                    }
+                                }, 3000); // 3-second delay as requested.
+                            }
+
+                            break;  // Move to next ball
+                        }
+                    }
+                }
+            }
+
+            /**
+             * Renders the table felt surface with gradient and texture effects
+             * Includes table markings like head string and foot spot
+             */
+            sketch.drawTableFelt = function() {
+                let centerX = sketch.width / 2;
+                let centerY = sketch.height / 2;
+                
+                let tableLeft = centerX - tableWidth / 2;
+                let tableTop = centerY - tableHeight / 2;
+                
+                sketch.push();
+                
+                // Drop shadow for table depth
+                sketch.fill(0, 0, 0, 30);
+                sketch.noStroke();
+                sketch.rect(tableLeft + 5, tableTop + 5, tableWidth, tableHeight, 15);
+                
+                // Main felt surface with radial gradient
+                let gradient = sketch.drawingContext.createRadialGradient(
+                    centerX, centerY, 0,
+                    centerX, centerY, tableWidth * 0.7
+                );
+                gradient.addColorStop(0, `rgb(${currentCloth.gradientStart.join(',')})`);
+                gradient.addColorStop(1, `rgb(${currentCloth.gradientEnd.join(',')})`);
+                
+                sketch.drawingContext.fillStyle = gradient;
+                sketch.stroke(sketch.color(currentCloth.gradientEnd[0] * 0.9, currentCloth.gradientEnd[1] * 0.9, currentCloth.gradientEnd[2] * 0.9));
+                sketch.strokeWeight(3);
+                sketch.rect(tableLeft, tableTop, tableWidth, tableHeight, 15);
+                
+                // Felt texture effect (random dots)
+                sketch.fill(255, 255, 255, 3);
+                sketch.noStroke();
+                for(let i = 0; i < 800; i++) {
+                    let x = sketch.random(tableLeft, tableLeft + tableWidth);
+                    let y = sketch.random(tableTop, tableTop + tableHeight);
+                    sketch.circle(x, y, sketch.random(1, 2));
+                }
+                
+                // ===== TABLE MARKINGS =====
+                sketch.stroke(255, 255, 255, 80);
+                sketch.strokeWeight(2);
+                sketch.drawingContext.setLineDash([10, 10]);
+                
+                // Head string (breaking line at 25% of table)
+                let headStringX = tableLeft + tableWidth * 0.25;
+                sketch.line(headStringX, tableTop + 20, headStringX, tableTop + tableHeight - 20);
+                
+                // Foot spot (rack position marker)
+                let footSpotX = tableLeft + tableWidth * 0.75;
+                sketch.fill(255, 255, 255, 120);
+                sketch.noStroke();
+                sketch.circle(footSpotX, centerY, 6);
+                
+                sketch.drawingContext.setLineDash([]);  // Reset line dash
+                sketch.pop();
+            }
+
+            /**
+             * Renders all 6 table pockets with realistic leather and depth effects
+             * Creates multi-layered appearance with shadows and gradients
+             */
+            sketch.drawPockets = function() {
+                pockets.forEach(pocket => {
+                    // ===== POCKET LAYERS (BOTTOM TO TOP) =====
+                    
+                    // Outer leather ring
+                    sketch.fill(80, 40, 0);
+                    sketch.stroke(60, 30, 0);
+                    sketch.strokeWeight(2);
+                    sketch.ellipse(pocket.x, pocket.y, pocket.radius * 2.4, pocket.radius * 2.4);
+                    
+                    // Inner leather rim
+                    sketch.fill(60, 30, 0);
+                    sketch.stroke(40, 20, 0);
+                    sketch.ellipse(pocket.x, pocket.y, pocket.radius * 2.1, pocket.radius * 2.1);
+                    
+                    // Dark hole with radial gradient for depth
+                    let gradient = sketch.drawingContext.createRadialGradient(
+                        pocket.x - 5, pocket.y - 5, 0,
+                        pocket.x, pocket.y, pocket.radius
+                    );
+                    gradient.addColorStop(0, 'rgba(0, 0, 0, 0.3)');
+                    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.9)');
+                    
+                    sketch.drawingContext.fillStyle = gradient;
+                    sketch.noStroke();
+                    sketch.ellipse(pocket.x, pocket.y, pocket.radius * 2, pocket.radius * 2);
+                    
+                    // Net effect (concentric circles getting smaller)
+                    sketch.stroke(40, 40, 40, 100);
+                    sketch.strokeWeight(1);
+                    sketch.noFill();
+                    for(let i = 0; i < 5; i++) {
+                        sketch.ellipse(pocket.x, pocket.y + i * 3, pocket.radius * 1.5 - i * 3, pocket.radius * 1.5 - i * 3);
+                    }
+                });
+            }
+
+            /**
+             * Renders table walls with wood texture and decorative elements
+             * Includes gradients, highlights, wood grain, and metal studs
+             */
+            sketch.drawWalls = function() {
+                walls.forEach(wall => {
+                    sketch.push();
+                    sketch.translate(wall.position.x, wall.position.y);
+                    sketch.rotate(wall.angle);
+                    sketch.rectMode(sketch.CENTER);
+                    
+                    // Calculate wall dimensions
+                    let wallWidth = wall.bounds.max.x - wall.bounds.min.x;
+                    let wallHeight = wall.bounds.max.y - wall.bounds.min.y;
+                    let width = wallWidth;
+                    let height = wallHeight;
+                    
+                    // Wall drop shadow
+                    sketch.fill(0, 0, 0, 50);
+                    sketch.noStroke();
+                    sketch.rect(3, 3, width, height, 10);
+                    
+                    // Main wall with wood gradient
+                    let gradient = sketch.drawingContext.createLinearGradient(
+                        -width/2, -height/1,
+                        -width/2, height/2
+                    );
+                    gradient.addColorStop(0, '#8B4513');  // Saddle brown
+                    gradient.addColorStop(0.5, '#A0522D'); // Sienna
+                    gradient.addColorStop(1, '#654321');   // Dark brown
+                    
+                    sketch.drawingContext.fillStyle = gradient;
+                    sketch.stroke(101, 67, 33);
+                    sketch.strokeWeight(2);
+                    sketch.rect(0, 0, width, height, 10);
+                    
+                    // Highlight strip for 3D effect
+                    sketch.fill(255, 255, 255, 20);
+                    sketch.noStroke();
+                    sketch.rect(0, -height/3, width * 0.9, height/4, 5);
+                    
+                    // Wood grain texture
+                    sketch.stroke(120, 60, 10, 50);
+                    sketch.strokeWeight(0.5);
+                    for (let i = -height/2; i < height/2; i += 2) {
+                        let grainLength = width * 0.9;
+                        let offset = sketch.sin(i * 0.5) * 3;  // Wavy grain pattern
+                        sketch.line(-grainLength/2 + offset, i, grainLength/2 + offset, i);
+                    }
+                    
+                    // Decorative brass studs
+                    sketch.fill(255, 215, 0);  // Gold color
+                    sketch.stroke(184, 134, 11);
+                    sketch.strokeWeight(1);
+                    if (width > height) { // Horizontal wall
+                        let studCount = Math.floor(width / 60);
+                        for(let i = 0; i < studCount; i++) {
+                            let x = -width/2 + (i + 0.5) * (width / studCount);
+                            sketch.circle(x, 0, 6);
+                        }
+                    } else { // Vertical wall
+                        let studCount = Math.floor(height / 60);
+                        for(let i = 0; i < studCount; i++) {
+                            let y = -height/2 + (i + 0.5) * (height / studCount);
+                            sketch.circle(0, y, 6);
+                        }
+                    }
+                    
+                    sketch.pop();
+                });
+            }
+
+            /**
+             * Renders all balls with realistic shading, numbers, and stripe patterns
+             * Handles both solid and striped balls with proper visual effects
+             */
+            sketch.drawBalls = function() {
+                // ===== DRAW CUE BALL =====
+                if (cueBall) {
+                    sketch.push();
+                    sketch.translate(cueBall.position.x, cueBall.position.y);
+                    sketch.rotate(cueBall.angle);
+                    
+                    // Drop shadow
+                    sketch.fill(0, 0, 0, 60);
+                    sketch.noStroke();
+                    sketch.ellipse(3, 3, ballRadius * 2.1, ballRadius * 2.1);
+                    
+                    // Main white ball
+                    sketch.fill('#FFFFFF');
+                    sketch.stroke(230, 230, 230);
+                    sketch.strokeWeight(1);
+                    sketch.ellipse(0, 0, ballRadius * 2, ballRadius * 2);
+                    
+                    // Highlight for 3D effect
+                    sketch.fill(255, 255, 255, 200);
+                    sketch.noStroke();
+                    sketch.ellipse(-ballRadius * 0.3, -ballRadius * 0.3, ballRadius * 0.7, ballRadius * 0.7);
+                    
+                    // Rotation indicator dot
+                    sketch.fill(200, 200, 200);
+                    sketch.noStroke();
+                    sketch.ellipse(ballRadius * 0.5, 0, ballRadius * 0.3, ballRadius * 0.3);
+                    
+                    sketch.pop();
+                }
+
+                // ===== DRAW NUMBERED BALLS =====
+                balls.forEach(ball => {
+                    sketch.push();
+                    sketch.translate(ball.position.x, ball.position.y);
+                    sketch.rotate(ball.angle);
+                    
+                    // Drop shadow
+                    sketch.fill(0, 0, 0, 60);
+                    sketch.noStroke();
+                    sketch.ellipse(3, 3, ballRadius * 2.1, ballRadius * 2.1);
+                    
+                    // Main ball color (white for stripes, colored for solids)
+                    sketch.fill(ball.isStripe ? '#FFFFFF' : ball.ballColor);
+                    sketch.stroke(0);
+                    sketch.strokeWeight(1);
+                    sketch.ellipse(0, 0, ballRadius * 2, ballRadius * 2);
+                    
+                    // ===== STRIPE PATTERN =====
+                    if (ball.isStripe) {
+                        sketch.push();
+                        // Use canvas clipping to create stripe in middle of ball
+                        sketch.drawingContext.save();
+                        sketch.drawingContext.beginPath();
+                        sketch.drawingContext.arc(0, 0, ballRadius, 0, Math.PI * 2);
+                        sketch.drawingContext.clip();
+                        
+                        // Draw colored stripe across middle
+                        sketch.fill(ball.ballColor);
+                        sketch.noStroke();
+                        sketch.rect(-ballRadius, -ballRadius * 0.7, ballRadius * 2, ballRadius * 1.4);
+                        
+                        sketch.drawingContext.restore();
+                        sketch.pop();
+                    }
+                    
+                    // ===== NUMBER CIRCLE =====
+                    sketch.fill(255);  // White background
+                    sketch.stroke(0);
+                    sketch.strokeWeight(1);
+                    sketch.ellipse(0, 0, ballRadius * 1.2, ballRadius * 1.2);
+                    
+                    // Ball number text
+                    sketch.fill(0);
+                    sketch.textAlign(sketch.CENTER, sketch.CENTER);
+                    sketch.textSize(10);
+                    sketch.textStyle(sketch.BOLD);
+                    sketch.text(ball.ballNumber, 0, 0);
+                    
+                    // Ball highlight for 3D effect
+                    sketch.fill(255, 255, 255, 180);
+                    sketch.noStroke();
+                    sketch.ellipse(-ballRadius * 0.3, -ballRadius * 0.3, ballRadius * 0.6, ballRadius * 0.6);
+                    
+                    sketch.pop();
+                });
+            }
+
+            /**
+             * Updates the score display UI with current game statistics
+             * Shows pocketed balls count and visual representations
+             */
+            sketch.updateScoreDisplay = function() {
+                // Update numerical counters
+                document.getElementById('pocketed-count').textContent = pocketedBalls.length;
+                document.getElementById('remaining-count').textContent = balls.length;
+                
+                // Calculate solid vs stripe counts
+                const solidCount = pocketedBalls.filter(b => !b.isStripe).length;
+                const stripeCount = pocketedBalls.filter(b => b.isStripe).length;
+                
+                // Update solid/stripe counters if elements exist
+                const solidsElement = document.getElementById('solids-count');
+                const stripesElement = document.getElementById('stripes-count');
+                if (solidsElement) solidsElement.textContent = solidCount;
+                if (stripesElement) stripesElement.textContent = stripeCount;
+
+                // ===== UPDATE VISUAL BALL DISPLAY =====
+                const display = document.getElementById('pocketed-balls-display');
+                display.innerHTML = ''; // Clear previous display
+
+                // Create visual representation for each pocketed ball
+                pocketedBalls.forEach(pocketedBall => {
+                    const ballIcon = document.createElement('div');
+                    ballIcon.className = 'pocketed-ball-icon';
+                    ballIcon.style.backgroundColor = pocketedBall.isStripe ? '#FFFFFF' : pocketedBall.color;
+
+                    // Add stripe pattern for striped balls
+                    if (pocketedBall.isStripe) {
+                        ballIcon.classList.add('stripe');
+                        const stripeDiv = document.createElement('div');
+                        stripeDiv.className = 'stripe-div';
+                        ballIcon.style.setProperty('--ball-color', pocketedBall.color);
+                        ballIcon.appendChild(stripeDiv);
+                    }
+
+                    // Add number display
+                    const numberDiv = document.createElement('div');
+                    numberDiv.className = 'number-div';
+                    
+                    const numberSpan = document.createElement('span');
+                    numberSpan.textContent = pocketedBall.number;
+                    numberDiv.appendChild(numberSpan);
+
+                    ballIcon.appendChild(numberDiv);
+                    display.appendChild(ballIcon);
+                });
+            }
+
+            /**
+             * Draws decorative elements around the table
+             * Includes corner ornaments and ambient sparkle effects
+             */
+            sketch.drawTableDecorations = function() {
+                // ===== CORNER DECORATIONS =====
+                let centerX = sketch.width / 2;
+                let centerY = sketch.height / 2;
+                let tableLeft = centerX - tableWidth / 2 - wallThickness;
+                let tableRight = centerX + tableWidth / 2 + wallThickness;
+                let tableTop = centerY - tableHeight / 2 - wallThickness;
+                let tableBottom = centerY + tableHeight / 2 + wallThickness;
+                
+                let corners = [
+                    {x: tableLeft, y: tableTop},
+                    {x: tableRight, y: tableTop},
+                    {x: tableLeft, y: tableBottom},
+                    {x: tableRight, y: tableBottom}
+                ];
+                
+                // Draw ornamental corner pieces
+                corners.forEach(corner => {
+                    sketch.push();
+                    sketch.translate(corner.x, corner.y);
+                    
+                    // Wooden corner piece with a custom, precise shape for a perfect fit.
+                    sketch.fill(139, 69, 19);
+                    sketch.stroke(101, 67, 33);
+                    sketch.strokeWeight(2);
+                    sketch.beginShape();
+                    
+                    const length = 40; // The length of the corner piece's arms.
+                    const thickness = wallThickness; // Use the actual wall thickness for a seamless fit.
+
+                    if (corner.x < centerX && corner.y < centerY) { // Top-Left
+                        sketch.vertex(0, 0);
+                        sketch.vertex(length, 0);
+                        sketch.vertex(length, thickness);
+                        sketch.vertex(thickness, thickness);
+                        sketch.vertex(thickness, length);
+                        sketch.vertex(0, length);
+                    } else if (corner.x > centerX && corner.y < centerY) { // Top-Right
+                        sketch.vertex(0, 0);
+                        sketch.vertex(-length, 0);
+                        sketch.vertex(-length, thickness);
+                        sketch.vertex(-thickness, thickness);
+                        sketch.vertex(-thickness, length);
+                        sketch.vertex(0, length);
+                    } else if (corner.x < centerX && corner.y > centerY) { // Bottom-Left
+                        sketch.vertex(0, 0);
+                        sketch.vertex(length, 0);
+                        sketch.vertex(length, -thickness);
+                        sketch.vertex(thickness, -thickness);
+                        sketch.vertex(thickness, -length);
+                        sketch.vertex(0, -length);
+                    } else { // Bottom-Right
+                        sketch.vertex(0, 0);
+                        sketch.vertex(-length, 0);
+                        sketch.vertex(-length, -thickness);
+                        sketch.vertex(-thickness, -thickness);
+                        sketch.vertex(-thickness, -length);
+                        sketch.vertex(0, -length);
+                    }
+                    sketch.endShape(sketch.CLOSE);
+                    
+                    sketch.pop();
+                });
+                
+                // ===== AMBIENT SPARKLE EFFECTS =====
+                // Create subtle sparkle animation around the table
+                sketch.randomSeed(sketch.frameCount);  // Consistent but changing random
+                for (let i = 0; i < 15; i++) {
+                    let x = sketch.random(100, sketch.width - 100);
+                    let y = sketch.random(50, sketch.height - 50);
+                    // Animate sparkle opacity using sine wave
+                    let alpha = sketch.map(sketch.sin(sketch.frameCount * 0.03 + i * 0.7), -1, 1, 0, 80);
+                    
+                    sketch.fill(255, 255, 255, alpha);
+                    sketch.noStroke();
+                    let size = sketch.random(1, 2);
+                    sketch.ellipse(x, y, size, size);
+                }
+            }
+
+            /**
+             * Resets the entire game to initial state
+             * Clears all game objects and recreates fresh table setup
+             */
+            sketch.restartSimulation = function() {
+                // Reset cue stick to initial state
+                cueStick.visible = true;
+                cueStick.isAnimating = false;
+                cueStick.pullback = 0;
+                document.getElementById('shootButton').disabled = false;
+                document.getElementById('status').textContent = 'Aim with your mouse, and click on the table to lock aim.';
+                
+                // Recreate entire table setup
+                sketch.setupTable();
+                sketch.updateScoreDisplay();
+                
+                // Reset game state flags
+                isPlayerTurn = true;
+                isAimLocked = false;
+                simulationStarted = true;
+                ballTrails = {}; // Clear all trails on restart
+            }
+
+            /**
+             * Updates ball visual rotation based on movement velocity
+             * Creates realistic rolling effect by setting angular velocity
+             * @param {Object} ball - Matter.js ball body to update
+             */
+            sketch.updateBallRotation = function(ball) {
+                // Initialize trail array for the ball if it doesn't exist
+                if (!ballTrails[ball.id]) {
+                    ballTrails[ball.id] = [];
+                }
+                
+                const trail = ballTrails[ball.id];
+                const speed = Vector.magnitude(ball.velocity);
+
+                // Add current position to the trail if the ball is moving
+                if (speed > 0.1) {
+                    trail.push(Vector.clone(ball.position));
+                    
+                    // Limit trail length to prevent performance issues
+                    if (trail.length > 50) {
+                        trail.shift(); // Remove the oldest point
+                    }
+                } else {
+                    // If the ball has stopped, gradually fade out its trail
+                    if (trail.length > 0) {
+                        trail.shift();
+                    }
+                }
+
+                if (ball.velocity.x !== 0 || ball.velocity.y !== 0) {
+                    // Calculate rotation speed based on linear velocity
+                    let speed = Math.sqrt(ball.velocity.x * ball.velocity.x + ball.velocity.y * ball.velocity.y);
+                    let angularVelocity = speed / ballRadius;  // Rolling without slipping
+                    Body.setAngularVelocity(ball, angularVelocity);
+                }
+            }
+
+            /**
+             * Updates friction properties of all balls when cloth type changes
+             * Applies new cloth physics to existing ball bodies
+             */
+            sketch.updateClothProperties = function() {
+                const newFriction = currentCloth.friction;
+                const newFrictionStatic = currentCloth.frictionStatic;
+                const newFrictionAir = currentCloth.frictionAir;
+
+                // Update all numbered balls
+                balls.forEach(ball => {
+                    Body.set(ball, {
+                        friction: newFriction,
+                        frictionStatic: newFrictionStatic,
+                        frictionAir: newFrictionAir
+                    });
+                });
+
+                // Update cue ball if it exists
+                if (cueBall) {
+                    Body.set(cueBall, {
+                        friction: newFriction,
+                        frictionStatic: newFrictionStatic,
+                        frictionAir: newFrictionAir
+                    });
+                }
+            }
+
+            // ===== PREVENT CONTEXT MENU =====
+            // Disable right-click context menu to avoid interference with gameplay
+            document.addEventListener('contextmenu', e => e.preventDefault());
+        });
+    </script>
+</body>
+</html>

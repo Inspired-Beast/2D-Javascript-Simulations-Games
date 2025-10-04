@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Crane Vehicle Rescue - Realistic Physics</title>
+  <meta name="viewport" content="width=900, initial-scale=1.0" />
+  <style>
+    /* Basic page styling */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #87ceeb, #ffe4b5); /* Sky to ground gradient */
+      overflow: hidden; /* Prevent scrolling */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    body {
+      width: 920px; /* Enough for sidebar + canvas + gap */
+      height: 640px; /* Enough for header + content */
+      flex-direction: column;
+      user-select: none;
+    }
+    /* Title styling */
+    header {
+      width: 100%;
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 2rem;
+      font-weight: bold;
+      color: #2c3e50;
+      flex-shrink: 0;
+    }
+    /* Main content container with sidebar and canvas */
+    .main-content {
+      display: flex;
+      width: 100%;
+      height: 600px; /* Match canvas height */
+      gap: 20px;
+      align-items: stretch;
+      flex-shrink: 0;
+    }
+    /* Left sidebar for controls and info */
+    .sidebar {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+    /* Controls info box styling */
+    .control-info {
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    /* Status message styling */
+    .status {
+      font-size: 18px;
+      font-weight: bold;
+      padding: 15px 25px;
+      border-radius: 8px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    /* Status colors for different game states */
+    .status.playing {
+      background: #3498db;
+      color: white;
+    }
+    .status.win {
+      background: #27ae60;
+      color: white;
+    }
+    .status.fail {
+      background: #e74c3c;
+      color: white;
+    }
+    /* Reset button styling */
+    .reset-btn {
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 15px 25px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      transition: background 0.3s ease;
+      align-self: center;
+      width: 100%;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .reset-btn:hover {
+      background: #c0392b;
+    }
+    /* Canvas container styling */
+    #gameCanvas {
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      background: #87ceeb;
+      display: inline-block;
+      overflow: hidden;
+      width: 640px;
+      height: 600px;
+      flex-shrink: 0;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm",
+        "matter": "https://cdn.skypack.dev/matter-js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header>🏗️ Crane Vehicle Rescue</header>
+  <div class="main-content">
+    <div class="sidebar">
+      <div class="control-info">
+        <strong>🎮 Controls:</strong><br />
+        ←/→: Rotate arm<br />
+        A/D: Extend/retract arm<br />
+        ↑/↓: Raise/lower cable<br />
+        SPACE: Grab/Release worker<br />
+        <em>Pick up the worker to start! Avoid debris, reach the exit!</em>
+      </div>
+      <div id="status" class="status playing">🕹️ Pick up the worker to start!</div>
+      <button class="reset-btn" onclick="resetGame()">🔄 Reset Game</button>
+    </div>
+    <div id="gameCanvas"></div>
+  </div>
+
+  <script type="module">
+    import p5 from 'p5';
+    import Matter from 'matter';
+
+    // Destructure Matter.js modules for convenience
+    const { Engine, World, Bodies, Body, Composite, Constraint } = Matter;
+
+    // --- Game Constants ---
+    const WIDTH = 640, HEIGHT = 600; // Canvas size (reduced width to fit sidebar)
+    const GROUND_Y = HEIGHT - 30; // Y position of ground level
+    const ARM_MIN_LENGTH = 80, ARM_MAX_LENGTH = 640; // Adjusted arm max length to canvas width
+    const ARM_STEP = 3; // Increment step for arm length changes
+    const CABLE_MIN = 40, CABLE_MAX = 340; // Cable length limits
+    const CABLE_STEP = 2.5; // Increment step for cable length changes
+    const CRANE_X = WIDTH - 120, CRANE_Y = GROUND_Y; // Crane base position on ground
+    const ARM_MIN_ANGLE = -Math.PI * 0.85, ARM_MAX_ANGLE = -Math.PI * 0.15; // Crane arm rotation limits (radians)
+    const ARM_ANGLE_STEP = Math.PI / 220; // Increment step for arm rotation
+    const WORKER_W = 22, WORKER_H = 38; // Worker dimensions
+    const DEBRIS_INTERVAL = 120; // Frames between debris spawns
+    const GAME_DURATION = 60; // Game time limit in seconds
+    const PLATFORM_MIN_GAP = 50; // Minimum gap between platforms
+    const MAX_VELOCITY = 7; // Max velocity cap for worker
+
+    // --- Game State Variables ---
+    let gameState, frameCount, startTime, elapsedTime, timerStarted;
+    let platforms, worker, crane, debris, particles, exit, exitPlatformIdx;
+    let keys = {}; // Object to track pressed keys
+    let spacePressed = false; // To prevent repeated spacebar triggers
+
+    // Matter.js engine and world
+    let engine, world;
+
+    // Matter.js bodies for debris and platforms
+    let debrisBodies = [];
+    let platformBodies = [];
+    let groundBody;
+
+    // Rope constraint for swinging hook
+    let ropeConstraint;
+
+    // Hook body for swinging
+    let hookBody;
+
+    // --- p5.js Sketch Setup ---
+    const sketch = (p) => {
+      p.setup = () => {
+        const canvas = p.createCanvas(WIDTH, HEIGHT);
+        canvas.parent('gameCanvas');
+        p.frameRate(60);
+
+        // Setup Matter.js engine and world
+        engine = Engine.create();
+        world = engine.world;
+        world.gravity.y = 1; // realistic gravity
+
+        resetGame(); // Initialize game state
+      };
+
+      p.draw = () => {
+        Engine.update(engine, 1000 / 60);
+        update(p); // Update game logic
+        draw(p);   // Render game visuals
+      };
+
+      // Key press handler
+      p.keyPressed = () => {
+        keys[p.keyCode] = true;
+        if (p.key === ' ' || p.keyCode === 32) {
+          if (!spacePressed) {
+            spacePressed = true;
+            handleGrabRelease();
+          }
+        }
+      };
+
+      // Key release handler
+      p.keyReleased = () => {
+        keys[p.keyCode] = false;
+        if (p.key === ' ' || p.keyCode === 32) {
+          spacePressed = false;
+        }
+      };
+    };
+
+    // --- Reset Game State and Initialize ---
+    function resetGame() {
+      keys = {};
+      spacePressed = false;
+      platforms = [];
+      debris = [];
+      debrisBodies.forEach(body => Composite.remove(world, body));
+      debrisBodies = [];
+      platformBodies.forEach(body => Composite.remove(world, body));
+      platformBodies = [];
+      if (groundBody) Composite.remove(world, groundBody);
+      if (hookBody) Composite.remove(world, hookBody);
+      if (ropeConstraint) Composite.remove(world, ropeConstraint);
+
+      // Generate random platforms ensuring no overlap
+      let attempts = 0;
+      while (platforms.length < 5 && attempts < 150) {
+        let x = 60 + Math.random() * (WIDTH - 220);
+        let y = 150 + Math.random() * 320;
+        let w = 80 + Math.random() * 100;
+        let h = 15 + Math.random() * 8;
+        let overlaps = false;
+
+        for (let p of platforms) {
+          let distX = Math.abs((x + w / 2) - (p.x + p.w / 2));
+          let distY = Math.abs((y + h / 2) - (p.y + p.h / 2));
+          if (distX < (w + p.w) / 2 + PLATFORM_MIN_GAP && distY < (h + p.h) / 2 + 40) {
+            overlaps = true;
+            break;
+          }
+        }
+        if (!overlaps) platforms.push({ x, y, w, h, type: 'platform' });
+        attempts++;
+      }
+
+      // Add fixed start platform near bottom-left
+      platforms.push({ x: 60, y: 480, w: 140, h: 20, type: 'start' });
+      let startPlat = platforms[platforms.length - 1];
+
+      // Determine best exit platform based on distance and height difference
+      let bestExitIdx = 0, bestScore = 0;
+      for (let i = 0; i < platforms.length - 1; i++) {
+        let dx = (platforms[i].x + platforms[i].w / 2) - (startPlat.x + startPlat.w / 2);
+        let dy = (platforms[i].y) - (startPlat.y);
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        let heightDiff = Math.abs(dy);
+        let score = distance - (heightDiff * 0.5);
+        if (score > bestScore) {
+          bestScore = score;
+          bestExitIdx = i;
+        }
+      }
+      exitPlatformIdx = bestExitIdx;
+
+      // Define exit area on the chosen platform
+      let exitPlatform = platforms[exitPlatformIdx];
+      exit = {
+        x: exitPlatform.x + (exitPlatform.w - 70) / 2,
+        y: exitPlatform.y - 55,
+        w: 70,
+        h: 55,
+      };
+
+      // Initialize worker properties and position on start platform
+      worker = {
+        x: startPlat.x + 40,
+        y: startPlat.y - WORKER_H,
+        w: WORKER_W,
+        h: WORKER_H,
+        vx: 0,
+        vy: 0,
+        onPlatform: false,
+        grabbed: false,
+        color: "#FF6B35",
+        lastCollision: 0
+      };
+
+      // Initialize crane properties
+      crane = {
+        armLength: 200,
+        cable: 120,
+        angle: -Math.PI / 2.2,
+        holding: false,
+        armVelocity: 0,
+        cableVelocity: 0,
+      };
+
+      // Create ground body
+      groundBody = Bodies.rectangle(WIDTH / 2, GROUND_Y + 15, WIDTH, 30, { isStatic: true, label: 'ground' });
+      Composite.add(world, groundBody);
+
+      // Create platform bodies
+      platformBodies = platforms.map(plat => {
+        return Bodies.rectangle(plat.x + plat.w / 2, plat.y + plat.h / 2, plat.w, plat.h, { isStatic: true, label: 'platform' });
+      });
+      Composite.add(world, platformBodies);
+
+      // Create hook body and rope constraint for swinging
+      let armTipX = CRANE_X + Math.cos(crane.angle) * crane.armLength;
+      let armTipY = CRANE_Y - 60 + Math.sin(crane.angle) * crane.armLength;
+      hookBody = Bodies.circle(armTipX, armTipY + crane.cable, 8, { inertia: Infinity, frictionAir: 0.02, label: 'hook' });
+      Composite.add(world, hookBody);
+
+      ropeConstraint = Constraint.create({
+        pointA: { x: armTipX, y: armTipY },
+        bodyB: hookBody,
+        length: crane.cable,
+        stiffness: 0.9,
+        damping: 0.1
+      });
+      Composite.add(world, ropeConstraint);
+
+      debris = [];
+      debrisBodies = [];
+
+      particles = []; // Particle effects array
+      frameCount = 0;
+      startTime = null;
+      elapsedTime = 0;
+      timerStarted = false;
+      gameState = "waiting"; // Initial game state
+      updateStatus();
+    }
+
+    // --- Spawn new debris with Matter.js bodies ---
+    function spawnDebris(p) {
+      let debrisTypes = [
+        { type: "panel", w: 35, h: 8, color: "#A0522D", weight: 1.2 },
+        { type: "frame", w: 45, h: 25, color: "#888", weight: 0.8 },
+        { type: "pipe", w: 70, h: 12, color: "#b0b0b0", weight: 1.0 },
+        { type: "beam", w: 80, h: 15, color: "#654321", weight: 1.5 }
+      ];
+      let debrisType = debrisTypes[Math.floor(Math.random() * debrisTypes.length)];
+      let spawnX = 50 + Math.random() * (WIDTH - 150);
+      let w = debrisType.w + Math.random() * 20;
+      let h = debrisType.h + Math.random() * 5;
+
+      let body = Bodies.rectangle(spawnX, -h, w, h, {
+        frictionAir: 0.05,
+        restitution: 0.3,
+        density: debrisType.weight * 0.001,
+        label: 'debris',
+        render: { fillStyle: debrisType.color }
+      });
+      debrisBodies.push(body);
+      debris.push({ body, color: debrisType.color, type: debrisType.type, w, h });
+      Composite.add(world, body);
+    }
+
+    // --- Update game logic ---
+    function update(p) {
+      if (gameState === "fail" || gameState === "win") return;
+      frameCount++;
+
+      // --- Crane Controls ---
+      if (keys[p.LEFT_ARROW]) crane.armVelocity -= ARM_ANGLE_STEP * 0.3;
+      if (keys[p.RIGHT_ARROW]) crane.armVelocity += ARM_ANGLE_STEP * 0.3;
+      if (keys[65]) crane.armLength = Math.max(ARM_MIN_LENGTH, crane.armLength - ARM_STEP);
+      if (keys[68]) crane.armLength = Math.min(ARM_MAX_LENGTH, crane.armLength + ARM_STEP);
+      if (keys[p.UP_ARROW]) crane.cableVelocity -= CABLE_STEP * 0.5;
+      if (keys[p.DOWN_ARROW]) crane.cableVelocity += CABLE_STEP * 0.5;
+
+      crane.armVelocity *= 0.9;
+      crane.angle += crane.armVelocity;
+      crane.angle = p.constrain(crane.angle, ARM_MIN_ANGLE, ARM_MAX_ANGLE);
+
+      crane.cableVelocity *= 0.9;
+      crane.cable += crane.cableVelocity;
+      crane.cable = p.constrain(crane.cable, CABLE_MIN, CABLE_MAX);
+
+      // Update rope constraint anchor point and length
+      let armTipX = CRANE_X + Math.cos(crane.angle) * crane.armLength;
+      let armTipY = CRANE_Y - 60 + Math.sin(crane.angle) * crane.armLength;
+      ropeConstraint.pointA.x = armTipX;
+      ropeConstraint.pointA.y = armTipY;
+      ropeConstraint.length = crane.cable;
+
+      // --- Timer Logic ---
+      if (timerStarted) {
+        elapsedTime = (Date.now() - startTime) / 1000;
+        if (elapsedTime >= GAME_DURATION) {
+          gameState = "win";
+          updateStatus();
+          createParticles(p, worker.x + worker.w / 2, worker.y, "#27ae60", 30);
+        }
+      }
+
+      // --- Worker Physics and Movement ---
+      if (worker.grabbed && crane.holding) {
+        // Move worker smoothly to hook position
+        let targetX = hookBody.position.x - worker.w / 2;
+        let targetY = hookBody.position.y + 15;
+        worker.vx = (targetX - worker.x) * 0.2;
+        worker.vy = (targetY - worker.y) * 0.2;
+        worker.x += worker.vx;
+        worker.y += worker.vy;
+      } else {
+        // Apply gravity and air resistance manually for worker (not using Matter)
+        worker.vy += 0.22;
+        worker.vx *= 0.97;
+        worker.vy *= 0.97;
+        worker.vx = p.constrain(worker.vx, -MAX_VELOCITY, MAX_VELOCITY);
+        worker.vy = p.constrain(worker.vy, -MAX_VELOCITY, MAX_VELOCITY);
+
+        // Horizontal movement and collision with platforms
+        worker.x += worker.vx;
+        for (let plat of platforms) {
+          if (rectsOverlap(worker.x, worker.y, worker.w, worker.h, plat.x, plat.y, plat.w, plat.h)) {
+            if (worker.vx > 0) worker.x = plat.x - worker.w;
+            else if (worker.vx < 0) worker.x = plat.x + plat.w;
+            worker.vx = 0;
+          }
+        }
+
+        // Vertical movement and collision with platforms
+        worker.y += worker.vy;
+        worker.onPlatform = false;
+        for (let plat of platforms) {
+          if (rectsOverlap(worker.x, worker.y, worker.w, worker.h, plat.x, plat.y, plat.w, plat.h)) {
+            if (worker.vy > 0) {
+              worker.y = plat.y - worker.h;
+              worker.vy = 0;
+              worker.onPlatform = true;
+            } else if (worker.vy < 0) {
+              worker.y = plat.y + plat.h;
+              worker.vy = 0;
+            }
+          }
+        }
+
+        // Boundary checks
+        if (worker.x < 0) {
+          worker.x = 0;
+          worker.vx = Math.abs(worker.vx) * 0.22;
+        }
+        if (worker.x + worker.w > WIDTH) {
+          worker.x = WIDTH - worker.w;
+          worker.vx = -Math.abs(worker.vx) * 0.22;
+        }
+
+        // Ground collision triggers fail
+        if (worker.y + worker.h >= GROUND_Y) {
+          worker.y = GROUND_Y - worker.h;
+          worker.vy = 0;
+          worker.vx *= 0.82;
+          gameState = "fail";
+          updateStatus();
+          createParticles(p, worker.x + worker.w / 2, worker.y + worker.h, "#e74c3c", 25);
+        }
+      }
+
+      // --- Win Condition ---
+      if (worker.x + worker.w / 2 > exit.x &&
+          worker.x + worker.w / 2 < exit.x + exit.w &&
+          worker.y + worker.h > exit.y &&
+          worker.y < exit.y + exit.h) {
+        gameState = "win";
+        updateStatus();
+        createParticles(p, exit.x + exit.w / 2, exit.y + exit.h / 2, "#27ae60", 40);
+      }
+
+      // --- Spawn debris ---
+      if (timerStarted && frameCount % DEBRIS_INTERVAL === 0) spawnDebris(p);
+
+      // --- Check debris collision with worker ---
+      for (let i = debris.length - 1; i >= 0; i--) {
+        let d = debris[i];
+        let pos = d.body.position;
+        if (worker.x + worker.w > pos.x - d.w / 2 &&
+            worker.x < pos.x + d.w / 2 &&
+            worker.y + worker.h > pos.y - d.h / 2 &&
+            worker.y < pos.y + d.h / 2 &&
+            frameCount - worker.lastCollision > 30) {
+          worker.lastCollision = frameCount;
+          gameState = "fail";
+          updateStatus();
+          createParticles(p, worker.x + worker.w / 2, worker.y + worker.h / 2, "#e74c3c", 30);
+          break;
+        }
+      }
+
+      // --- Remove debris off screen ---
+      for (let i = debris.length - 1; i >= 0; i--) {
+        if (debris[i].body.position.y > HEIGHT + 100) {
+          Composite.remove(world, debris[i].body);
+          debris.splice(i, 1);
+          debrisBodies.splice(i, 1);
+        }
+      }
+
+      // --- Update particles ---
+      updateParticles(p);
+    }
+
+    // --- Helper: Check if two rectangles overlap ---
+    function rectsOverlap(x1, y1, w1, h1, x2, y2, w2, h2) {
+      return x1 < x2 + w2 &&
+             x1 + w1 > x2 &&
+             y1 < y2 + h2 &&
+             y1 + h1 > y2;
+    }
+
+    // --- Handle Grab or Release of Worker by Crane Hook ---
+    function handleGrabRelease() {
+      let hookX = hookBody.position.x;
+      let hookY = hookBody.position.y;
+
+      if (!crane.holding && !worker.grabbed) {
+        let distance = Math.sqrt(
+          Math.pow(worker.x + worker.w / 2 - hookX, 2) +
+          Math.pow(worker.y + worker.h / 2 - hookY, 2)
+        );
+        if (distance < 35) {
+          crane.holding = true;
+          worker.grabbed = true;
+          worker.vx = 0;
+          worker.vy = 0;
+          createParticles(null, worker.x + worker.w / 2, worker.y, "#FFD700", 12);
+          if (!timerStarted) {
+            timerStarted = true;
+            startTime = Date.now();
+            gameState = "playing";
+            updateStatus();
+          }
+        }
+      } else if (crane.holding && worker.grabbed) {
+        crane.holding = false;
+        worker.grabbed = false;
+        // Give worker velocity based on crane movement
+        worker.vx = crane.armVelocity * 10;
+        worker.vy = crane.cableVelocity * 6;
+        createParticles(null, worker.x + worker.w / 2, worker.y, "#27ae60", 8);
+      }
+    }
+
+    // --- Particle system update ---
+    function updateParticles(p) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        let particle = particles[i];
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        particle.vy += 0.1;
+        particle.vx *= 0.99;
+        particle.life--;
+        if (particle.life <= 0) particles.splice(i, 1);
+      }
+    }
+
+    // --- Drawing all game elements ---
+    function draw(p) {
+      drawBackground(p);
+      drawGround(p);
+      drawPlatforms(p);
+      drawExit(p);
+      drawCraneVehicle(p);
+      drawCraneArm(p);
+      drawDebris(p);
+      drawWorker(p);
+      drawParticles(p);
+      drawUI(p);
+    }
+
+    // --- Draw sky background with gradient and clouds ---
+    function drawBackground(p) {
+      for (let i = 0; i <= HEIGHT; i++) {
+        let inter = p.map(i, 0, HEIGHT, 0, 1);
+        let c = p.lerpColor(p.color(135, 206, 235), p.color(255, 228, 181), inter);
+        p.stroke(c);
+        p.line(0, i, WIDTH, i);
+      }
+      p.fill(255, 255, 255, 100);
+      p.noStroke();
+      for (let i = 0; i < 5; i++) {
+        let x = (frameCount * 0.2 + i * 200) % (WIDTH + 100) - 50;
+        let y = 50 + i * 30;
+        p.ellipse(x, y, 60, 30);
+        p.ellipse(x + 20, y, 80, 40);
+        p.ellipse(x + 40, y, 60, 30);
+      }
+    }
+
+    // --- Draw ground with texture lines ---
+    function drawGround(p) {
+      p.fill(139, 115, 85);
+      p.rect(0, GROUND_Y, WIDTH, 30);
+      p.stroke(101, 67, 33);
+      p.strokeWeight(1);
+      for (let i = 0; i < WIDTH; i += 20) {
+        p.line(i, GROUND_Y + 5, i + 10, GROUND_Y + 25);
+      }
+    }
+
+    // --- Draw all platforms ---
+    function drawPlatforms(p) {
+      for (let plat of platforms) {
+        p.fill(0, 0, 0, 30);
+        p.noStroke();
+        p.rect(plat.x + 3, plat.y + 3, plat.w, plat.h);
+        p.fill(184, 134, 11);
+        p.stroke(101, 67, 33);
+        p.strokeWeight(2);
+        p.rect(plat.x, plat.y, plat.w, plat.h);
+        p.fill(255, 255, 255, 80);
+        p.noStroke();
+        for (let i = 0; i < 3; i++) {
+          p.rect(plat.x + 2, plat.y + i * (plat.h / 3), plat.w - 4, 2);
+        }
+        p.fill(150, 150, 150);
+        for (let i = 0; i < Math.floor(plat.w / 30); i++) {
+          p.circle(plat.x + 15 + i * 30, plat.y + plat.h / 2, 4);
+        }
+      }
+    }
+
+    // --- Draw exit area ---
+    function drawExit(p) {
+      let glowIntensity = 50 + Math.sin(frameCount * 0.1) * 20;
+      p.fill(39, 174, 96, glowIntensity);
+      p.noStroke();
+      p.rect(exit.x - 5, exit.y - 5, exit.w + 10, exit.h + 10);
+      p.fill(39, 174, 96);
+      p.stroke(30, 132, 73);
+      p.strokeWeight(3);
+      p.rect(exit.x, exit.y, exit.w, exit.h);
+      p.fill(255);
+      p.textAlign(p.CENTER, p.CENTER);
+      p.textSize(16);
+      p.textStyle(p.BOLD);
+      p.text("EXIT", exit.x + exit.w / 2, exit.y + exit.h / 2);
+      p.stroke(255);
+      p.strokeWeight(3);
+      let arrowY = exit.y - 20 + Math.sin(frameCount * 0.15) * 5;
+      p.line(exit.x + exit.w / 2, arrowY, exit.x + exit.w / 2, arrowY + 10);
+      p.line(exit.x + exit.w / 2 - 5, arrowY + 5, exit.x + exit.w / 2, arrowY);
+      p.line(exit.x + exit.w / 2 + 5, arrowY + 5, exit.x + exit.w / 2, arrowY);
+    }
+
+    // --- Draw crane vehicle base ---
+    function drawCraneVehicle(p) {
+      p.push();
+      p.translate(CRANE_X, CRANE_Y);
+      p.fill(0, 0, 0, 50);
+      p.noStroke();
+      p.rect(-58, -38, 120, 60);
+      p.fill(68, 68, 68);
+      p.stroke(34, 34, 34);
+      p.strokeWeight(2);
+      p.rect(-60, -40, 120, 60);
+      p.fill(136, 136, 136);
+      p.rect(-40, -60, 60, 30);
+      p.fill(173, 216, 230);
+      p.stroke(100, 100, 100);
+      p.rect(-35, -55, 25, 20);
+      p.rect(-5, -55, 25, 20);
+      p.stroke(255, 255, 255, 150);
+      p.strokeWeight(1);
+      p.line(-30, -50, -15, -40);
+      p.line(0, -50, 15, -40);
+      p.fill(34, 34, 34);
+      p.noStroke();
+      p.circle(-40, 25, 36);
+      p.circle(40, 25, 36);
+      p.fill(102, 102, 102);
+      p.circle(-40, 25, 16);
+      p.circle(40, 25, 16);
+      p.stroke(150, 150, 150);
+      p.strokeWeight(2);
+      for (let i = 0; i < 6; i++) {
+        let angle = i * Math.PI / 3;
+        p.line(-40 + Math.cos(angle) * 5, 25 + Math.sin(angle) * 5,
+               -40 + Math.cos(angle) * 8, 25 + Math.sin(angle) * 8);
+        p.line(40 + Math.cos(angle) * 5, 25 + Math.sin(angle) * 5,
+               40 + Math.cos(angle) * 8, 25 + Math.sin(angle) * 8);
+      }
+      p.fill(44, 62, 80);
+      p.noStroke();
+      p.rect(-10, -60, 20, 60);
+      p.fill(255, 255, 255, 100);
+      p.rect(-8, -55, 16, 3);
+      p.rect(-8, -45, 16, 3);
+      p.rect(-8, -35, 16, 3);
+      p.pop();
+    }
+
+    // --- Draw crane arm and swinging hook ---
+    function drawCraneArm(p) {
+      p.push();
+      p.translate(CRANE_X, CRANE_Y - 60);
+      p.rotate(crane.angle);
+      p.stroke(0, 0, 0, 50);
+      p.strokeWeight(16);
+      p.line(2, 2, crane.armLength + 2, 2);
+      p.stroke(231, 76, 60);
+      p.strokeWeight(14);
+      p.line(0, 0, crane.armLength, 0);
+      p.stroke(200, 60, 50);
+      p.strokeWeight(2);
+      for (let i = 0; i < crane.armLength; i += 40) {
+        p.line(i, -7, i, 7);
+      }
+      p.fill(52, 73, 94);
+      p.stroke(34, 49, 63);
+      p.strokeWeight(2);
+      p.rect(crane.armLength - 18, -12, 36, 24);
+      p.fill(255, 255, 255, 150);
+      p.noStroke();
+      p.rect(crane.armLength - 15, -9, 30, 3);
+      p.rect(crane.armLength - 15, -3, 30, 3);
+      p.rect(crane.armLength - 15, 3, 30, 3);
+      p.pop();
+
+      // Draw cable from arm tip to hook body position
+      let armTipX = CRANE_X + Math.cos(crane.angle) * crane.armLength;
+      let armTipY = CRANE_Y - 60 + Math.sin(crane.angle) * crane.armLength;
+      let hookX = hookBody.position.x;
+      let hookY = hookBody.position.y;
+
+      p.stroke(0, 0, 0, 50);
+      p.strokeWeight(5);
+      p.line(armTipX + 1, armTipY + 1, hookX + 1, hookY + 1);
+      p.stroke(44, 62, 80);
+      p.strokeWeight(3);
+      p.line(armTipX, armTipY, hookX, hookY);
+
+      p.fill(243, 156, 18);
+      p.stroke(212, 132, 15);
+      p.strokeWeight(2);
+      p.circle(hookX, hookY + 10, 16);
+      p.fill(255, 255, 255, 200);
+      p.noStroke();
+      p.circle(hookX - 3, hookY + 7, 4);
+      p.stroke(212, 132, 15);
+      p.strokeWeight(3);
+      p.noFill();
+      p.arc(hookX, hookY + 10, 12, 12, 0, Math.PI);
+    }
+
+    // --- Draw debris using Matter.js body positions ---
+    function drawDebris(p) {
+      for (let d of debris) {
+        let pos = d.body.position;
+        let angle = d.body.angle;
+        p.push();
+        p.translate(pos.x, pos.y);
+        p.rotate(angle);
+        p.fill(0, 0, 0, 30);
+        p.noStroke();
+        p.rect(-d.w / 2 + 2, -d.h / 2 + 2, d.w, d.h);
+        p.fill(d.color);
+        p.stroke(p.red(d.color) * 0.7, p.green(d.color) * 0.7, p.blue(d.color) * 0.7);
+        p.strokeWeight(1.5);
+        p.rect(-d.w / 2, -d.h / 2, d.w, d.h);
+
+        if (d.type === "panel") {
+          p.fill(255, 255, 255, 100);
+          p.noStroke();
+          p.rect(-d.w / 2 + 2, -d.h / 2 + 1, d.w - 4, 2);
+        } else if (d.type === "frame") {
+          p.noFill();
+          p.stroke(170, 170, 170);
+          p.strokeWeight(1);
+          p.rect(-d.w / 2 + 3, -d.h / 2 + 3, d.w - 6, d.h - 6);
+        } else if (d.type === "pipe") {
+          p.fill(200, 200, 200);
+          p.noStroke();
+          p.circle(-d.w / 2, 0, d.h);
+          p.circle(d.w / 2, 0, d.h);
+        }
+        p.pop();
+      }
+    }
+
+    // --- Draw the worker character ---
+    function drawWorker(p) {
+      p.push();
+      p.translate(worker.x + worker.w / 2, worker.y + worker.h / 2);
+      p.fill(0, 0, 0, 50);
+      p.noStroke();
+      p.ellipse(2, worker.h / 2 + 2, worker.w + 5, 8);
+      p.fill(worker.color);
+      p.stroke(p.red(worker.color) * 0.8, p.green(worker.color) * 0.8, p.blue(worker.color) * 0.8);
+      p.strokeWeight(2);
+      p.rect(-worker.w / 2, -worker.h / 2 + 10, worker.w, worker.h - 20);
+      p.fill(255, 255, 0);
+      p.stroke(200, 200, 0);
+      p.circle(0, -worker.h / 2 + 5, 16);
+      p.fill(255, 165, 0);
+      p.noStroke();
+      p.arc(0, -worker.h / 2 + 5, 14, 14, Math.PI, Math.PI * 2);
+      p.fill(255, 255, 255);
+      p.noStroke();
+      p.rect(-worker.w / 2 + 2, -worker.h / 2 + 15, worker.w - 4, 2);
+      p.rect(-worker.w / 2 + 2, -worker.h / 2 + 22, worker.w - 4, 2);
+      p.fill(worker.color);
+      p.stroke(p.red(worker.color) * 0.8, p.green(worker.color) * 0.8, p.blue(worker.color) * 0.8);
+      p.strokeWeight(2);
+      let armSwing = worker.grabbed ? 0 : Math.sin(frameCount * 0.1) * 0.3;
+      p.rect(-worker.w / 2 - 3, -worker.h / 2 + 12 + armSwing * 5, 6, 12);
+      p.rect(worker.w / 2 - 3, -worker.h / 2 + 12 - armSwing * 5, 6, 12);
+      p.fill(0, 0, 128);
+      p.stroke(0, 0, 100);
+      let legSwing = worker.grabbed ? 0 : Math.sin(frameCount * 0.12) * 3;
+      p.rect(-6, worker.h / 2 - 15, 5, 15 + legSwing);
+      p.rect(1, worker.h / 2 - 15, 5, 15 - legSwing);
+      p.fill(101, 67, 33);
+      p.noStroke();
+      p.rect(-7, worker.h / 2 - 3, 8, 5);
+      p.rect(0, worker.h / 2 - 3, 8, 5);
+      p.pop();
+    }
+
+    // --- Draw all active particles ---
+    function drawParticles(p) {
+      for (let particle of particles) {
+        p.push();
+        let alpha = p.map(particle.life, 0, particle.maxLife, 0, 255);
+        p.fill(p.red(particle.color), p.green(particle.color), p.blue(particle.color), alpha);
+        p.noStroke();
+        p.circle(particle.x, particle.y, particle.size);
+        p.pop();
+      }
+    }
+
+    // --- Draw UI elements ---
+    function drawUI(p) {
+      p.fill(255, 255, 255, 200);
+      p.stroke(0, 0, 0);
+      p.strokeWeight(3);
+      p.rect(10, 10, 200, 40, 10);
+      p.fill(0);
+      p.noStroke();
+      p.textAlign(p.LEFT, p.CENTER);
+      p.textSize(20);
+      p.textStyle(p.BOLD);
+      let timeLeft = timerStarted ? Math.max(0, Math.ceil(GAME_DURATION - elapsedTime)) : GAME_DURATION;
+      p.text(`Time: ${timeLeft}s`, 20, 30);
+
+      p.fill(255, 255, 255, 200);
+      p.stroke(0, 0, 0);
+      p.strokeWeight(3);
+      p.rect(10, 60, 280, 80, 10);
+      p.fill(0);
+      p.noStroke();
+      p.textAlign(p.LEFT, p.TOP);
+      p.textSize(14);
+      p.textStyle(p.NORMAL);
+
+      let angleDegrees = Math.round(crane.angle * 180 / Math.PI);
+      let armLength = Math.round(crane.armLength);
+      let cableLength = Math.round(crane.cable);
+
+      p.text(`🏗️ CRANE METRICS:`, 20, 75);
+      p.text(`Arm Angle: ${angleDegrees}°`, 20, 95);
+      p.text(`Arm Length: ${armLength}px`, 20, 110);
+      p.text(`Cable Length: ${cableLength}px`, 20, 125);
+    }
+
+    // --- Create particle effects ---
+    function createParticles(p, x, y, color, count = 10) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: x + (Math.random() - 0.5) * 10,
+          y: y + (Math.random() - 0.5) * 10,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.5) * 8 - 2,
+          life: 30 + Math.random() * 30,
+          maxLife: 30 + Math.random() * 30,
+          color: color,
+          size: 2 + Math.random() * 4,
+        });
+      }
+    }
+
+    // --- Update the status message ---
+    function updateStatus() {
+      const statusElement = document.getElementById("status");
+      if (gameState === "waiting") {
+        statusElement.textContent = "🕹️ Pick up the worker to start!";
+        statusElement.className = "status playing";
+      } else if (gameState === "playing") {
+        statusElement.textContent = "🎮 Rescue in progress!";
+        statusElement.className = "status playing";
+      } else if (gameState === "win") {
+        statusElement.textContent = "✅ SUCCESS! You survived!";
+        statusElement.className = "status win";
+      } else if (gameState === "fail") {
+        statusElement.textContent = "❌ GAME OVER! Worker was hit or fell!";
+        statusElement.className = "status fail";
+      }
+    }
+
+    // Expose resetGame globally for button onclick
+    window.resetGame = resetGame;
+
+    // Initialize p5 sketch
+    new p5(sketch);
+  </script>
+</body>
+</html>

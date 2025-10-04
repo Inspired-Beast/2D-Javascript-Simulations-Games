@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shuffleboard Puck Simulation</title>
+    <style>
+        body { margin: 0; padding: 20px; font-family: 'Arial', sans-serif; background: linear-gradient(135deg, #1e3c72, #2a5298); min-height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        .container { display: flex; gap: 20px; width: 100%; max-width: 1400px; margin: 0 auto; }
+        .simulation-panel { flex: 1; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 20px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; align-items: center; }
+        .controls-panel { width: 300px; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border-radius: 15px; padding: 25px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); color: white; display: flex; flex-direction: column; justify-content: flex-start; }
+        h1 { text-align: center; color: white; margin-bottom: 30px; font-size: 2em; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3); }
+        .control-group { margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #e0e0e0; }
+        input[type="range"] { width: 100%; height: 8px; border-radius: 5px; background: rgba(255, 255, 255, 0.2); outline: none; -webkit-appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #4CAF50; cursor: pointer; box-shadow: 0 0 10px rgba(76, 175, 80, 0.5); }
+        input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #4CAF50; cursor: pointer; border: none; box-shadow: 0 0 10px rgba(76, 175, 80, 0.5); }
+        button { width: 100%; padding: 12px; margin: 10px 0; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; }
+        .launch-btn { background: linear-gradient(45deg, #FF6B6B, #FF8E53); color: white; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4); }
+        .launch-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6); }
+        .reset-btn { background: linear-gradient(45deg, #4ECDC4, #44A08D); color: white; box-shadow: 0 4px 15px rgba(78, 205, 196, 0.4); }
+        .reset-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(78, 205, 196, 0.6); }
+        .value-display { text-align: center; font-weight: bold; color: #4CAF50; margin-top: 5px; }
+        .info-panel { background: rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 15px; margin-top: 20px; }
+        .legend { display: flex; flex-direction: column; gap: 8px; }
+        .legend-item { display: flex; align-items: center; gap: 10px; }
+        .legend-color { width: 20px; height: 20px; border-radius: 4px; }
+        #canvas-container { border-radius: 10px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); margin-bottom: 0; }
+        .score-display { background: rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 10px; margin-top: 15px; text-align: center; }
+        .score-value { font-size: 24px; font-weight: bold; color: #4CAF50; }
+        .instructions-panel { background: rgba(255,255,255,0.13); border-radius: 12px; padding: 22px 30px 18px 30px; margin: 30px auto 0 auto; max-width: 900px; color: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.13); font-size: 1.08em; }
+        .instructions-panel h3 { color: #ffe082; margin-top: 0; }
+        .instructions-panel p { margin: 6px 0; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+    {
+        "imports": { "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js" }
+    }
+    </script>
+
+    <div class="container">
+        <div class="simulation-panel">          <h1>🏒 Shuffleboard Simulation</h1>          <div id="canvas-container"></div>
+        </div>
+        <div class="controls-panel">
+            <div class="control-group">
+                <label for="power">Shot Power</label>
+                <input type="range" id="power" min="1" max="20" value="10">
+                <div class="value-display" id="powerValue">10</div>
+            </div>
+            <div class="control-group">
+                <label for="angle">Launch Angle (degrees)</label>
+                <input type="range" id="angle" min="-60" max="60" value="0">
+                <div class="value-display" id="angleValue">0°</div>
+            </div>
+            <div class="control-group">
+                <label for="baseFriction">Table Friction (non-waxed)</label>
+                <input type="range" id="baseFriction" min="0.01" max="0.04" step="0.001" value="0.025">
+                <div class="value-display" id="baseFrictionValue">0.025</div>
+            </div>
+            <!-- New: Puck Y Position Slider -->
+            <div class="control-group">
+                <label for="puckY">Puck Y Position</label>
+                <input type="range" id="puckY" min="0" max="1" step="0.001">
+                <div class="value-display" id="puckYValue"></div>
+            </div>
+            <button class="launch-btn" id="launchBtn">🚀 Launch Puck</button>
+            <button class="reset-btn" id="resetBtn">🔄 Reset</button>
+            <div class="score-display">
+                <div>Final Score:</div>
+                <div class="score-value" id="scoreValue">0</div>
+            </div>
+            <div class="info-panel">
+                <h3>Scoring Zones</h3>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255, 215, 0, 0.8);"></div>
+                        <span>3 Points</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255, 140, 0, 0.8);"></div>
+                        <span>2 Points</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255, 100, 100, 0.8);"></div>
+                        <span>1 Point</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(173, 216, 230, 0.6);"></div>
+                        <span>Waxed Areas (Low Friction)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(80, 60, 40, 0.8);"></div>
+                        <span>Gutters</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="instructions-panel">
+        <h3>Instructions</h3>
+        <p>• Adjust power and angle for your shot</p>
+        <p>• Watch the predicted trajectory (dotted line)</p>
+        <p>• Light blue bands = waxed (faster glide, friction shown on surface)</p>
+        <p>• Aim for the vertical scoring bands at the end</p>
+        <p>• Pucks fall off the table into gutters</p>
+    </div>
+
+    <script type="module">
+        import 'p5';
+        // --- Simulation parameters and board setup ---
+        let canvas;
+        let puck;
+        let waxBands = [];
+        let isSimulating = false; // True while puck is moving
+        let predictedPath = [];
+        let finalScore = 0;
+        // User-controlled parameters
+        let power = 10;
+        let angle = 0;
+        let baseFriction = 0.025;
+        // Puck Y position as a fraction (0 to 1) of board height (table only, not gutter)
+        let puckYFrac = 0.5;
+        // Board dimensions and constants
+        const TOTAL_WIDTH = 880;
+        const TOTAL_HEIGHT = 480;
+        const GUTTER_WIDTH = 40;
+        const BOARD_WIDTH = TOTAL_WIDTH - (GUTTER_WIDTH * 2);
+        const BOARD_HEIGHT = TOTAL_HEIGHT - (GUTTER_WIDTH * 2);
+        const PUCK_RADIUS = 15;
+        const PUCK_START_X = GUTTER_WIDTH + 60;
+        // Helper to get puck Y from fraction (always on table, not gutter)
+        function getPuckYFromFrac(frac) {
+            // Table Y range: from GUTTER_WIDTH + PUCK_RADIUS to GUTTER_WIDTH + BOARD_HEIGHT - PUCK_RADIUS
+            return GUTTER_WIDTH + PUCK_RADIUS + frac * (BOARD_HEIGHT - PUCK_RADIUS * 2);
+        }
+        // --- Puck class: handles physics, drawing, and scoring ---
+        class Puck {
+            constructor(x, y) {
+                this.pos = createVector(x, y); // Current position
+                this.vel = createVector(0, 0); // Current velocity
+                this.radius = PUCK_RADIUS;
+                this.trail = []; // For visual trail
+                this.maxTrailLength = 50;
+                this.inGutter = false; // True if puck is in gutter
+                this.scored = false; // True if score has been calculated
+            }
+            // Launch the puck with given power and angle
+            launch(power, angle) {
+                const angleRadians = radians(angle);
+                this.vel = createVector(cos(angleRadians) * power, sin(angleRadians) * power);
+                this.trail = [];
+                this.inGutter = false;
+                this.scored = false;
+                finalScore = 0;
+                document.getElementById('scoreValue').textContent = '0';
+                isSimulating = true;
+                // Disable launch button and y-slider after launch
+                document.getElementById('launchBtn').disabled = true;
+                document.getElementById('puckY').disabled = true;
+            }
+            // Update puck position and handle friction, gutter, and scoring
+            update() {
+                if (!isSimulating) return;
+                // Add current position to trail for visual effect
+                this.trail.push(this.pos.copy());
+                if (this.trail.length > this.maxTrailLength) {
+                    this.trail.shift();
+                }
+                // Check if puck has fallen into gutters
+                if (!this.inGutter) {
+                    if (
+                        this.pos.x <= GUTTER_WIDTH ||
+                        this.pos.x >= TOTAL_WIDTH - GUTTER_WIDTH ||
+                        this.pos.y <= GUTTER_WIDTH ||
+                        this.pos.y >= TOTAL_HEIGHT - GUTTER_WIDTH
+                    ) {
+                        this.inGutter = true;
+                        this.vel.mult(0.3); // Slow down in gutter
+                        // Calculate score if not already scored
+                        if (!this.scored) {
+                            finalScore = this.calculateScore();
+                            document.getElementById('scoreValue').textContent = finalScore;
+                            this.scored = true;
+                        }
+                    }
+                }
+                // Get friction at current position (only on table, not in gutters)
+                let friction = baseFriction;
+                if (!this.inGutter) {
+                    friction = getFrictionAtPosition(this.pos.x, this.pos.y);
+                } else {
+                    friction = 0.08; // Higher friction in gutters
+                }
+                // Apply friction to velocity
+                const frictionForce = p5.Vector.mult(this.vel, -friction);
+                this.vel.add(frictionForce);
+                // Update position
+                this.pos.add(this.vel);
+                // No bouncing - just stop at boundaries
+                if (this.inGutter) {
+                    // Keep puck within total canvas bounds
+                    this.pos.x = constrain(this.pos.x, this.radius, TOTAL_WIDTH - this.radius);
+                    this.pos.y = constrain(this.pos.y, this.radius, TOTAL_HEIGHT - this.radius);
+                }
+                // Stop if velocity is very small
+                if (this.vel.mag() < 0.1) {
+                    this.vel.mult(0);
+                    isSimulating = false;
+                    // Calculate final score if still on table
+                    if (!this.inGutter && !this.scored) {
+                        finalScore = this.calculateScore();
+                        document.getElementById('scoreValue').textContent = finalScore;
+                        this.scored = true;
+                    }
+                    // Disable launch button and y-slider after simulation ends
+                    document.getElementById('launchBtn').disabled = true;
+                    document.getElementById('puckY').disabled = true;
+                }
+            }
+            // Calculate score based on which vertical band the puck stops in (vertical bands)
+            calculateScore() {
+                // Only score if puck is in the scoring zone (far end of table)
+                const scoringZoneStart = GUTTER_WIDTH + BOARD_WIDTH - 120;
+                if (
+                    this.pos.x >= scoringZoneStart &&
+                    this.pos.x <= GUTTER_WIDTH + BOARD_WIDTH &&
+                    this.pos.y >= GUTTER_WIDTH &&
+                    this.pos.y <= GUTTER_WIDTH + BOARD_HEIGHT
+                ) {
+                    // Divide the scoring zone into 3 vertical bands (left to right)
+                    const zoneWidth = 120;
+                    const bandWidth = zoneWidth / 3;
+                    const relativeX = this.pos.x - scoringZoneStart;
+                    if (relativeX < bandWidth) {
+                        return 1; // Left band
+                    } else if (relativeX < bandWidth * 2) {
+                        return 2; // Middle band
+                    } else {
+                        return 3; // Right band
+                    }
+                }
+                return 0; // No score
+            }
+            // Draw the puck and its trail
+            draw() {
+                // Draw trail
+                stroke(255, 100, 100, 150);
+                strokeWeight(3);
+                noFill();
+                beginShape();
+                for (let i = 0; i < this.trail.length; i++) {
+                    const alpha = map(i, 0, this.trail.length - 1, 0, 150);
+                    stroke(255, 100, 100, alpha);
+                    vertex(this.trail[i].x, this.trail[i].y);
+                }
+                endShape();
+                // Draw puck with different appearance if in gutter
+                if (this.inGutter) {
+                    fill(100, 100, 150); // Darker color in gutter
+                    stroke(150);
+                } else {
+                    fill(50, 150, 255);
+                    stroke(255);
+                }
+                strokeWeight(3);
+                circle(this.pos.x, this.pos.y, this.radius * 2);
+                // Draw inner circle
+                fill(255, 255, 255, this.inGutter ? 50 : 100);
+                noStroke();
+                circle(this.pos.x, this.pos.y, this.radius);
+            }
+            // Reset puck to starting position
+            reset() {
+                this.pos.set(PUCK_START_X, getPuckYFromFrac(puckYFrac));
+                this.vel.set(0, 0);
+                this.trail = [];
+                this.inGutter = false;
+                this.scored = false;
+                finalScore = 0;
+                document.getElementById('scoreValue').textContent = '0';
+                isSimulating = false;
+                // Enable launch button and y-slider after reset
+                document.getElementById('launchBtn').disabled = false;
+                document.getElementById('puckY').disabled = false;
+            }
+            // Set puck Y position (before launch)
+            setY(y) {
+                this.pos.y = y;
+            }
+        }
+        // --- WaxBand class: vertical waxed patches (not full height, not overlapping) ---
+        class WaxBand {
+            constructor(x, y, width, height, frictionCoeff) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.friction = frictionCoeff;
+            }
+            // Check if a point is inside this band
+            contains(x, y) {
+                return (
+                    x >= this.x &&
+                    x <= this.x + this.width &&
+                    y >= this.y &&
+                    y <= this.y + this.height
+                );
+            }
+            // Draw the wax band and show its friction coefficient
+            draw() {
+                fill(173, 216, 230, 120);
+                stroke(135, 206, 235, 150);
+                strokeWeight(2);
+                rect(this.x, this.y, this.width, this.height, 8);
+                // Show friction coefficient on the band
+                fill(0, 80, 180, 120);
+                noStroke();
+                textSize(14);
+                textAlign(CENTER, TOP);
+                text(
+                    "μ=" + this.friction.toFixed(3),
+                    this.x + this.width / 2,
+                    this.y + 8
+                );
+            }
+        }
+        // --- Get friction at a given position (checks wax bands first) ---
+        function getFrictionAtPosition(x, y) {
+            for (let band of waxBands) {
+                if (band.contains(x, y)) {
+                    return band.friction;
+                }
+            }
+            return baseFriction;
+        }
+        // --- Generate vertical wax bands as uneven patches (not full height, not overlapping) ---
+        function generateWaxBands() {
+            waxBands = [];
+            const numBands = 3 + Math.floor(random(2)); // 3 or 4 bands
+            const minBandWidth = 70;
+            const maxBandWidth = 120;
+            const minBandHeight = 80;
+            const maxBandHeight = BOARD_HEIGHT / 2;
+            const marginX = 120;
+            const marginY = 20;
+            let attempts = 0;
+            let maxAttempts = 100;
+            // Helper to check overlap
+            function isOverlapping(x, y, w, h, bands) {
+                for (let band of bands) {
+                    if (
+                        x < band.x + band.width &&
+                        x + w > band.x &&
+                        y < band.y + band.height &&
+                        y + h > band.y
+                    ) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            // Try to place non-overlapping wax bands
+            while (waxBands.length < numBands && attempts < maxAttempts) {
+                let width = random(minBandWidth, maxBandWidth);
+                let height = random(minBandHeight, maxBandHeight);
+                let x = GUTTER_WIDTH + marginX + random(0, BOARD_WIDTH - marginX - width - 120);
+                let y = GUTTER_WIDTH + marginY + random(0, BOARD_HEIGHT - marginY - height);
+                let friction = random(0.003, 0.008);
+                if (!isOverlapping(x, y, width, height, waxBands)) {
+                    waxBands.push(new WaxBand(x, y, width, height, friction));
+                }
+                attempts++;
+            }
+        }
+        // --- Predict the puck's path for the current settings ---
+        function calculatePredictedPath() {
+            if (isSimulating) return;
+            predictedPath = [];
+            let testPos = createVector(PUCK_START_X, getPuckYFromFrac(puckYFrac));
+            let testVel = createVector(
+                cos(radians(angle)) * power,
+                sin(radians(angle)) * power
+            );
+            let testInGutter = false;
+            for (let i = 0; i < 300 && testVel.mag() > 0.1; i++) {
+                predictedPath.push(testPos.copy());
+                // Check if in gutter
+                if (!testInGutter) {
+                    if (
+                        testPos.x <= GUTTER_WIDTH ||
+                        testPos.x >= TOTAL_WIDTH - GUTTER_WIDTH ||
+                        testPos.y <= GUTTER_WIDTH ||
+                        testPos.y >= TOTAL_HEIGHT - GUTTER_WIDTH
+                    ) {
+                        testInGutter = true;
+                    }
+                }
+                let friction = baseFriction;
+                if (!testInGutter) {
+                    friction = getFrictionAtPosition(testPos.x, testPos.y);
+                } else {
+                    friction = 0.08;
+                }
+                const frictionForce = p5.Vector.mult(testVel, -friction);
+                testVel.add(frictionForce);
+                testPos.add(testVel);
+                // Constrain to canvas bounds
+                if (testInGutter) {
+                    testPos.x = constrain(testPos.x, PUCK_RADIUS, TOTAL_WIDTH - PUCK_RADIUS);
+                    testPos.y = constrain(testPos.y, PUCK_RADIUS, TOTAL_HEIGHT - PUCK_RADIUS);
+                }
+            }
+        }
+        // --- Draw the predicted path as a dotted line ---
+        function drawPredictedPath() {
+            if (isSimulating || predictedPath.length === 0) return;
+            stroke(255, 255, 255, 150);
+            strokeWeight(2);
+            for (let i = 0; i < predictedPath.length - 1; i++) {
+                const alpha = map(i, 0, predictedPath.length - 1, 150, 50);
+                stroke(255, 255, 255, alpha);
+                if (i % 8 < 4) {
+                    line(
+                        predictedPath[i].x,
+                        predictedPath[i].y,
+                        predictedPath[i + 1].x,
+                        predictedPath[i + 1].y
+                    );
+                }
+            }
+        }
+        // --- Draw the shuffleboard table, gutters, and scoring bands ---
+        function drawBoard() {
+            // Draw gutters
+            fill(80, 60, 40);
+            noStroke();
+            rect(0, 0, TOTAL_WIDTH, TOTAL_HEIGHT);
+            // Draw table surface
+            fill(160, 130, 90);
+            stroke(120, 90, 60);
+            strokeWeight(8);
+            rect(GUTTER_WIDTH, GUTTER_WIDTH, BOARD_WIDTH, BOARD_HEIGHT, 10);
+            // Wood grain effect
+            stroke(140, 110, 80, 100);
+            strokeWeight(1);
+            for (let i = GUTTER_WIDTH; i < GUTTER_WIDTH + BOARD_WIDTH; i += 60) {
+                line(i, GUTTER_WIDTH, i + 20, GUTTER_WIDTH + BOARD_HEIGHT);
+            }
+            // Starting line
+            stroke(255, 255, 255);
+            strokeWeight(4);
+            line(
+                GUTTER_WIDTH + 80,
+                GUTTER_WIDTH,
+                GUTTER_WIDTH + 80,
+                GUTTER_WIDTH + BOARD_HEIGHT
+            );
+            // Draw scoring zones as vertical bands at the end (parallel to y-axis)
+            drawScoringZones();
+        }
+        // --- Draw vertical scoring bands at the far end of the table (parallel to y-axis) ---
+        function drawScoringZones() {
+            const zoneStart = GUTTER_WIDTH + BOARD_WIDTH - 120;
+            const zoneWidth = 120;
+            const bandWidth = zoneWidth / 3;
+            // 1 point band (left)
+            fill(255, 100, 100, 180);
+            stroke(255, 255, 255);
+            strokeWeight(2);
+            rect(zoneStart, GUTTER_WIDTH, bandWidth, BOARD_HEIGHT);
+            // 2 point band (middle)
+            fill(255, 140, 0, 180);
+            rect(zoneStart + bandWidth, GUTTER_WIDTH, bandWidth, BOARD_HEIGHT);
+            // 3 point band (right)
+            fill(255, 215, 0, 180);
+            rect(zoneStart + bandWidth * 2, GUTTER_WIDTH, bandWidth, BOARD_HEIGHT);
+            // Score labels (centered in each band)
+            fill(255, 255, 255);
+            stroke(0, 0, 0);
+            strokeWeight(1);
+            textAlign(CENTER, CENTER);
+            textSize(24);
+            textStyle(BOLD);
+            text("1", zoneStart + bandWidth / 2, GUTTER_WIDTH + BOARD_HEIGHT / 2);
+            text("2", zoneStart + bandWidth * 1.5, GUTTER_WIDTH + BOARD_HEIGHT / 2);
+            text("3", zoneStart + bandWidth * 2.5, GUTTER_WIDTH + BOARD_HEIGHT / 2);
+        }
+        // --- p5.js setup function ---
+        window.setup = function () {
+            canvas = createCanvas(TOTAL_WIDTH, TOTAL_HEIGHT);
+            canvas.parent('canvas-container');
+            puck = new Puck(PUCK_START_X, getPuckYFromFrac(puckYFrac));
+            generateWaxBands();
+            calculatePredictedPath();
+        };
+        // --- p5.js draw function ---
+        window.draw = function () {
+            background(240, 240, 240);
+            drawBoard();
+            // Draw wax bands (patches)
+            for (let band of waxBands) {
+                band.draw();
+            }
+            drawPredictedPath();
+            puck.update();
+            puck.draw();
+            // Draw launch indicator (arrow) if not simulating
+            if (!isSimulating) {
+                stroke(255, 100, 100);
+                strokeWeight(3);
+                const endX = PUCK_START_X + cos(radians(angle)) * power * 3;
+                const endY = puck.pos.y + sin(radians(angle)) * power * 3;
+                line(PUCK_START_X, puck.pos.y, endX, endY);
+                // Arrow head
+                push();
+                translate(endX, endY);
+                rotate(radians(angle));
+                fill(255, 100, 100);
+                noStroke();
+                triangle(0, 0, -10, -5, -10, 5);
+                pop();
+            }
+        };
+        // --- UI Event listeners for controls ---
+        document.getElementById('power').addEventListener('input', function (e) {
+            power = parseFloat(e.target.value);
+            document.getElementById('powerValue').textContent = power;
+            calculatePredictedPath();
+        });
+        document.getElementById('angle').addEventListener('input', function (e) {
+            angle = parseFloat(e.target.value);
+            document.getElementById('angleValue').textContent = angle + '°';
+            calculatePredictedPath();
+        });
+        document.getElementById('baseFriction').addEventListener('input', function (e) {
+            baseFriction = parseFloat(e.target.value);
+            document.getElementById('baseFrictionValue').textContent = baseFriction.toFixed(3);
+            calculatePredictedPath();
+        });
+        // --- New: Puck Y Position slider ---
+        const puckYSlider = document.getElementById('puckY');
+        const puckYValue = document.getElementById('puckYValue');
+        // Set slider min/max and initial value
+        puckYSlider.value = puckYFrac;
+        function updatePuckYDisplay() {
+            // Show y in pixels, rounded
+            const yPix = Math.round(getPuckYFromFrac(puckYFrac));
+            puckYValue.textContent = yPix + " cm";
+        }
+        updatePuckYDisplay();
+        puckYSlider.addEventListener('input', function (e) {
+            puckYFrac = parseFloat(e.target.value);
+            if (!isSimulating) {
+                // Move puck visually before launch
+                puck.setY(getPuckYFromFrac(puckYFrac));
+                calculatePredictedPath();
+            }
+            updatePuckYDisplay();
+        });
+        // --- Launch button: only works if not simulating and not already shot ---
+        document.getElementById('launchBtn').addEventListener('click', function () {
+            if (!isSimulating && !this.disabled) {
+                puck.launch(power, angle);
+            }
+        });
+        // --- Reset button: resets puck, wax bands, and enables launch ---
+        document.getElementById('resetBtn').addEventListener('click', function () {
+            puck.reset();
+            generateWaxBands();
+            calculatePredictedPath();
+        });
+        // --- Initialize control displays and launch button state ---
+        document.getElementById('powerValue').textContent = power;
+        document.getElementById('angleValue').textContent = angle + '°';
+        document.getElementById('baseFrictionValue').textContent = baseFriction.toFixed(3);
+        document.getElementById('launchBtn').disabled = false;
+        puckYSlider.disabled = false;
+    </script>
+</body>
+</html>

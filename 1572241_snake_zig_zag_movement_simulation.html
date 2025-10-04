@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Column-by-Column Zigzag Snake</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      color: #eee;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 20px;
+      user-select: none;
+    }
+    #stats {
+      display: flex;
+      gap: 30px;
+      margin: 10px 0;
+      font-size: 1.2em;
+      font-weight: 600;
+    }
+    #foodEaten {
+      color: #28a745;
+      text-shadow: 0 0 8px #28a74588;
+    }
+    #totalFood {
+      color: #ffc107;
+      text-shadow: 0 0 8px #ffc10788;
+    }
+    #snakeLength {
+      color: #17a2b8;
+      text-shadow: 0 0 8px #17a2b888;
+    }
+    #currentColumn {
+      color: #e83e8c;
+      text-shadow: 0 0 8px #e83e8c88;
+    }
+    #direction {
+      color: #fd7e14;
+      text-shadow: 0 0 8px #fd7e1488;
+    }
+    #resetBtn {
+      margin: 15px 0 0 0;
+      padding: 12px 28px;
+      font-size: 1.1em;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(45deg, #28a745, #20c997);
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 6px 15px rgba(40, 167, 69, 0.4);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    #resetBtn:hover {
+      background: linear-gradient(45deg, #218838, #1ea085);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(40, 167, 69, 0.6);
+    }
+    canvas {
+      border: 4px solid #333;
+      border-radius: 15px;
+      margin-top: 20px;
+      background: linear-gradient(135deg, #0f0f23, #1a1a2e);
+      box-shadow: 0 0 30px #0d0d0d inset, 0 10px 30px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="stats">
+    <div id="foodEaten">Food Eaten: 0</div>
+    <div id="totalFood">Total Food: 0</div>
+    <div id="snakeLength">Snake Length: 3</div>
+    <div id="currentColumn">Column: 1/20</div>
+    <div id="direction">Direction: Down-Right</div>
+  </div>
+  <button id="resetBtn">Reset Simulation</button>
+
+  <!-- Load p5.js globally -->
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import p5 from 'p5';
+
+    // Config
+    const COLS = 20;
+    const ROWS = 16;
+    const CELL_SIZE = 32;
+    const CANVAS_W = COLS * CELL_SIZE;
+    const CANVAS_H = ROWS * CELL_SIZE;
+    const MOVE_INTERVAL = 130;
+    const MAX_FOOD_ITEMS = 15;
+
+    // Colors & Styles
+    const COLORS = {
+      snakeBody: '#2ecc71',
+      snakeHead: '#27ae60',
+      snakeEye: '#fff',
+      texturedCell: '#34495e',
+      texturedPattern: '#2c3e50',
+      nonTexturedCell: '#1a252f',
+      gridLine: '#2c3e50',
+      background: '#0f0f23',
+      mouse: '#8b4513',
+      cheese: '#ffd700',
+      apple: '#e74c3c',
+      berry: '#9b59b6',
+      trail: '#1abc9c',
+      currentColumn: '#e74c3c',
+    };
+
+    // Food types
+    const FOOD_TYPES = [
+      { name: 'mouse', color: COLORS.mouse, emoji: '🐭', size: 0.8 },
+      { name: 'cheese', color: COLORS.cheese, emoji: '🧀', size: 0.7 },
+      { name: 'apple', color: COLORS.apple, emoji: '🍎', size: 0.75 },
+      { name: 'berry', color: COLORS.berry, emoji: '🫐', size: 0.6 },
+      { name: 'fish', color: '#3498db', emoji: '🐟', size: 0.7 },
+    ];
+
+    // State variables
+    let snake;
+    let foods;
+    let foodEaten;
+    let moveTimer;
+    let running;
+    let visitedCells;
+    
+    // Column-by-column zigzag state
+    let currentColumn;
+    let movingDown; // true = top to bottom, false = bottom to top
+    let zigzagDirection; // 1 = right diagonal, -1 = left diagonal
+    let columnDirection; // 1 = left to right columns, -1 = right to left columns
+
+    // DOM elements
+    let foodEatenDiv = document.getElementById('foodEaten');
+    let totalFoodDiv = document.getElementById('totalFood');
+    let snakeLengthDiv = document.getElementById('snakeLength');
+    let currentColumnDiv = document.getElementById('currentColumn');
+    let directionDiv = document.getElementById('direction');
+    let resetBtn = document.getElementById('resetBtn');
+
+    // Check if cell is textured
+    function isTexturedCell(x, y) {
+      return (x + y) % 2 === 0;
+    }
+
+    // Get random food type
+    function getRandomFoodType() {
+      return FOOD_TYPES[Math.floor(Math.random() * FOOD_TYPES.length)];
+    }
+
+    // Pick random cell not occupied
+    function randomFreeCell(excludePositions) {
+      const candidates = [];
+      for (let x = 0; x < COLS; x++) {
+        for (let y = 0; y < ROWS; y++) {
+          if (!excludePositions.some(pos => pos.x === x && pos.y === y)) {
+            candidates.push({ x, y });
+          }
+        }
+      }
+      if (candidates.length === 0) return null;
+      return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+
+    // Replenish food
+    function replenishFood() {
+      while (foods.length < MAX_FOOD_ITEMS) {
+        const exclude = [...snake, ...foods];
+        const newPos = randomFreeCell(exclude);
+        if (!newPos) break;
+        
+        const foodType = getRandomFoodType();
+        foods.push({
+          x: newPos.x,
+          y: newPos.y,
+          type: foodType.name,
+          color: foodType.color,
+          emoji: foodType.emoji,
+          size: foodType.size
+        });
+      }
+      totalFoodDiv.textContent = `Total Food: ${foods.length}`;
+    }
+
+    // Update display information
+    function updateDisplay() {
+      currentColumnDiv.textContent = `Column: ${currentColumn + 1}/${COLS}`;
+      
+      let dirText = '';
+      if (movingDown) {
+        dirText = zigzagDirection === 1 ? 'Down-Right' : 'Down-Left';
+      } else {
+        dirText = zigzagDirection === 1 ? 'Up-Right' : 'Up-Left';
+      }
+      directionDiv.textContent = `Direction: ${dirText}`;
+    }
+
+    // Reset game
+    function resetGame() {
+      // Start at top-left corner
+      snake = [
+        { x: 0, y: 0 },
+        { x: 0, y: 1 },
+        { x: 0, y: 2 },
+      ];
+      
+      foodEaten = 0;
+      foods = [];
+      visitedCells = new Set();
+      
+      // Initialize column-by-column zigzag state
+      currentColumn = 0;
+      movingDown = true; // Start moving down
+      zigzagDirection = 1; // Start with right diagonal
+      columnDirection = 1; // Move left to right through columns
+      
+      // Mark initial positions as visited
+      snake.forEach(seg => visitedCells.add(`${seg.x},${seg.y}`));
+      
+      replenishFood();
+      moveTimer = 0;
+      running = true;
+      
+      foodEatenDiv.textContent = `Food Eaten: ${foodEaten}`;
+      snakeLengthDiv.textContent = `Snake Length: ${snake.length}`;
+      updateDisplay();
+    }
+
+    // p5 sketch
+    new p5((p) => {
+      p.setup = () => {
+        p.createCanvas(CANVAS_W, CANVAS_H);
+        p.frameRate(60);
+        p.textAlign(p.CENTER, p.CENTER);
+        resetGame();
+      };
+
+      p.draw = () => {
+        p.background(COLORS.background);
+        drawGrid(p);
+        drawCurrentColumn(p);
+        drawVisitedCells(p);
+        drawFoods(p);
+        drawSnake(p);
+
+        if (!running) {
+          drawComplete(p);
+          return;
+        }
+
+        moveTimer += p.deltaTime;
+        if (moveTimer >= MOVE_INTERVAL) {
+          moveTimer = 0;
+          moveSnake();
+        }
+      };
+
+      // Draw grid
+      function drawGrid(p) {
+        for (let x = 0; x < COLS; x++) {
+          for (let y = 0; y < ROWS; y++) {
+            const px = x * CELL_SIZE;
+            const py = y * CELL_SIZE;
+            
+            if (isTexturedCell(x, y)) {
+              p.fill(COLORS.texturedCell);
+              p.noStroke();
+              p.rect(px, py, CELL_SIZE, CELL_SIZE);
+              
+              // Grass texture
+              p.stroke(COLORS.texturedPattern);
+              p.strokeWeight(1);
+              for (let i = 0; i < 3; i++) {
+                const grassX = px + 6 + i * 8;
+                const grassY = py + 10 + Math.sin(x + y + i) * 3;
+                p.line(grassX, grassY, grassX, grassY + 10);
+              }
+            } else {
+              p.fill(COLORS.nonTexturedCell);
+              p.noStroke();
+              p.rect(px, py, CELL_SIZE, CELL_SIZE);
+              
+              // Stone pattern
+              p.stroke(COLORS.gridLine);
+              p.strokeWeight(0.5);
+              p.noFill();
+              p.ellipse(px + CELL_SIZE/2, py + CELL_SIZE/2, CELL_SIZE * 0.7);
+            }
+          }
+        }
+      }
+
+      // Highlight current column being processed
+      function drawCurrentColumn(p) {
+        const px = currentColumn * CELL_SIZE;
+        p.stroke(COLORS.currentColumn);
+        p.strokeWeight(3);
+        p.noFill();
+        p.rect(px, 0, CELL_SIZE, CANVAS_H);
+      }
+
+      // Draw visited cells trail
+      function drawVisitedCells(p) {
+        visitedCells.forEach(cellKey => {
+          const [x, y] = cellKey.split(',').map(Number);
+          const px = x * CELL_SIZE;
+          const py = y * CELL_SIZE;
+          
+          p.fill(COLORS.trail + '25'); // Semi-transparent trail
+          p.noStroke();
+          p.rect(px + 4, py + 4, CELL_SIZE - 8, CELL_SIZE - 8, 4);
+        });
+      }
+
+      // Draw snake
+      function drawSnake(p) {
+        for (let i = 0; i < snake.length; i++) {
+          const seg = snake[i];
+          const px = seg.x * CELL_SIZE;
+          const py = seg.y * CELL_SIZE;
+          const isHead = i === snake.length - 1;
+          
+          p.noStroke();
+          p.fill(isHead ? COLORS.snakeHead : COLORS.snakeBody);
+          p.rect(px + 3, py + 3, CELL_SIZE - 6, CELL_SIZE - 6, 8);
+          
+          if (isHead) {
+            // Eyes
+            p.fill(COLORS.snakeEye);
+            p.ellipse(px + 10, py + 10, 5);
+            p.ellipse(px + CELL_SIZE - 10, py + 10, 5);
+            p.fill('#000');
+            p.ellipse(px + 10, py + 10, 2);
+            p.ellipse(px + CELL_SIZE - 10, py + 10, 2);
+          } else {
+            // Scales
+            p.stroke('#1e8449');
+            p.strokeWeight(1);
+            p.line(px + 6, py + CELL_SIZE/2, px + CELL_SIZE - 6, py + CELL_SIZE/2);
+          }
+        }
+      }
+
+      // Draw food
+      function drawFoods(p) {
+        foods.forEach(food => {
+          const px = food.x * CELL_SIZE + CELL_SIZE / 2;
+          const py = food.y * CELL_SIZE + CELL_SIZE / 2;
+          const canEat = isTexturedCell(food.x, food.y);
+          
+          p.push();
+          
+          if (!canEat) {
+            p.tint(255, 120);
+          }
+          
+          p.noStroke();
+          p.fill(food.color);
+          p.ellipse(px, py, CELL_SIZE * food.size);
+          
+          if (canEat) {
+            p.drawingContext.shadowColor = food.color;
+            p.drawingContext.shadowBlur = 10;
+            p.ellipse(px, py, CELL_SIZE * food.size);
+          }
+          
+          p.fill('#fff');
+          p.textSize(CELL_SIZE * 0.5);
+          p.text(food.emoji, px, py);
+          
+          p.pop();
+        });
+      }
+
+      // COLUMN-BY-COLUMN ZIGZAG MOVEMENT
+      function moveSnake() {
+        const head = snake[snake.length - 1];
+        let next = { x: head.x, y: head.y };
+
+        // Move in zigzag pattern within current column
+        if (movingDown) {
+          // Moving down in zigzag
+          if (zigzagDirection === 1) {
+            // Down-right diagonal
+            next.x += 1;
+            next.y += 1;
+          } else {
+            // Down-left diagonal
+            next.x -= 1;
+            next.y += 1;
+          }
+        } else {
+          // Moving up in zigzag
+          if (zigzagDirection === 1) {
+            // Up-right diagonal
+            next.x += 1;
+            next.y -= 1;
+          } else {
+            // Up-left diagonal
+            next.x -= 1;
+            next.y -= 1;
+          }
+        }
+
+        // Handle column boundaries and transitions
+        let needsColumnChange = false;
+
+        // Check if we've reached the bottom or top of current column area
+        if (movingDown && next.y >= ROWS) {
+          // Reached bottom - switch to moving up
+          movingDown = false;
+          next.y = ROWS - 1;
+          needsColumnChange = true;
+        } else if (!movingDown && next.y < 0) {
+          // Reached top - switch to moving down
+          movingDown = true;
+          next.y = 0;
+          needsColumnChange = true;
+        }
+
+        // Handle horizontal boundaries within zigzag
+        if (next.x < 0) {
+          next.x = 0;
+          zigzagDirection = 1; // Switch to right diagonal
+        } else if (next.x >= COLS) {
+          next.x = COLS - 1;
+          zigzagDirection = -1; // Switch to left diagonal
+        }
+
+        // Column transition logic
+        if (needsColumnChange) {
+          // Move to next column
+          if (columnDirection === 1) {
+            // Moving left to right
+            currentColumn++;
+            if (currentColumn >= COLS) {
+              // Reached rightmost column, switch direction
+              currentColumn = COLS - 1;
+              columnDirection = -1;
+            }
+          } else {
+            // Moving right to left
+            currentColumn--;
+            if (currentColumn < 0) {
+              // Reached leftmost column, switch direction
+              currentColumn = 0;
+              columnDirection = 1;
+            }
+          }
+          
+          // Position snake at the start of new column
+          next.x = currentColumn;
+          if (movingDown) {
+            next.y = 0; // Start from top
+          } else {
+            next.y = ROWS - 1; // Start from bottom
+          }
+          
+          updateDisplay();
+        }
+
+        // Alternate zigzag direction for next move
+        zigzagDirection *= -1;
+
+        // Check for collision with self
+        if (snake.some(seg => seg.x === next.x && seg.y === next.y)) {
+          // Try alternative moves
+          const alternatives = [
+            { x: head.x + 1, y: head.y }, // Right
+            { x: head.x - 1, y: head.y }, // Left
+            { x: head.x, y: head.y + 1 }, // Down
+            { x: head.x, y: head.y - 1 }, // Up
+          ].filter(pos => 
+            pos.x >= 0 && pos.x < COLS && 
+            pos.y >= 0 && pos.y < ROWS &&
+            !snake.some(seg => seg.x === pos.x && seg.y === pos.y)
+          );
+          
+          if (alternatives.length > 0) {
+            next = alternatives[0];
+          } else {
+            // All columns covered
+            running = false;
+            return;
+          }
+        }
+
+        // Add to visited cells
+        visitedCells.add(`${next.x},${next.y}`);
+        snake.push(next);
+
+        // Check food consumption
+        const foodIndex = foods.findIndex(
+          f => f.x === next.x && f.y === next.y && isTexturedCell(f.x, f.y)
+        );
+        
+        if (foodIndex !== -1) {
+          foodEaten++;
+          foodEatenDiv.textContent = `Food Eaten: ${foodEaten}`;
+          snakeLengthDiv.textContent = `Snake Length: ${snake.length}`;
+          foods.splice(foodIndex, 1);
+          replenishFood();
+          // Snake grows
+        } else {
+          // Normal move
+          snake.shift();
+        }
+
+        updateDisplay();
+      }
+
+      // Draw completion message
+      function drawComplete(p) {
+        p.push();
+        p.fill('rgba(0,0,0,0.8)');
+        p.rect(0, 0, CANVAS_W, CANVAS_H);
+        
+        p.fill('#28a745');
+        p.textAlign(p.CENTER, p.CENTER);
+        p.textSize(28);
+        p.textStyle(p.BOLD);
+        p.text('All Columns Covered!', CANVAS_W / 2, CANVAS_H / 2 - 20);
+        
+        p.textSize(16);
+        p.fill('#fff');
+        p.text(`Grid Coverage Complete`, CANVAS_W / 2, CANVAS_H / 2 + 10);
+        p.text('Press Reset for new simulation', CANVAS_W / 2, CANVAS_H / 2 + 35);
+        p.pop();
+      }
+    });
+
+    // Event listeners
+    resetBtn.addEventListener('click', resetGame);
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'r') resetGame();
+    });
+  </script>
+</body>
+</html>

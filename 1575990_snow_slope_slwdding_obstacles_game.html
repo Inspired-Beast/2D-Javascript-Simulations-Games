@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sled Racing Game</title>
+    <!-- Styles -->
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #2C3E50, #34495E);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        .game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        .title {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 1.8em;
+            z-index: 100;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            font-weight: bold;
+        }
+        .controls {
+            position: absolute;
+            top: 58px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            z-index: 100;
+            text-align: center;
+            font-size: 1em;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            background: rgba(44, 62, 80, 0.7);
+            padding: 10px 22px;
+            border-radius: 12px;
+            margin-top: 10px;
+        }
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw !important;
+            height: 100vh !important;
+            background: #fff;
+            display: block;
+        }
+        .hud {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 1.1em;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        .hud-item {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+            min-width: 150px;
+        }
+        .hud-value {
+            color: #3498DB;
+            margin-left: 10px;
+        }
+        .reset-button {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(45deg, #E74C3C, #C0392B);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1.1em;
+            border-radius: 25px;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+        }
+        .reset-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(231, 76, 60, 0.6);
+        }
+        .game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+        }
+        .game-over-screen h2 {
+            color: #E74C3C;
+            margin-bottom: 20px;
+            font-size: 2em;
+        }
+        .game-over-screen.victory h2 {
+            color: #27AE60;
+        }
+        .power-up-indicators {
+            position: absolute;
+            top: 110px;
+            left: 20px;
+            z-index: 100;
+        }
+        .power-up-indicator {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            margin: 5px 0;
+            font-weight: bold;
+            backdrop-filter: blur(5px);
+        }
+        .shield-indicator {
+            background: rgba(52, 152, 219, 0.8);
+        }
+        .speed-indicator {
+            background: rgba(241, 196, 15, 0.8);
+        }
+    </style>
+    <!-- Import map for ESM modules -->
+    <script type="importmap">
+        {
+          "imports": {
+            "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm",
+            "matter-js": "https://cdn.jsdelivr.net/npm/matter-js@0.19.0/+esm"
+          }
+        }
+    </script>
+</head>
+<body>
+    <div class="game-container">
+        <h1 class="title">❄️ Sled Racing Adventure ❄️</h1>
+        <div class="controls">
+            Use ← → arrow keys to steer &nbsp;|&nbsp; Hold SPACEBAR for speed boost
+        </div>
+        <div class="hud">
+            <div class="hud-item">
+                <span>Speed:</span>
+                <span id="speedDisplay" class="hud-value">0</span>
+            </div>
+            <div class="hud-item">
+                <span>Time:</span>
+                <span id="timeDisplay" class="hud-value">0.0s</span>
+            </div>
+            <div class="hud-item">
+                <span>Distance:</span>
+                <span id="distanceDisplay" class="hud-value">2000m</span>
+            </div>
+            <div class="hud-item">
+                <span>Power-ups:</span>
+                <span id="powerupsDisplay" class="hud-value">0</span>
+            </div>
+        </div>
+        <div class="power-up-indicators" id="powerUpIndicators"></div>
+        <div id="gameOverScreen" class="game-over-screen" style="display: none;">
+            <h2 id="gameOverTitle">Game Over!</h2>
+            <p id="gameOverText">You crashed!</p>
+            <br>
+            <button class="reset-button" onclick="resetGame()">Try Again</button>
+        </div>
+        <button class="reset-button" onclick="resetGame()">Reset Game</button>
+    </div>
+    <!-- Main game script as a module -->
+    <script type="module">
+        // Import p5 and Matter.js as ESM modules
+        import p5 from "p5";
+        import Matter from "matter-js";
+
+        // --- Game variables ---
+        let engine, world, sled;
+        let obstacles = [];
+        let powerUps = [];
+        let particles = [];
+        let snowflakes = [];
+        let camera = { x: 0, y: 0 };
+        let gameState = 'playing';
+        let startTime;
+        let gameTime = 0;
+        let speed = 0;
+        let powerUpCount = 0;
+        let shieldActive = false;
+        let speedBoostActive = false;
+        let shieldTimer = 0;
+        let speedBoostTimer = 0;
+
+        // --- Game constants ---
+        let CANVAS_WIDTH, CANVAS_HEIGHT;
+        const WORLD_WIDTH = 1600;
+        const WORLD_HEIGHT = 4000;
+        const FINISH_LINE_Y = WORLD_HEIGHT - 200;
+        const TRACK_WIDTH = 1200;
+        const GUARD_RAIL_OFFSET = 600;
+
+        // Tree lines for both sides of the guard rails
+        let leftTreeLine = [];
+        let rightTreeLine = [];
+
+        // Input handling
+        let keys = {};
+
+        // --- p5.js sketch ---
+        new p5((sk) => {
+            // Setup function: initializes canvas and game world
+            sk.setup = function() {
+                CANVAS_WIDTH = window.innerWidth;
+                CANVAS_HEIGHT = window.innerHeight;
+                let canvas = sk.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+                canvas.id('gameCanvas');
+
+                // Initialize Matter.js engine and world
+                engine = Matter.Engine.create();
+                world = engine.world;
+                engine.world.gravity.y = 0.25;
+
+                // Create snowflakes for background
+                for (let i = 0; i < 300; i++) {
+                    snowflakes.push({
+                        x: sk.random(0, WORLD_WIDTH),
+                        y: sk.random(0, WORLD_HEIGHT),
+                        size: sk.random(2, 8),
+                        speed: sk.random(0.3, 1.5)
+                    });
+                }
+                initializeGame();
+            };
+
+            // Main draw loop
+            sk.draw = function() {
+                // No sky, just white background
+                sk.background(255);
+                if (gameState === 'playing') {
+                    Matter.Engine.update(engine);
+                    updateGameLogic();
+                    updateCamera();
+                    handleInput();
+                    checkCollisions();
+                    updatePowerUps();
+                }
+                sk.push();
+                sk.translate(-camera.x, -camera.y);
+                drawMountainLandscape(sk);
+                drawTreeLines(sk);
+                drawCheckeredStartLine(sk);
+                drawFinishLine(sk);
+                drawSled(sk);
+                drawObstacles(sk);
+                drawPowerUps(sk);
+                updateParticles(sk);
+                sk.pop();
+                updateHUD();
+                updatePowerUpIndicators();
+            };
+
+            // Window resize handler
+            sk.windowResized = function() {
+                CANVAS_WIDTH = window.innerWidth;
+                CANVAS_HEIGHT = window.innerHeight;
+                sk.resizeCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+            };
+
+            // Keyboard input handlers
+            sk.keyPressed = function() {
+                keys[sk.key] = true;
+            };
+            sk.keyReleased = function() {
+                keys[sk.key] = false;
+            };
+        });
+
+        // --- Game initialization and reset ---
+        function initializeGame() {
+            Matter.World.clear(world);
+            obstacles = [];
+            powerUps = [];
+            particles = [];
+            // Place sled just below the start line
+            sled = Matter.Bodies.rectangle(WORLD_WIDTH / 2, 120, 40, 25, {
+                frictionAir: 0.12,
+                restitution: 0.2,
+                density: 0.003,
+                friction: 0.9
+            });
+            Matter.World.add(world, sled);
+            createMountainAndGuardRails();
+            generateObstacles();
+            generatePowerUps();
+            generateTreeLines();
+            gameState = 'playing';
+            startTime = performance.now();
+            gameTime = 0;
+            powerUpCount = 0;
+            shieldActive = false;
+            speedBoostActive = false;
+            shieldTimer = 0;
+            speedBoostTimer = 0;
+            hideGameOverScreen();
+        }
+
+        // --- World and environment generation ---
+        function createMountainAndGuardRails() {
+            // Add static guard rails along the slope
+            for (let y = 0; y < WORLD_HEIGHT; y += 80) {
+                let leftRail = Matter.Bodies.rectangle(
+                    WORLD_WIDTH / 2 - GUARD_RAIL_OFFSET,
+                    y,
+                    30,
+                    100,
+                    { isStatic: true }
+                );
+                leftRail.type = 'guard_rail';
+                Matter.World.add(world, leftRail);
+                let rightRail = Matter.Bodies.rectangle(
+                    WORLD_WIDTH / 2 + GUARD_RAIL_OFFSET,
+                    y,
+                    30,
+                    100,
+                    { isStatic: true }
+                );
+                rightRail.type = 'guard_rail';
+                Matter.World.add(world, rightRail);
+            }
+        }
+
+        function generateObstacles() {
+            // Place obstacles in a grid within the guard rails
+            const obstacleTypes = ['tree', 'rock', 'snowman', 'animal', 'boulder'];
+            const gridCols = 12;
+            const gridRows = 25;
+            const cellWidth = TRACK_WIDTH / gridCols;
+            const cellHeight = (WORLD_HEIGHT - 600) / gridRows;
+
+            // Define a "safe zone" around the sled's start position
+            const sledStartX = WORLD_WIDTH / 2;
+            const sledStartY = 120;
+            const safeZoneRadius = 120; // No obstacles within 120px of sled start
+
+            for (let row = 0; row < gridRows; row++) {
+                for (let col = 0; col < gridCols; col++) {
+                    if (Math.random() < 0.25) {
+                        let baseX = WORLD_WIDTH / 2 - TRACK_WIDTH/2 + col * cellWidth;
+                        let baseY = 120 + row * cellHeight;
+                        let x = baseX + Math.random() * cellWidth * 0.6 + cellWidth * 0.2;
+                        let y = baseY + Math.random() * cellHeight * 0.6 + cellHeight * 0.2;
+                        x = Math.max(WORLD_WIDTH / 2 - GUARD_RAIL_OFFSET + 50, Math.min(x, WORLD_WIDTH / 2 + GUARD_RAIL_OFFSET - 50));
+                        // --- Prevent obstacles in the safe zone at the start ---
+                        let distToSledStart = Math.hypot(x - sledStartX, y - sledStartY);
+                        if (distToSledStart < safeZoneRadius + 30) continue; // skip this obstacle
+                        let type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+                        let size = type === 'boulder' ? 35 : 22;
+                        let obstacle = Matter.Bodies.rectangle(x, y, size, size, {
+                            isStatic: true
+                        });
+                        obstacle.type = type;
+                        obstacle.size = size;
+                        obstacles.push(obstacle);
+                        Matter.World.add(world, obstacle);
+                    }
+                }
+            }
+        }
+
+        function generatePowerUps() {
+            // Place power-ups in a grid within the guard rails
+            const powerUpTypes = ['speed', 'shield', 'mega_speed', 'time_freeze'];
+            const gridCols = 8;
+            const gridRows = 15;
+            const cellWidth = TRACK_WIDTH / gridCols;
+            const cellHeight = (WORLD_HEIGHT - 800) / gridRows;
+            for (let row = 0; row < gridRows; row++) {
+                for (let col = 0; col < gridCols; col++) {
+                    if (Math.random() < 0.2) {
+                        let baseX = WORLD_WIDTH / 2 - TRACK_WIDTH/2 + col * cellWidth;
+                        let baseY = 200 + row * cellHeight;
+                        let x = baseX + Math.random() * cellWidth * 0.4 + cellWidth * 0.3;
+                        let y = baseY + Math.random() * cellHeight * 0.4 + cellHeight * 0.3;
+                        x = Math.max(WORLD_WIDTH / 2 - GUARD_RAIL_OFFSET + 50, Math.min(x, WORLD_WIDTH / 2 + GUARD_RAIL_OFFSET - 50));
+                        let type = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+                        let powerUp = Matter.Bodies.rectangle(x, y, 25, 25, {
+                            isStatic: true,
+                            isSensor: true
+                        });
+                        powerUp.type = type;
+                        powerUp.collected = false;
+                        powerUps.push(powerUp);
+                        Matter.World.add(world, powerUp);
+                    }
+                }
+            }
+        }
+
+        function generateTreeLines() {
+            // Generate more trees for both sides of the guard rails
+            leftTreeLine = [];
+            rightTreeLine = [];
+            let spacing = 30; // More trees, less spacing
+            for (let y = 0; y < WORLD_HEIGHT; y += spacing) {
+                // Left side
+                let xL = WORLD_WIDTH / 2 - GUARD_RAIL_OFFSET - 60 + Math.random() * 20 - 10;
+                leftTreeLine.push({x: xL, y: y + Math.random() * 20 - 10, scale: Math.random() * 0.4 + 0.8});
+                // Right side
+                let xR = WORLD_WIDTH / 2 + GUARD_RAIL_OFFSET + 60 + Math.random() * 20 - 10;
+                rightTreeLine.push({x: xR, y: y + Math.random() * 20 - 10, scale: Math.random() * 0.4 + 0.8});
+            }
+        }
+
+        // --- Drawing functions (all take sk as p5 instance) ---
+
+        function drawMountainLandscape(sk) {
+            sk.fill(250, 250, 250);
+            sk.noStroke();
+            sk.beginShape();
+            sk.vertex(0, 0);
+            sk.vertex(WORLD_WIDTH, 0);
+            sk.vertex(WORLD_WIDTH, WORLD_HEIGHT);
+            sk.vertex(0, WORLD_HEIGHT);
+            sk.endShape(sk.CLOSE);
+
+            // Draw guard rails
+            sk.fill(101, 67, 33);
+            sk.stroke(80, 50, 25);
+            sk.strokeWeight(3);
+            for (let y = 0; y < WORLD_HEIGHT; y += 80) {
+                sk.rect(WORLD_WIDTH / 2 - GUARD_RAIL_OFFSET - 15, y, 30, 100, 8);
+                sk.fill(139, 69, 19);
+                sk.rect(WORLD_WIDTH / 2 - GUARD_RAIL_OFFSET - 8, y + 10, 16, 80, 4);
+                sk.fill(101, 67, 33);
+            }
+            for (let y = 0; y < WORLD_HEIGHT; y += 80) {
+                sk.rect(WORLD_WIDTH / 2 + GUARD_RAIL_OFFSET - 15, y, 30, 100, 8);
+                sk.fill(139, 69, 19);
+                sk.rect(WORLD_WIDTH / 2 + GUARD_RAIL_OFFSET - 8, y + 10, 16, 80, 4);
+                sk.fill(101, 67, 33);
+            }
+            // Add snow patches for texture
+            sk.fill(245, 245, 245);
+            sk.noStroke();
+            for (let i = 0; i < 80; i++) {
+                let x = Math.random() * WORLD_WIDTH;
+                let y = Math.random() * WORLD_HEIGHT;
+                let size = Math.random() * 17 + 8;
+                sk.circle(x, y, size);
+            }
+        }
+
+        // Draw tree lines on both sides of the slope (top-down look)
+        function drawTreeLines(sk) {
+            for (let t of leftTreeLine) {
+                sk.push();
+                sk.translate(t.x, t.y);
+                sk.scale(t.scale);
+                drawTopDownPineTree(sk);
+                sk.pop();
+            }
+            for (let t of rightTreeLine) {
+                sk.push();
+                sk.translate(t.x, t.y);
+                sk.scale(t.scale);
+                drawTopDownPineTree(sk);
+                sk.pop();
+            }
+        }
+
+        // Draw a single pine tree (top-down view: circular canopy, trunk in center, shadow)
+        function drawTopDownPineTree(sk) {
+            // Shadow
+            sk.noStroke();
+            sk.fill(60, 90, 60, 60);
+            sk.ellipse(0, 12, 28, 10);
+            // Canopy
+            sk.fill(34, 139, 34);
+            sk.ellipse(0, 0, 28, 28);
+            sk.fill(44, 160, 44);
+            sk.ellipse(0, 0, 20, 20);
+            // Trunk
+            sk.fill(101, 67, 33);
+            sk.ellipse(0, 7, 5, 10);
+        }
+
+        // Draw the checkered start line at the top
+        function drawCheckeredStartLine(sk) {
+            let startY = 100;
+            let checkSize = 25;
+            for (let x = WORLD_WIDTH / 2 - GUARD_RAIL_OFFSET + 50; x < WORLD_WIDTH / 2 + GUARD_RAIL_OFFSET - 50; x += checkSize) {
+                for (let y = startY; y < startY + 50; y += checkSize) {
+                    if ((Math.floor(x/checkSize) + Math.floor(y/checkSize)) % 2 === 0) {
+                        sk.fill(255);
+                    } else {
+                        sk.fill(0);
+                    }
+                    sk.noStroke();
+                    sk.rect(x, y, checkSize, checkSize);
+                }
+            }
+            sk.fill(255, 0, 0);
+            sk.textAlign(sk.CENTER);
+            sk.textSize(32);
+            sk.textStyle(sk.BOLD);
+            sk.text("🏁 START 🏁", WORLD_WIDTH / 2, startY - 10);
+        }
+
+        // Draw the finish line at the bottom
+        function drawFinishLine(sk) {
+            sk.push();
+            sk.stroke(255, 0, 0);
+            sk.strokeWeight(8);
+            for (let i = 0; i < 50; i++) {
+                let x = WORLD_WIDTH / 2 - GUARD_RAIL_OFFSET + 50 + (i * 25);
+                if (x < WORLD_WIDTH / 2 + GUARD_RAIL_OFFSET - 50) {
+                    sk.line(x, FINISH_LINE_Y, x + 12, FINISH_LINE_Y);
+                }
+            }
+            sk.fill(255, 0, 0);
+            sk.noStroke();
+            sk.textAlign(sk.CENTER);
+            sk.textSize(36);
+            sk.textStyle(sk.BOLD);
+            sk.text("🏁 FINISH LINE 🏁", WORLD_WIDTH / 2, FINISH_LINE_Y - 25);
+            sk.pop();
+        }
+
+        // Draw the player's sled with a realistic top-down character
+        function drawSled(sk) {
+            sk.push();
+            sk.translate(sled.position.x, sled.position.y);
+            sk.rotate(sled.angle);
+
+            // --- Draw sled base ---
+            sk.fill(shieldActive ? sk.color(52, 152, 219) : sk.color(220, 20, 60));
+            sk.stroke(0);
+            sk.strokeWeight(3);
+            sk.rectMode(sk.CENTER);
+            sk.rect(0, 0, 40, 25, 8);
+
+            // Sled runners (front and back)
+            sk.fill(150);
+            sk.rect(-15, 15, 30, 4, 2);
+            sk.rect(15, 15, 30, 4, 2);
+
+            // --- Draw character (top-down view) ---
+            // Torso
+            sk.push();
+            sk.noStroke();
+            sk.fill(40, 80, 200); // blue jacket
+            sk.rect(0, 0, 16, 26, 7);
+
+            // Head (top-down, above torso)
+            sk.fill(255, 220, 170);
+            sk.ellipse(0, -15, 15, 15);
+
+            // Hat/helmet
+            sk.fill(60, 60, 60);
+            sk.arc(0, -15, 15, 15, sk.PI, 0, sk.CHORD);
+            sk.fill(200, 0, 0);
+            sk.ellipse(0, -19, 10, 6);
+
+            // Arms (reaching forward, holding sled)
+            sk.stroke(40, 80, 200);
+            sk.strokeWeight(7);
+            sk.line(-6, -5, -14, -15); // left arm
+            sk.line(6, -5, 14, -15);   // right arm
+
+            // Hands (gloves)
+            sk.noStroke();
+            sk.fill(30, 30, 30);
+            sk.ellipse(-14, -15, 7, 7);
+            sk.ellipse(14, -15, 7, 7);
+
+            // Legs (spread, boots visible from top)
+            sk.stroke(60, 60, 60);
+            sk.strokeWeight(7);
+            sk.line(-4, 10, -10, 20); // left leg
+            sk.line(4, 10, 10, 20);   // right leg
+
+            // Boots
+            sk.noStroke();
+            sk.fill(0);
+            sk.ellipse(-10, 20, 7, 10);
+            sk.ellipse(10, 20, 7, 10);
+
+            sk.pop();
+
+            // --- Power-up effects ---
+            if (shieldActive) {
+                sk.noFill();
+                sk.stroke(52, 152, 219);
+                sk.strokeWeight(4);
+                for (let i = 0; i < 3; i++) {
+                    sk.circle(0, 0, 60 + i * 10);
+                }
+            }
+            if (speedBoostActive) {
+                sk.noFill();
+                sk.stroke(241, 196, 15);
+                sk.strokeWeight(3);
+                for (let i = 0; i < 4; i++) {
+                    sk.circle(0, 0, 50 + i * 8);
+                }
+            }
+            sk.pop();
+        }
+
+        // Draw all obstacles
+        function drawObstacles(sk) {
+            for (let obstacle of obstacles) {
+                sk.push();
+                sk.translate(obstacle.position.x, obstacle.position.y);
+                // Add a random slant for top-down effect
+                let slant = 0;
+                if (obstacle.type === 'tree' || obstacle.type === 'animal') {
+                    slant = (obstacle.position.x + obstacle.position.y) % 2 === 0 ? sk.PI / 10 : -sk.PI / 10;
+                    sk.rotate(slant);
+                }
+                if (obstacle.type === 'tree') {
+                    // Top-down pine: canopy and trunk
+                    sk.noStroke();
+                    sk.fill(60, 90, 60, 60);
+                    sk.ellipse(0, 10, 22, 8);
+                    sk.fill(34, 139, 34);
+                    sk.ellipse(0, 0, 22, 22);
+                    sk.fill(44, 160, 44);
+                    sk.ellipse(0, 0, 15, 15);
+                    sk.fill(101, 67, 33);
+                    sk.ellipse(0, 5, 4, 7);
+                } else if (obstacle.type === 'rock') {
+                    sk.fill(105, 105, 105);
+                    sk.stroke(80, 80, 80);
+                    sk.strokeWeight(2);
+                    sk.ellipse(0, 0, 25, 20);
+                    sk.ellipse(5, -5, 15, 12);
+                }
+                // Removed log drawing
+                else if (obstacle.type === 'snowman') {
+                    sk.fill(180, 220, 255);
+                    sk.circle(0, 5, 20);
+                    sk.circle(0, -5, 15);
+                    sk.circle(0, -15, 10);
+                    sk.fill(0);
+                    sk.circle(-3, -17, 2);
+                    sk.circle(3, -17, 2);
+                    sk.circle(0, -2, 2);
+                    sk.circle(0, 3, 2);
+                    sk.fill(255, 140, 0);
+                    sk.triangle(0, -15, 0, -12, 6, -13);
+                    sk.fill(30, 80, 200);
+                    sk.rect(0, -22, 12, 5, 2);
+                    sk.rect(0, -19, 8, 7, 2);
+                    sk.fill(30, 80, 200);
+                    sk.rect(0, -10, 12, 3, 2);
+                    sk.rect(4, -7, 3, 8, 2);
+                } else if (obstacle.type === 'animal') {
+                    // Top-down animal: body, head, ears, legs
+                    sk.noStroke();
+                    sk.fill(255, 140, 0);
+                    sk.ellipse(0, 0, 22, 15); // body
+                    sk.ellipse(0, -10, 10, 10); // head
+                    sk.fill(200, 120, 0);
+                    sk.ellipse(-4, -15, 4, 7); // left ear
+                    sk.ellipse(4, -15, 4, 7); // right ear
+                    sk.fill(255, 140, 0);
+                    sk.ellipse(-6, 7, 4, 7); // left leg
+                    sk.ellipse(6, 7, 4, 7); // right leg
+                    sk.ellipse(-3, 7, 4, 7); // left mid leg
+                    sk.ellipse(3, 7, 4, 7); // right mid leg
+                    sk.fill(255);
+                    sk.ellipse(0, -10, 6, 4); // snout
+                    sk.fill(0);
+                    sk.ellipse(-2, -11, 1.5, 1.5); // left eye
+                    sk.ellipse(2, -11, 1.5, 1.5); // right eye
+                    sk.ellipse(0, -9, 1, 1); // nose
+                } else if (obstacle.type === 'boulder') {
+                    sk.fill(128, 128, 128);
+                    sk.stroke(96, 96, 96);
+                    sk.strokeWeight(3);
+                    sk.ellipse(0, 0, 45, 40);
+                    sk.ellipse(8, -6, 25, 20);
+                    sk.ellipse(-6, 4, 18, 15);
+                }
+                sk.pop();
+            }
+        }
+
+        // Draw all power-ups
+        function drawPowerUps(sk) {
+            for (let powerUp of powerUps) {
+                if (powerUp.collected) continue;
+                sk.push();
+                sk.translate(powerUp.position.x, powerUp.position.y);
+                let float = Math.sin(sk.frameCount * 0.08 + powerUp.position.x * 0.01) * 4;
+                sk.translate(0, float);
+                sk.rotate(sk.frameCount * 0.04);
+                if (powerUp.type === 'speed') {
+                    sk.fill(241, 196, 15);
+                    sk.stroke(255, 255, 255);
+                    sk.strokeWeight(3);
+                    star(sk, 0, 0, 10, 20, 5);
+                } else if (powerUp.type === 'shield') {
+                    sk.fill(52, 152, 219);
+                    sk.stroke(255, 255, 255);
+                    sk.strokeWeight(3);
+                    sk.circle(0, 0, 25);
+                    sk.fill(255, 255, 255);
+                    sk.textAlign(sk.CENTER);
+                    sk.textSize(12);
+                    sk.text("🛡", 0, 4);
+                } else if (powerUp.type === 'mega_speed') {
+                    sk.fill(255, 0, 255);
+                    sk.stroke(255, 255, 255);
+                    sk.strokeWeight(3);
+                    star(sk, 0, 0, 12, 25, 6);
+                }
+                sk.pop();
+            }
+        }
+
+        // Draw a star shape (used for power-ups)
+        function star(sk, x, y, radius1, radius2, npoints) {
+            let angle = sk.TWO_PI / npoints;
+            let halfAngle = angle / 2.0;
+            sk.beginShape();
+            for (let a = 0; a < sk.TWO_PI; a += angle) {
+                let sx = x + Math.cos(a) * radius2;
+                let sy = y + Math.sin(a) * radius2;
+                sk.vertex(sx, sy);
+                sx = x + Math.cos(a + halfAngle) * radius1;
+                sy = y + Math.sin(a + halfAngle) * radius1;
+                sk.vertex(sx, sy);
+            }
+            sk.endShape(sk.CLOSE);
+        }
+
+        // Draw and update all particles (for effects)
+        function updateParticles(sk) {
+            particles = particles.filter(particle => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.life--;
+                let alpha = sk.map(particle.life, 0, 80, 0, 255);
+                if (typeof particle.color === 'object' && particle.color.levels) {
+                    sk.fill(particle.color.levels[0], particle.color.levels[1], particle.color.levels[2], alpha);
+                } else {
+                    sk.fill(52, 152, 219, alpha); // fallback
+                }
+                sk.noStroke();
+                sk.circle(particle.x, particle.y, 6);
+                return particle.life > 0;
+            });
+        }
+
+        // --- Game logic and mechanics ---
+
+        // Update game logic (timers, win/lose, etc.)
+        function updateGameLogic() {
+            if (gameState !== 'playing') return;
+            gameTime = (performance.now() - startTime) / 1000;
+            speed = Math.sqrt(sled.velocity.x * sled.velocity.x + sled.velocity.y * sled.velocity.y);
+            if (shieldActive) {
+                shieldTimer--;
+                if (shieldTimer <= 0) shieldActive = false;
+            }
+            if (speedBoostActive) {
+                speedBoostTimer--;
+                if (speedBoostTimer <= 0) speedBoostActive = false;
+            }
+            if (sled.position.y >= FINISH_LINE_Y) {
+                gameState = 'victory';
+                showGameOverScreen(true);
+            }
+            Matter.Body.applyForce(sled, sled.position, { x: 0, y: 0.005 });
+        }
+
+        // Update camera to follow the sled, but never show above the start line
+        function updateCamera() {
+            camera.x = sled.position.x - CANVAS_WIDTH / 2;
+            camera.y = sled.position.y - CANVAS_HEIGHT / 2;
+            camera.x = Math.max(-300, Math.min(camera.x, WORLD_WIDTH + 300 - CANVAS_WIDTH));
+            camera.y = Math.max(0, Math.min(camera.y, WORLD_HEIGHT - CANVAS_HEIGHT));
+            if (camera.y < 0) camera.y = 0;
+        }
+
+        // Handle player input for movement and boost
+        function handleInput() {
+            if (gameState !== 'playing') return;
+            if (keys['ArrowLeft'] || keys['a']) {
+                Matter.Body.applyForce(sled, sled.position, { x: -0.003, y: 0 });
+            }
+            if (keys['ArrowRight'] || keys['d']) {
+                Matter.Body.applyForce(sled, sled.position, { x: 0.003, y: 0 });
+            }
+            if (keys[' ']) {
+                let boost = speedBoostActive ? 0.008 : 0.005;
+                Matter.Body.applyForce(sled, sled.position, { x: 0, y: boost });
+                if (window.p5 && window.p5.prototype.frameCount % 4 === 0) {
+                    particles.push({
+                        x: sled.position.x + Math.random() * 30 - 15,
+                        y: sled.position.y + 20,
+                        vx: Math.random() * 4 - 2,
+                        vy: Math.random() * 2 - 1,
+                        life: 35,
+                        color: { levels: [52, 152, 219] }
+                    });
+                }
+            }
+        }
+
+        // Check for collisions with obstacles and power-ups
+        function checkCollisions() {
+            if (gameState !== 'playing') return;
+            for (let obstacle of obstacles) {
+                let distance = Math.hypot(sled.position.x - obstacle.position.x, sled.position.y - obstacle.position.y);
+                if (distance < obstacle.size/2 + 25) {
+                    if (!shieldActive) {
+                        gameState = 'gameOver';
+                        showGameOverScreen(false);
+                        for (let i = 0; i < 15; i++) {
+                            particles.push({
+                                x: sled.position.x + Math.random() * 60 - 30,
+                                y: sled.position.y + Math.random() * 60 - 30,
+                                vx: Math.random() * 16 - 8,
+                                vy: Math.random() * 16 - 8,
+                                life: 80,
+                                color: { levels: [231, 76, 60] }
+                            });
+                        }
+                    }
+                    break;
+                }
+            }
+            for (let powerUp of powerUps) {
+                if (!powerUp.collected) {
+                    let distance = Math.hypot(sled.position.x - powerUp.position.x, sled.position.y - powerUp.position.y);
+                    if (distance < 30) {
+                        collectPowerUp(powerUp);
+                    }
+                }
+            }
+        }
+
+        // Collect a power-up and apply its effect
+        function collectPowerUp(powerUp) {
+            powerUp.collected = true;
+            powerUpCount++;
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: powerUp.position.x + Math.random() * 40 - 20,
+                    y: powerUp.position.y + Math.random() * 40 - 20,
+                    vx: Math.random() * 8 - 4,
+                    vy: Math.random() * 8 - 4,
+                    life: 50,
+                    color: { levels: [46, 204, 113] }
+                });
+            }
+            if (powerUp.type === 'speed') {
+                speedBoostActive = true;
+                speedBoostTimer = 300;
+            } else if (powerUp.type === 'shield') {
+                shieldActive = true;
+                shieldTimer = 420;
+            } else if (powerUp.type === 'mega_speed') {
+                speedBoostActive = true;
+                speedBoostTimer = 600;
+            }
+        }
+
+        // Remove collected power-ups from the array
+        function updatePowerUps() {
+            powerUps = powerUps.filter(powerUp => !powerUp.collected);
+        }
+
+        // --- HUD and UI updates ---
+
+        // Update the HUD with current stats
+        function updateHUD() {
+            document.getElementById('speedDisplay').textContent = Math.round(speed * 8);
+            document.getElementById('timeDisplay').textContent = gameTime.toFixed(1) + 's';
+            document.getElementById('distanceDisplay').textContent = Math.max(0, Math.round(FINISH_LINE_Y - sled.position.y)) + 'm';
+            document.getElementById('powerupsDisplay').textContent = powerUpCount;
+        }
+
+        // Update the power-up indicators on the screen
+        function updatePowerUpIndicators() {
+            const container = document.getElementById('powerUpIndicators');
+            container.innerHTML = '';
+            if (shieldActive) {
+                const div = document.createElement('div');
+                div.className = 'power-up-indicator shield-indicator';
+                div.textContent = `🛡 Shield: ${Math.ceil(shieldTimer / 60)}s`;
+                container.appendChild(div);
+            }
+            if (speedBoostActive) {
+                const div = document.createElement('div');
+                div.className = 'power-up-indicator speed-indicator';
+                div.textContent = `⚡ Speed Boost: ${Math.ceil(speedBoostTimer / 60)}s`;
+                container.appendChild(div);
+            }
+        }
+
+        // Show the game over or victory screen
+        function showGameOverScreen(victory) {
+            const screen = document.getElementById('gameOverScreen');
+            const title = document.getElementById('gameOverTitle');
+            const text = document.getElementById('gameOverText');
+            if (victory) {
+                screen.classList.add('victory');
+                title.textContent = '🏆 Victory!';
+                text.innerHTML = `
+                    Congratulations! You completed the race!<br>
+                    Time: ${gameTime.toFixed(1)} seconds<br>
+                    Power-ups collected: ${powerUpCount}<br>
+                    Final speed: ${Math.round(speed * 8)}
+                `;
+            } else {
+                screen.classList.remove('victory');
+                title.textContent = '💥 Game Over!';
+                text.innerHTML = `
+                    You crashed into an obstacle!<br>
+                    Time survived: ${gameTime.toFixed(1)} seconds<br>
+                    Power-ups collected: ${powerUpCount}<br>
+                    Distance covered: ${Math.round(sled.position.y)} meters
+                `;
+            }
+            screen.style.display = 'block';
+        }
+
+        // Hide the game over screen
+        function hideGameOverScreen() {
+            document.getElementById('gameOverScreen').style.display = 'none';
+        }
+
+        // Expose resetGame globally for the reset button
+        window.resetGame = function() {
+            initializeGame();
+        };
+    </script>
+</body>
+</html>

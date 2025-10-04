@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>2D Puzzle Maze - Block Stacking</title>
+    <!-- Importing modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"
+        }
+    }
+    </script>
+    <!-- Styling -->
+    <style>
+        /* Main body styling with gradient background */
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        /* Game title styling */
+        h1 {
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+        }
+        /* Main game container with glass-morphism effect */
+        #game-container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        /* UI panel containing buttons and status */
+        #ui-panel {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        /* Base button styling */
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: #4CAF50;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        /* Button hover effects */
+        button:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        /* Restart button specific styling */
+        #restart-btn {
+            background: #f44336;
+        }
+        #restart-btn:hover {
+            background: #da190b;
+        }
+        /* Undo button specific styling */
+        #undo-btn {
+            background: #ff9800;
+        }
+        #undo-btn:hover {
+            background: #e68900;
+        }
+        /* Status message styling */
+        .status {
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            font-size: 16px;
+        }
+        /* Level display styling */
+        .level-display {
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+        /* Instructions text styling */
+        #instructions {
+            color: white;
+            text-align: center;
+            margin-top: 15px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        /* Canvas container centering */
+        main {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        /* Win message styling with animation */
+        .win-message {
+            color: #FFD700;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            animation: pulse 2s infinite;
+        }
+        /* Pulsing animation for win message */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <h1>🧩 Block Stacking Maze</h1>
+
+    <div id="game-container">
+        <!-- UI Controls Panel -->
+        <div id="ui-panel">
+            <div class="level-display">Level: <span id="level-number">1</span></div>
+            <button id="restart-btn">🔄 Restart</button>
+            <button id="undo-btn">↶ Undo</button>
+            <div class="status" id="status-message">Stack colored blocks on switches to open doors!</div>
+        </div>
+        <!-- Canvas will be inserted here by p5.js -->
+        <main id="canvas-container"></main>
+        <!-- Game instructions -->
+        <div id="instructions">
+            <strong>Controls:</strong> Arrow keys to move • Push blocks to stack them • Stack blocks on colored switches to open maze doors!
+        </div>
+    </div>
+    <!-- Main script -->
+    <script type="module">
+        import 'p5';
+
+        // ===== GAME CONSTANTS =====
+        const GRID_SIZE = 32; // Size of each grid cell in pixels
+        const CANVAS_WIDTH = 700; // Canvas width in pixels
+        const CANVAS_HEIGHT = 560; // Canvas height in pixels
+
+        // Cell type constants for maze elements - used for maze parsing and rendering
+        const CELL_TYPES = {
+            WALL: '#',          // Solid wall blocking movement
+            FLOOR: '.',         // Empty walkable space
+            PLAYER: 'P',        // Player starting position
+            RED_BLOCK: 'R',     // Red movable block
+            GREEN_BLOCK: 'G',   // Green movable block
+            BLUE_BLOCK: 'B',    // Blue movable block
+            YELLOW_BLOCK: 'Y',  // Yellow movable block
+            RED_SWITCH: 'r',    // Red pressure switch
+            GREEN_SWITCH: 'g',  // Green pressure switch
+            BLUE_SWITCH: 'b',   // Blue pressure switch
+            YELLOW_SWITCH: 'y', // Yellow pressure switch
+            DOOR1: 'D',         // Red door (controlled by red switch)
+            DOOR2: 'E',         // Green door (controlled by green switch)
+            DOOR3: 'F',         // Blue door (controlled by blue switch)
+            EXIT: 'T'           // Level exit tile
+        };
+
+        // ===== GAME STATE =====
+        // Main game state object holding all dynamic data
+        let gameState = {
+            currentLevel: 1,        // Current level index starting from 1
+            maze: [],              // 2D array representing the maze layout
+            playerPos: { x: 0, y: 0 }, // Player coordinates in grid
+            blockStacks: {},       // Maps cell position string "x_y" to array of stacked blocks
+            blockStacksDirs: {},   // Maps cell position to last push direction {dx, dy} for visual stacking offset
+            history: [],          // Stack of past states used for undo functionality
+            switchStates: {},     // Current activation state of switches
+            doorStates: { 'D': false, 'E': false, 'F': false }, // Door open/closed states
+            gameWon: false,       // Flag signaling the player won current level
+            allLevelsCompleted: false, // Flag indicating all levels completed
+            rows: 0,             // Maze height in cells
+            cols: 0              // Maze width in cells
+        };
+
+        // ===== LEVEL DATA =====
+        // Array of level data objects including maze layout and switch requirements
+        const levels = [
+            // Level 1: Tutorial - Single red block on red switch opens door
+            {
+                data: [
+                    "################",
+                    "#P.............#", // P = Player start
+                    "#..............#",
+                    "#..R...........#", // R = Red block
+                    "#..............#",
+                    "#....r.........#", // r = Red switch
+                    "#..............#",
+                    "######D#########", // D = Red door
+                    "#..............#",
+                    "#.............T#", // T = Exit
+                    "################"
+                ],
+                switches: {
+                    'r': { blocks: ['R'], door: 'D' } // Red switch needs 1 red block, opens door D
+                }
+            },
+            // Level 2: Two separate switches and doors
+            {
+                data: [
+                    "##################",
+                    "#P...............#",
+                    "#................#",
+                    "#..R.............#", // R = Red block
+                    "#................#",
+                    "#....r...........#", // r = Red switch
+                    "#................#",
+                    "########D#########", // D = Red door
+                    "#................#",
+                    "#..G.............#", // G = Green block
+                    "#................#",
+                    "#....g...........#", // g = Green switch
+                    "#................#",
+                    "########E#########", // E = Green door
+                    "#...............T#",
+                    "##################"
+                ],
+                switches: {
+                    'r': { blocks: ['R'], door: 'D' },      // Red switch controls red door
+                    'g': { blocks: ['G'], door: 'E' }       // Green switch controls green door
+                }
+            },
+            // Level 3: Block stacking challenge - requires stacking multiple blocks
+            {
+                data: [
+                    "##################",
+                    "#P...............#",
+                    "#................#",
+                    "#..R.R...........#", // Two red blocks for stacking
+                    "#................#",
+                    "#....r...........#", // Red switch needs 2 red blocks
+                    "#................#",
+                    "#######D#########",
+                    "#................#",
+                    "#..G.G...........#", // Two green blocks for stacking
+                    "#................#",
+                    "#....g...........#", // Green switch needs 2 green blocks
+                    "#................#",
+                    "#######E#########",
+                    "#................#",
+                    "#..B............T#", // Single blue block
+                    "#................#",
+                    "#....b...........#", // Blue switch needs 1 blue block
+                    "##################"
+                ],
+                switches: {
+                    'r': { blocks: ['R', 'R'], door: 'D' }, // Red switch needs 2 red blocks stacked
+                    'g': { blocks: ['G', 'G'], door: 'E' }, // Green switch needs 2 green blocks stacked
+                    'b': { blocks: ['B'], door: 'F' }       // Blue switch needs 1 blue block
+                }
+            }
+        ];
+
+        let p5Instance; // p5.js instance handle
+
+        // ===== INITIALIZATION FUNCTIONS =====
+
+        // Initialize game state and start the current level
+        function initGame() {
+            gameState.allLevelsCompleted = false;
+            // Safety check: reset to level 1 if somehow out of range
+            if (gameState.currentLevel > levels.length) {
+                gameState.currentLevel = 1;
+            }
+            loadLevel(gameState.currentLevel);
+            updateUI();
+        }
+
+        // Load specified level, reset states and prepare for gameplay
+        function loadLevel(levelNum) {
+            // Check if all levels are completed
+            if (levelNum > levels.length) {
+                gameState.allLevelsCompleted = true;
+                document.getElementById('status-message').innerHTML =
+                    '<span class="win-message">🎉 CONGRATULATIONS! YOU WON! 🎉</span>';
+                return;
+            }
+
+            const level = levels[levelNum - 1]; // Get level data (0-indexed)
+
+            // Initialize maze grid from string data
+            gameState.maze = level.data.map(row => row.split(''));
+            gameState.rows = gameState.maze.length;
+            gameState.cols = gameState.maze[0].length;
+
+            // Reset all game state variables for fresh level start
+            gameState.history = [];
+            gameState.blockStacks = {};
+            gameState.blockStacksDirs = {};
+            gameState.switchStates = {};
+            gameState.doorStates = { 'D': false, 'E': false, 'F': false };
+            gameState.gameWon = false;
+
+            // Setup switch requirements and states for the current level
+            Object.keys(level.switches).forEach(switchColor => {
+                gameState.switchStates[switchColor] = {
+                    requiredBlocks: level.switches[switchColor].blocks, // What blocks are needed
+                    currentStack: [],                                   // What blocks are currently on switch
+                    door: level.switches[switchColor].door              // Which door this switch controls
+                };
+            });
+
+            // Parse maze to find player and block positions
+            for (let y = 0; y < gameState.rows; y++) {
+                for (let x = 0; x < gameState.cols; x++) {
+                    const cell = gameState.maze[y][x];
+                    if (cell === CELL_TYPES.PLAYER) {
+                        // Store player position and remove from maze
+                        gameState.playerPos = { x, y };
+                        gameState.maze[y][x] = CELL_TYPES.FLOOR;
+                    } else if (isBlock(cell)) {
+                        // Store blocks in stacks and remove from maze
+                        const key = `${x}_${y}`;
+                        if (!gameState.blockStacks[key]) gameState.blockStacks[key] = [];
+                        gameState.blockStacks[key].push(cell);
+                        // Default stacking direction is vertical upward
+                        gameState.blockStacksDirs[key] = { dx: 0, dy: -1 };
+                        gameState.maze[y][x] = CELL_TYPES.FLOOR;
+                    }
+                }
+            }
+
+            saveState(); // Save initial state for undo functionality
+        }
+
+        // ===== STATE MANAGEMENT =====
+
+        // Save current game state to history stack for undo functionality
+        function saveState() {
+            const state = {
+                maze: gameState.maze.map(row => [...row]),                    // Deep copy maze
+                playerPos: { ...gameState.playerPos },                       // Copy player position
+                blockStacks: JSON.parse(JSON.stringify(gameState.blockStacks)), // Deep copy block stacks
+                blockStacksDirs: JSON.parse(JSON.stringify(gameState.blockStacksDirs)), // Deep copy stack directions
+                switchStates: JSON.parse(JSON.stringify(gameState.switchStates)), // Deep copy switch states
+                doorStates: { ...gameState.doorStates }                      // Copy door states
+            };
+            gameState.history.push(state);
+        }
+
+        // Undo last move by restoring previous saved state
+        function undoMove() {
+            if (gameState.history.length > 1) {
+                gameState.history.pop();  // Remove current state
+                const prev = gameState.history[gameState.history.length - 1]; // Get previous state
+
+                // Restore all game data from previous state
+                gameState.maze = prev.maze.map(row => [...row]);
+                gameState.playerPos = { ...prev.playerPos };
+                gameState.blockStacks = JSON.parse(JSON.stringify(prev.blockStacks));
+                gameState.blockStacksDirs = JSON.parse(JSON.stringify(prev.blockStacksDirs));
+                gameState.switchStates = JSON.parse(JSON.stringify(prev.switchStates));
+                gameState.doorStates = { ...prev.doorStates };
+                gameState.gameWon = false;
+
+                updateUI();
+            }
+        }
+
+        // ===== MOVEMENT AND GAME LOGIC =====
+
+        // Attempt to move player by dx, dy; handle block pushing if necessary
+        function movePlayer(dx, dy) {
+            // Don't allow movement if game is won or all levels completed
+            if (gameState.gameWon || gameState.allLevelsCompleted) return;
+
+            const newX = gameState.playerPos.x + dx;
+            const newY = gameState.playerPos.y + dy;
+
+            // Boundary check - prevent moving outside maze
+            if (newX < 0 || newX >= gameState.cols || newY < 0 || newY >= gameState.rows) return;
+
+            const targetCell = gameState.maze[newY][newX];
+            const targetKey = `${newX}_${newY}`;
+
+            // Collision checks - prevent movement into walls or closed doors
+            if (targetCell === CELL_TYPES.WALL) return;
+            if (isDoor(targetCell) && !gameState.doorStates[targetCell]) return;
+
+            // Block pushing logic - if there's a block stack at target position
+            if (gameState.blockStacks[targetKey] && gameState.blockStacks[targetKey].length > 0) {
+                const pushX = newX + dx; // Where the blocks would be pushed to
+                const pushY = newY + dy;
+                const pushKey = `${pushX}_${pushY}`;
+
+                // Check if push destination is within bounds
+                if (pushX < 0 || pushX >= gameState.cols || pushY < 0 || pushY >= gameState.rows) return;
+
+                const pushTargetCell = gameState.maze[pushY][pushX];
+                // Check if push destination is blocked
+                if (pushTargetCell === CELL_TYPES.WALL || (isDoor(pushTargetCell) && !gameState.doorStates[pushTargetCell])) return;
+
+                // Execute block stack movement
+                const stackToMove = gameState.blockStacks[targetKey];
+                if (!gameState.blockStacks[pushKey]) gameState.blockStacks[pushKey] = [];
+
+                // Merge stacks: add moved stack to destination (stacking effect)
+                gameState.blockStacks[pushKey] = gameState.blockStacks[pushKey].concat(stackToMove);
+                delete gameState.blockStacks[targetKey];
+
+                // Update stacking direction for visual rendering
+                gameState.blockStacksDirs[pushKey] = { dx, dy };
+                delete gameState.blockStacksDirs[targetKey];
+            }
+
+            // Execute player movement
+            gameState.playerPos.x = newX;
+            gameState.playerPos.y = newY;
+
+            // Check for level completion when player reaches exit
+            if (targetCell === CELL_TYPES.EXIT) {
+                gameState.gameWon = true;
+                document.getElementById('status-message').textContent = 'Level completed! 🎉';
+                // Auto-advance to next level after short delay
+                setTimeout(() => {
+                    gameState.currentLevel++;
+                    loadLevel(gameState.currentLevel);
+                    updateUI();
+                }, 2000);
+                return;
+            }
+
+            // Update game state after movement
+            updateSwitchStates();
+            saveState();
+            updateUI();
+        }
+
+        // ===== UTILITY FUNCTIONS =====
+
+        // Check if a cell contains a movable block
+        function isBlock(cell) {
+            return [CELL_TYPES.RED_BLOCK, CELL_TYPES.GREEN_BLOCK,
+                CELL_TYPES.BLUE_BLOCK, CELL_TYPES.YELLOW_BLOCK].includes(cell);
+        }
+
+        // Check if a cell is a door tile
+        function isDoor(cell) {
+            return [CELL_TYPES.DOOR1, CELL_TYPES.DOOR2, CELL_TYPES.DOOR3].includes(cell);
+        }
+
+        // Check if a cell is a switch tile
+        function isSwitch(cell) {
+            return [CELL_TYPES.RED_SWITCH, CELL_TYPES.GREEN_SWITCH,
+                CELL_TYPES.BLUE_SWITCH, CELL_TYPES.YELLOW_SWITCH].includes(cell);
+        }
+
+        // Get the original cell type from level data (ignores moved blocks/player)
+        function getBaseCell(x, y) {
+            const level = levels[gameState.currentLevel - 1];
+            return level ? level.data[y][x] : CELL_TYPES.FLOOR;
+        }
+
+        // ===== SWITCH AND DOOR LOGIC =====
+
+        // Update switch activation states based on blocks stacked on them
+        function updateSwitchStates() {
+            // Reset all switch activation states
+            Object.keys(gameState.switchStates).forEach(switchColor => {
+                gameState.switchStates[switchColor].currentStack = [];
+            });
+
+            // Reset all doors to closed state initially
+            gameState.doorStates = { 'D': false, 'E': false, 'F': false };
+
+            // Check each cell for switches and what blocks are on them
+            for (let y = 0; y < gameState.rows; y++) {
+                for (let x = 0; x < gameState.cols; x++) {
+                    const baseCell = getBaseCell(x, y);
+                    const stackKey = `${x}_${y}`;
+
+                    if (isSwitch(baseCell)) {
+                        const switchColor = baseCell;
+                        if (gameState.blockStacks[stackKey]) {
+                            // Record what blocks are currently on this switch
+                            gameState.switchStates[switchColor].currentStack = [...gameState.blockStacks[stackKey]];
+                        }
+                    }
+                }
+            }
+
+            // Check each switch to see if it meets its requirements
+            Object.keys(gameState.switchStates).forEach(switchColor => {
+                const switchData = gameState.switchStates[switchColor];
+                const required = switchData.requiredBlocks.slice().sort(); // Required blocks (sorted)
+                const current = switchData.currentStack.slice().sort();    // Current blocks (sorted)
+
+                // Switch activates only if exact blocks match (order doesn't matter due to sorting)
+                const isActivated = JSON.stringify(required) === JSON.stringify(current);
+
+                if (isActivated) {
+                    gameState.doorStates[switchData.door] = true; // Open corresponding door
+                }
+            });
+
+            updateUI();
+        }
+
+        // ===== UI UPDATES =====
+
+        // Update HTML UI elements like status message and level number
+        function updateUI() {
+            document.getElementById('level-number').textContent = gameState.currentLevel;
+
+            // Only show door progress if game is still active
+            if (!gameState.gameWon && !gameState.allLevelsCompleted) {
+                let activeDoors = 0, totalDoors = 0;
+                const level = levels[gameState.currentLevel - 1];
+
+                // Count how many doors are open vs total doors in level
+                Object.keys(level.switches).forEach(switchColor => {
+                    totalDoors++;
+                    if (gameState.doorStates[level.switches[switchColor].door]) {
+                        activeDoors++;
+                    }
+                });
+
+                document.getElementById('status-message').textContent =
+                    `Doors opened: ${activeDoors}/${totalDoors}`;
+            }
+        }
+
+        // ===== P5.JS RENDERING =====
+
+        // p5.js main sketch: handles canvas setup, drawing loop, and input
+        function sketch(p) {
+            // Initial setup - create canvas and start game
+            p.setup = function () {
+                const canvas = p.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+                canvas.parent('canvas-container');
+                initGame();
+            };
+
+            // Main drawing loop - called 60 times per second
+            p.draw = function () {
+                p.background(50); // Dark gray background
+                drawMaze(p);      // Draw base maze elements
+                drawBlockStacks(p); // Draw stacked blocks with offsets
+                drawPlayer(p);    // Draw player avatar on top
+            };
+
+            // Handle keyboard input for player movement
+            p.keyPressed = function () {
+                if (p.keyCode === p.UP_ARROW) movePlayer(0, -1);
+                else if (p.keyCode === p.DOWN_ARROW) movePlayer(0, 1);
+                else if (p.keyCode === p.LEFT_ARROW) movePlayer(-1, 0);
+                else if (p.keyCode === p.RIGHT_ARROW) movePlayer(1, 0);
+            };
+        }
+
+        // Draw base layer of maze: walls, floors, doors, switches, and exit
+        function drawMaze(p) {
+            // Calculate centering offset for maze on canvas
+            const offsetX = (CANVAS_WIDTH - gameState.cols * GRID_SIZE) / 2;
+            const offsetY = (CANVAS_HEIGHT - gameState.rows * GRID_SIZE) / 2;
+
+            // Draw each cell in the maze
+            for (let y = 0; y < gameState.rows; y++) {
+                for (let x = 0; x < gameState.cols; x++) {
+                    const cellX = offsetX + x * GRID_SIZE;
+                    const cellY = offsetY + y * GRID_SIZE;
+                    const cell = gameState.maze[y][x];          // Current cell (may be modified)
+                    const baseCell = getBaseCell(x, y);         // Original cell from level data
+
+                    // Switches need special rendering, everything else uses standard cell rendering
+                    if (isSwitch(baseCell)) {
+                        drawSwitch(p, cellX, cellY, baseCell);
+                    } else {
+                        drawCell(p, cellX, cellY, cell, baseCell);
+                    }
+                }
+            }
+        }
+
+        // Draw stacked blocks with visual offset based on last push direction
+        function drawBlockStacks(p) {
+            const offsetX = (CANVAS_WIDTH - gameState.cols * GRID_SIZE) / 2;
+            const offsetY = (CANVAS_HEIGHT - gameState.rows * GRID_SIZE) / 2;
+            const spacing = 8; // Pixel spacing between blocks in stack
+
+            // Render each block stack
+            Object.entries(gameState.blockStacks).forEach(([key, stack]) => {
+                const [x, y] = key.split('_').map(Number); // Parse position from key
+                const cellX = offsetX + x * GRID_SIZE;
+                const cellY = offsetY + y * GRID_SIZE;
+
+                // Get stacking direction for visual offset (default: vertical up)
+                const dir = gameState.blockStacksDirs[key] || { dx: 0, dy: -1 };
+
+                // Draw each block in the stack with appropriate offset
+                stack.forEach((block, index) => {
+                    let offsetXStack = 0, offsetYStack = 0;
+
+                    // Calculate offset based on stack direction and block index
+                    if (dir.dx === 0 && dir.dy === -1) {        // Pushed from below (stack up)
+                        offsetXStack = 0;
+                        offsetYStack = -index * spacing;
+                    } else if (dir.dx === 0 && dir.dy === 1) {  // Pushed from above (stack down)
+                        offsetXStack = 0;
+                        offsetYStack = index * spacing;
+                    } else if (dir.dx === -1 && dir.dy === 0) { // Pushed from right (stack left)
+                        offsetXStack = -index * spacing;
+                        offsetYStack = 0;
+                    } else if (dir.dx === 1 && dir.dy === 0) {  // Pushed from left (stack right)
+                        offsetXStack = index * spacing;
+                        offsetYStack = 0;
+                    } else {
+                        // Default to vertical stacking if direction unknown
+                        offsetXStack = 0;
+                        offsetYStack = -index * spacing;
+                    }
+
+                    drawBlock(p, cellX + offsetXStack, cellY + offsetYStack, block, index);
+                });
+            });
+        }
+
+        // Draw individual maze cell elements (walls, floors, doors, exit)
+        function drawCell(p, x, y, cellType, baseCell) {
+            p.stroke(100);   // Gray border
+            p.strokeWeight(1);
+
+            switch (cellType) {
+                case CELL_TYPES.WALL:
+                    // Two-tone wall with inner highlight for 3D effect
+                    p.fill(80);
+                    p.rect(x, y, GRID_SIZE, GRID_SIZE);
+                    p.fill(120);
+                    p.rect(x + 2, y + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+                    break;
+                case CELL_TYPES.FLOOR:
+                    // Simple light gray floor
+                    p.fill(200);
+                    p.rect(x, y, GRID_SIZE, GRID_SIZE);
+                    break;
+                case CELL_TYPES.DOOR1: // Red door
+                    if (gameState.doorStates['D']) {
+                        // Open door appears as regular floor
+                        p.fill(200);
+                        p.rect(x, y, GRID_SIZE, GRID_SIZE);
+                    } else {
+                        // Closed door with red coloring and door icon
+                        p.fill(150, 50, 50);
+                        p.rect(x, y, GRID_SIZE, GRID_SIZE);
+                        p.fill(255, 100, 100);
+                        p.rect(x + 3, y + 3, GRID_SIZE - 6, GRID_SIZE - 6);
+                        p.fill(255);
+                        p.textAlign(p.CENTER, p.CENTER);
+                        p.textSize(10);
+                        p.text('🚪', x + GRID_SIZE / 2, y + GRID_SIZE / 2);
+                    }
+                    break;
+                case CELL_TYPES.DOOR2: // Green door
+                    if (gameState.doorStates['E']) {
+                        p.fill(200);
+                        p.rect(x, y, GRID_SIZE, GRID_SIZE);
+                    } else {
+                        p.fill(50, 150, 50);
+                        p.rect(x, y, GRID_SIZE, GRID_SIZE);
+                        p.fill(100, 255, 100);
+                        p.rect(x + 3, y + 3, GRID_SIZE - 6, GRID_SIZE - 6);
+                        p.fill(255);
+                        p.textAlign(p.CENTER, p.CENTER);
+                        p.textSize(10);
+                        p.text('🚪', x + GRID_SIZE / 2, y + GRID_SIZE / 2);
+                    }
+                    break;
+                case CELL_TYPES.DOOR3: // Blue door
+                    if (gameState.doorStates['F']) {
+                        p.fill(200);
+                        p.rect(x, y, GRID_SIZE, GRID_SIZE);
+                    } else {
+                        p.fill(50, 50, 150);
+                        p.rect(x, y, GRID_SIZE, GRID_SIZE);
+                        p.fill(100, 100, 255);
+                        p.rect(x + 3, y + 3, GRID_SIZE - 6, GRID_SIZE - 6);
+                        p.fill(255);
+                        p.textAlign(p.CENTER, p.CENTER);
+                        p.textSize(10);
+                        p.text('🚪', x + GRID_SIZE / 2, y + GRID_SIZE / 2);
+                    }
+                    break;
+                case CELL_TYPES.EXIT:
+                    // Golden exit tile with star icon
+                    p.fill(255, 215, 0);
+                    p.rect(x, y, GRID_SIZE, GRID_SIZE);
+                    p.fill(255, 255, 255);
+                    p.textAlign(p.CENTER, p.CENTER);
+                    p.textSize(14);
+                    p.text('★', x + GRID_SIZE / 2, y + GRID_SIZE / 2);
+                    break;
+            }
+        }
+
+        // Draw a single block with 3D shading effect
+        function drawBlock(p, x, y, blockType, stackIndex) {
+            p.stroke(50);    // Dark border
+            p.strokeWeight(1);
+
+            let blockColor, innerColor;
+            // Assign colors based on block type
+            switch (blockType) {
+                case CELL_TYPES.RED_BLOCK:
+                    blockColor = p.color(255, 100, 100);
+                    innerColor = p.color(200, 50, 50);
+                    break;
+                case CELL_TYPES.GREEN_BLOCK:
+                    blockColor = p.color(100, 255, 100);
+                    innerColor = p.color(50, 200, 50);
+                    break;
+                case CELL_TYPES.BLUE_BLOCK:
+                    blockColor = p.color(100, 100, 255);
+                    innerColor = p.color(50, 50, 200);
+                    break;
+                case CELL_TYPES.YELLOW_BLOCK:
+                    blockColor = p.color(255, 255, 100);
+                    innerColor = p.color(200, 200, 50);
+                    break;
+            }
+
+            // Draw block with two-tone 3D effect
+            p.fill(blockColor);
+            p.rect(x + 3, y + 3, GRID_SIZE - 6, GRID_SIZE - 6);
+            p.fill(innerColor);
+            p.rect(x + 6, y + 6, GRID_SIZE - 12, GRID_SIZE - 12);
+
+            // Show stack position number for blocks above the first
+            if (stackIndex > 0) {
+                p.fill(255);
+                p.textAlign(p.CENTER, p.CENTER);
+                p.textSize(8);
+                p.text((stackIndex + 1).toString(), x + GRID_SIZE - 6, y + 6);
+            }
+        }
+
+        // Draw a switch tile with activation glow effect
+        function drawSwitch(p, x, y, switchType) {
+            // Floor background
+            p.fill(200);
+            p.rect(x, y, GRID_SIZE, GRID_SIZE);
+
+            const switchColor = switchType;
+            const switchData = gameState.switchStates[switchColor];
+            // Check if switch requirements are exactly met
+            const isActivated = switchData &&
+                JSON.stringify(switchData.requiredBlocks.slice().sort()) ===
+                JSON.stringify(switchData.currentStack.slice().sort());
+
+            // Choose switch color: bright if activated, dim if not
+            let color;
+            switch (switchType) {
+                case CELL_TYPES.RED_SWITCH:
+                    color = isActivated ? p.color(255, 50, 50) : p.color(150, 50, 50);
+                    break;
+                case CELL_TYPES.GREEN_SWITCH:
+                    color = isActivated ? p.color(50, 255, 50) : p.color(50, 150, 50);
+                    break;
+                case CELL_TYPES.BLUE_SWITCH:
+                    color = isActivated ? p.color(50, 50, 255) : p.color(50, 50, 150);
+                    break;
+                case CELL_TYPES.YELLOW_SWITCH:
+                    color = isActivated ? p.color(255, 255, 50) : p.color(150, 150, 50);
+                    break;
+            }
+
+            // Draw circular switch
+            p.fill(color);
+            p.ellipse(x + GRID_SIZE / 2, y + GRID_SIZE / 2, GRID_SIZE - 8, GRID_SIZE - 8);
+
+            // Add glow effect when activated
+            if (isActivated) {
+                p.fill(255, 255, 255, 150);
+                p.ellipse(x + GRID_SIZE / 2, y + GRID_SIZE / 2, GRID_SIZE - 12, GRID_SIZE - 12);
+            }
+
+            // Show number indicator for switches requiring multiple blocks
+            if (switchData && switchData.requiredBlocks.length > 1) {
+                p.fill(255);
+                p.textAlign(p.CENTER, p.CENTER);
+                p.textSize(8);
+                p.text(switchData.requiredBlocks.length.toString(),
+                    x + GRID_SIZE - 6, y + 6);
+            }
+        }
+
+        // Draw player avatar with simple facial features
+        function drawPlayer(p) {
+            const offsetX = (CANVAS_WIDTH - gameState.cols * GRID_SIZE) / 2;
+            const offsetY = (CANVAS_HEIGHT - gameState.rows * GRID_SIZE) / 2;
+
+            const playerX = offsetX + gameState.playerPos.x * GRID_SIZE;
+            const playerY = offsetY + gameState.playerPos.y * GRID_SIZE;
+
+            // Player body (peach colored circle)
+            p.fill(255, 200, 100);
+            p.ellipse(playerX + GRID_SIZE / 2, playerY + GRID_SIZE / 2, GRID_SIZE - 8, GRID_SIZE - 8);
+
+            // Eyes (white circles)
+            p.fill(255);
+            p.ellipse(playerX + GRID_SIZE / 2 - 4, playerY + GRID_SIZE / 2 - 2, 3, 3);
+            p.ellipse(playerX + GRID_SIZE / 2 + 4, playerY + GRID_SIZE / 2 - 2, 3, 3);
+
+            // Pupils (black circles)
+            p.fill(0);
+            p.ellipse(playerX + GRID_SIZE / 2 - 4, playerY + GRID_SIZE / 2 - 2, 1.5, 1.5);
+            p.ellipse(playerX + GRID_SIZE / 2 + 4, playerY + GRID_SIZE / 2 - 2, 1.5, 1.5);
+        }
+
+        // ===== INITIALIZE P5.JS =====
+        p5Instance = new p5(sketch);
+
+        // ===== EVENT LISTENERS =====
+
+        // Restart button: reset to level 1 if completed, otherwise reload current level
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            if (gameState.allLevelsCompleted || gameState.gameWon) {
+                // Reset to first level if game was completed
+                gameState.currentLevel = 1;
+                gameState.allLevelsCompleted = false;
+                gameState.gameWon = false;
+            }
+            loadLevel(gameState.currentLevel);
+            updateUI();
+        });
+
+        // Undo button: restore previous game state
+        document.getElementById('undo-btn').addEventListener('click', undoMove);
+
+        // Prevent arrow keys from scrolling the page during gameplay
+        window.addEventListener('keydown', e => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+                e.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>

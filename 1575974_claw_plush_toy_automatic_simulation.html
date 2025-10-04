@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Crane Claw Physics Simulation</title>
+    <style>
+        /* Styling */
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+            color: white;
+            box-shadow: 0 4px 15px rgba(238, 90, 82, 0.4);
+            font-weight: bold;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(238, 90, 82, 0.6);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .info-panel {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 15px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .info-item {
+            text-align: center;
+            min-width: 100px;
+        }
+        .info-label {
+            font-size: 14px;
+            color: #ccc;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+        .status {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ff6b6b;
+        }
+        #gameCanvas {
+            border: 3px solid #4ecdc4;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(78, 205, 196, 0.3);
+            background: #000;
+        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            h1 {
+                font-size: 2em;
+            }
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            button {
+                width: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Crane Claw Simulation</h1>
+        <div class="info-panel">
+            <div class="info-item">
+                <div class="info-label">Toys Collected</div>
+                <div class="info-value" id="toysCollected">0</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Attempts</div>
+                <div class="info-value" id="attempts">0</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Success Rate</div>
+                <div class="info-value" id="successRate">0%</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Status</div>
+                <div class="status" id="status">Initializing...</div>
+            </div>
+        </div>
+        <div class="controls">
+            <button id="resetBtn">🔄 Reset Simulation</button>
+        </div>
+        <div id="canvasContainer"></div>
+    </div>
+    <script type="importmap">
+        {
+          "imports": {
+            "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.3/+esm",
+            "matter-js": "https://cdn.jsdelivr.net/npm/matter-js@0.20.0/+esm"
+          }
+        }
+    </script>
+    <script type="module">
+        // Import libraries
+        import p5 from "p5";
+        import Matter from "matter-js";
+
+        // Global variables for game state and physics
+        let engine, world, render;
+        let claw, clawConstraint, clawBody;
+        let toys = [];
+        let droppedToys = [];
+        let walls = [];
+        let dropZone;
+        let clawState = 'moving_to_target';
+        let targetX = 0;
+        let targetToy = null;
+        let clawSpeed = 1.2;
+        let clawOpen = true;
+        let grabbedToy = null;
+        let toysCollected = 0;
+        let attempts = 0;
+        let stateTimer = 0;
+        let gameWidth = 800;
+        let gameHeight = 600;
+        let currentToyIndex = 0;
+        let floorY = gameHeight - 40;
+        let smoothGrabTimer = 0;
+
+        // Claw states for state machine
+        const STATES = {
+            MOVING_TO_TARGET: 'moving_to_target',
+            LOWERING: 'lowering',
+            GRABBING: 'grabbing',
+            LIFTING: 'lifting',
+            MOVING_TO_DROP: 'moving_to_drop',
+            DROPPING: 'dropping',
+            RETURNING: 'returning'
+        };
+
+        // Only plush toy types (teddy and duck)
+        const plushToyTypes = [
+            { type: 'teddy', color: '#8B4513', size: 25 },
+            { type: 'duck', color: '#FFD700', size: 22 }
+        ];
+
+        // p5.js setup function (called once at start)
+        window.setup = function() {
+            let canvas = createCanvas(gameWidth, gameHeight);
+            canvas.parent('canvasContainer');
+            canvas.id('gameCanvas');
+            // Initialize Matter.js engine and world
+            engine = Matter.Engine.create();
+            world = engine.world;
+            engine.world.gravity.y = 0.8;
+            initializeGame();
+            // Reset button event
+            document.getElementById('resetBtn').addEventListener('click', resetGame);
+        };
+
+        // Initialize or reset the game state and world
+        function initializeGame() {
+            Matter.World.clear(world);
+            toys = [];
+            droppedToys = [];
+            walls = [];
+            createBoundaries();
+            createClaw();
+            createToys();
+            createDropZone();
+            resetGameState();
+        }
+
+        // Create static boundaries (floor and walls)
+        function createBoundaries() {
+            let platformWidth = 730 - 0;
+            let platformX = platformWidth / 2;
+            // Floor
+            walls.push(Matter.Bodies.rectangle(platformX, floorY, platformWidth, 40, { 
+                isStatic: true,
+                render: { fillStyle: '#444' }
+            }));
+            // Left wall
+            walls.push(Matter.Bodies.rectangle(10, gameHeight/2, 20, gameHeight, { 
+                isStatic: true,
+                render: { fillStyle: '#333' }
+            }));
+            // Right wall
+            walls.push(Matter.Bodies.rectangle(gameWidth - 10, gameHeight/2, 20, gameHeight, { 
+                isStatic: true,
+                render: { fillStyle: '#333' }
+            }));
+            // Ceiling (invisible)
+            walls.push(Matter.Bodies.rectangle(gameWidth/2, -10, gameWidth, 20, { 
+                isStatic: true,
+                render: { visible: false }
+            }));
+            Matter.World.add(world, walls);
+        }
+
+        // Create the claw body and its cable constraint
+        function createClaw() {
+            clawBody = Matter.Bodies.rectangle(gameWidth/2, 100, 60, 30, {
+                render: { fillStyle: '#silver' },
+                frictionAir: 0.1,
+                inertia: Infinity 
+            });
+            clawConstraint = Matter.Constraint.create({
+                pointA: { x: gameWidth/2, y: 50 },
+                bodyB: clawBody,
+                pointB: { x: 0, y: -15 },
+                stiffness: 0.9,
+                damping: 0.3,
+                length: 50,
+                render: { 
+                    visible: true,
+                    strokeStyle: '#666',
+                    lineWidth: 3
+                }
+            });
+            Matter.World.add(world, [clawBody, clawConstraint]);
+        }
+
+        // Create plush toys in two rows
+        function createToys() {
+            let startX = 80;
+            let spacing = 40;
+            let row1Y = floorY - 45; 
+            let row2Y = floorY - 90;
+            // Bottom row
+            for (let i = 0; i < 12; i++) {
+                let x = startX + (i * spacing);
+                if (x > 690) break;
+                let toyType = plushToyTypes[i % plushToyTypes.length];
+                let toy = Matter.Bodies.circle(x, row1Y, toyType.size, {
+                    restitution: 0.2,
+                    friction: 0.9,
+                    frictionAir: 0.05,
+                    render: { 
+                        fillStyle: toyType.color,
+                        strokeStyle: '#fff',
+                        lineWidth: 2
+                    }
+                });
+                toy.toySize = toyType.size;
+                toy.toyColor = toyType.color;
+                toy.toyType = toyType.type;
+                toy.collected = false;
+                toy.isPlush = true;
+                toy.layer = 1;
+                toy.dropped = false;
+                toys.push(toy);
+            }
+            // Top row (offset for stacking)
+            for (let i = 0; i < 10; i++) {
+                let x = startX + 20 + (i * spacing);
+                if (x > 690) break;
+                let toyType = plushToyTypes[i % plushToyTypes.length];
+                let toy = Matter.Bodies.circle(x, row2Y, toyType.size, {
+                    restitution: 0.2,
+                    friction: 0.9,
+                    frictionAir: 0.05,
+                    render: { 
+                        fillStyle: toyType.color,
+                        strokeStyle: '#fff',
+                        lineWidth: 2
+                    }
+                });
+                toy.toySize = toyType.size;
+                toy.toyColor = toyType.color;
+                toy.toyType = toyType.type;
+                toy.collected = false;
+                toy.isPlush = true;
+                toy.layer = 2;
+                toy.dropped = false;
+                toys.push(toy);
+            }
+            Matter.World.add(world, toys);
+        }
+
+        // Define the drop zone area (for visuals and logic)
+        function createDropZone() {
+            dropZone = {
+                x: gameWidth - 80,
+                y: gameHeight - 120,
+                width: 120,
+                height: 160
+            };
+        }
+
+        // Reset all game state variables and UI
+        function resetGameState() {
+            clawState = STATES.MOVING_TO_TARGET;
+            currentToyIndex = 0;
+            selectRandomTarget();
+            clawOpen = true;
+            grabbedToy = null;
+            stateTimer = 0;
+            attempts = 0;
+            toysCollected = 0;
+            smoothGrabTimer = 0;
+            droppedToys = [];
+            updateUI();
+        }
+
+        // Pick a random X position for the claw to target
+        function selectRandomTarget() {
+            let minX = 100;
+            let maxX = 690;
+            // Calculate drop zone X range
+            let dzMinX = dropZone.x - dropZone.width / 2;
+            let pickMaxX = dzMinX - 80; // 80px gap before drop zone
+            let valid = false;
+            let x = 0;
+            while (!valid) {
+                x = minX + Math.random() * (pickMaxX - minX);
+                if (x >= minX && x <= pickMaxX) {
+                    valid = true;
+                }
+            }
+            targetX = x;
+            targetToy = null;
+        }
+
+        // Returns the topmost toy directly under the claw (tight threshold), but not in drop zone or gap
+        function findTopMostToy() {
+            let nearestToy = null;
+            let highestY = Infinity;
+            let clawX = clawBody.position.x;
+            // Calculate drop zone X range
+            let dzMinX = dropZone.x - dropZone.width / 2;
+            let dzMaxX = dropZone.x + dropZone.width / 2;
+            let dzMinY = dropZone.y - dropZone.height / 2;
+            let dzMaxY = dropZone.y + dropZone.height / 2;
+            let pickMaxX = dzMinX - 80;
+            toys.forEach(toy => {
+                if (!toy.collected && toy.isPlush && !toy.dropped) {
+                    let distance = Math.abs(toy.position.x - clawX);
+                    // Only pick if the toy is directly under the claw (tight threshold)
+                    let inDropZone = (
+                        toy.position.x > dzMinX &&
+                        toy.position.x < dzMaxX &&
+                        toy.position.y > dzMinY &&
+                        toy.position.y < dzMaxY
+                    );
+                    let inGapBeforeDropZone = toy.position.x > pickMaxX;
+                    if (distance < 18 && toy.position.y < highestY && !inDropZone && !inGapBeforeDropZone) {
+                        highestY = toy.position.y;
+                        nearestToy = toy;
+                    }
+                }
+            });
+            return nearestToy;
+        }
+
+        // p5.js draw loop (called every frame)
+        window.draw = function() {
+            background(20, 30, 40);
+            Matter.Engine.update(engine);
+            updateClaw();
+            checkDroppedToys();
+            drawGame();
+            updateUI();
+        };
+
+        // Remove dropped toys that have left the screen, mark as collected
+        function checkDroppedToys() {
+            for (let i = droppedToys.length - 1; i >= 0; i--) {
+                let toy = droppedToys[i];
+                if (toy.position.x > gameWidth + 50 || toy.position.y > gameHeight + 50) {
+                    Matter.World.remove(world, toy);
+                    droppedToys.splice(i, 1);
+                    let originalToy = toys.find(t => t === toy);
+                    if (originalToy) {
+                        originalToy.collected = true;
+                    }
+                }
+            }
+        }
+
+        // Main state machine for the claw
+        function updateClaw() {
+            stateTimer++;
+            switch(clawState) {
+                case STATES.MOVING_TO_TARGET:
+                    moveClawToTarget();
+                    break;
+                case STATES.LOWERING:
+                    lowerClaw();
+                    break;
+                case STATES.GRABBING:
+                    grabToys();
+                    break;
+                case STATES.LIFTING:
+                    liftClaw();
+                    break;
+                case STATES.MOVING_TO_DROP:
+                    moveToDropZone();
+                    break;
+                case STATES.DROPPING:
+                    dropToy();
+                    break;
+                case STATES.RETURNING:
+                    returnClaw();
+                    break;
+            }
+        }
+
+        // Move the claw horizontally to the target X position
+        function moveClawToTarget() {
+            let currentX = clawConstraint.pointA.x;
+            let diff = targetX - currentX;
+            if (abs(diff) > 3) {
+                clawConstraint.pointA.x += diff > 0 ? clawSpeed : -clawSpeed;
+            } else {
+                clawState = STATES.LOWERING;
+                stateTimer = 0;
+            }
+        }
+
+        // Lower the claw by increasing the cable length
+        function lowerClaw() {
+            if (clawConstraint.length < 380) {
+                clawConstraint.length += 1.5;
+            } else {
+                clawState = STATES.GRABBING;
+                clawOpen = false;
+                stateTimer = 0;
+                smoothGrabTimer = 0;
+            }
+        }
+
+        // Try to grab a toy under the claw, or retract if none found
+        function grabToys() {
+            smoothGrabTimer++;
+            if (smoothGrabTimer === 1) {
+                targetToy = findTopMostToy();
+            }
+            if (smoothGrabTimer > 60) {
+                if (targetToy && !targetToy.collected && targetToy.isPlush && !targetToy.dropped) {
+                    grabbedToy = targetToy;
+                    // Remove any previous constraints on this toy
+                    if (grabbedToy.constraint) {
+                        Matter.World.remove(world, grabbedToy.constraint);
+                        grabbedToy.constraint = null;
+                    }
+                    // Attach only this toy
+                    grabbedToy.constraint = Matter.Constraint.create({
+                        bodyA: clawBody,
+                        bodyB: grabbedToy,
+                        stiffness: 0.6,
+                        damping: 0.3,
+                        length: 45
+                    });
+                    Matter.World.add(world, grabbedToy.constraint);
+                    Matter.Body.setVelocity(grabbedToy, { x: 0, y: 0 });
+                    clawState = STATES.LIFTING;
+                    stateTimer = 0;
+                    attempts++;
+                } else {
+                    // No toy under claw, retract and retry, do NOT count as attempt
+                    clawState = STATES.RETURNING;
+                    stateTimer = 0;
+                    clawOpen = true;
+                    grabbedToy = null;
+                }
+            }
+        }
+
+        // Lift the claw by shortening the cable
+        function liftClaw() {
+            if (clawConstraint.length > 80) {
+                clawConstraint.length -= 1.8;
+            } else {
+                clawState = STATES.MOVING_TO_DROP;
+                stateTimer = 0;
+            }
+        }
+
+        // Move the claw horizontally to the drop zone
+        function moveToDropZone() {
+            let currentX = clawConstraint.pointA.x;
+            let targetDropX = dropZone.x;
+            let diff = targetDropX - currentX;
+            if (abs(diff) > 3) {
+                clawConstraint.pointA.x += diff > 0 ? clawSpeed : -clawSpeed;
+            } else {
+                clawState = STATES.DROPPING;
+                stateTimer = 0;
+            }
+        }
+
+        // Drop the toy (release constraint and give velocity)
+        function dropToy() {
+            if (stateTimer > 50) {
+                clawOpen = true;
+                if (grabbedToy && grabbedToy.constraint) {
+                    Matter.World.remove(world, grabbedToy.constraint);
+                    grabbedToy.constraint = null;
+                    grabbedToy.dropped = true;
+                    droppedToys.push(grabbedToy);
+                    toysCollected++;
+                    // Give toy a strong rightward velocity if dropped in drop zone
+                    if (
+                        grabbedToy.position.x > dropZone.x - dropZone.width / 2 &&
+                        grabbedToy.position.x < dropZone.x + dropZone.width / 2 &&
+                        grabbedToy.position.y > dropZone.y - dropZone.height / 2 &&
+                        grabbedToy.position.y < dropZone.y + dropZone.height / 2
+                    ) {
+                        Matter.Body.setVelocity(grabbedToy, { x: 12, y: 2 });
+                    } else {
+                        Matter.Body.setVelocity(grabbedToy, { x: 0, y: 3 });
+                    }
+                    grabbedToy = null;
+                }
+                clawState = STATES.RETURNING;
+                stateTimer = 0;
+            }
+        }
+
+        // Return the claw to the starting position and reset for next attempt
+        function returnClaw() {
+            if (clawConstraint.length > 60) {
+                clawConstraint.length -= 1.5;
+            }
+            let startX = gameWidth / 2;
+            let currentX = clawConstraint.pointA.x;
+            let diff = startX - currentX;
+            if (abs(diff) > 3) {
+                clawConstraint.pointA.x += diff > 0 ? clawSpeed : -clawSpeed;
+            } else if (clawConstraint.length <= 60) {
+                if (stateTimer > 100) {
+                    selectRandomTarget();
+                    clawState = STATES.MOVING_TO_TARGET;
+                    stateTimer = 0;
+                    clawConstraint.length = 50;
+                }
+            }
+        }
+
+        // Draw a single toy (teddy or duck) at its position and angle
+        function drawToy(toy) {
+            push();
+            translate(toy.position.x, toy.position.y);
+            rotate(toy.angle);
+            fill(toy.toyColor);
+            stroke(255);
+            strokeWeight(2);
+            switch(toy.toyType) {
+                case 'teddy':
+                    // Teddy bear body
+                    circle(0, 0, toy.toySize * 1.8);
+                    // Head
+                    fill(toy.toyColor);
+                    circle(0, -toy.toySize * 0.9, toy.toySize * 1.2);
+                    // Ears
+                    circle(-toy.toySize * 0.5, -toy.toySize * 1.3, toy.toySize * 0.4);
+                    circle(toy.toySize * 0.5, -toy.toySize * 1.3, toy.toySize * 0.4);
+                    // Eyes
+                    fill(0);
+                    noStroke();
+                    circle(-toy.toySize * 0.25, -toy.toySize * 1.0, toy.toySize * 0.15);
+                    circle(toy.toySize * 0.25, -toy.toySize * 1.0, toy.toySize * 0.15);
+                    // Nose
+                    fill(139, 69, 19);
+                    circle(0, -toy.toySize * 0.8, toy.toySize * 0.1);
+                    break;
+                case 'duck':
+                    // Duck body
+                    ellipse(0, 0, toy.toySize * 2.2, toy.toySize * 1.6);
+                    // Head
+                    fill(toy.toyColor);
+                    stroke(255);
+                    strokeWeight(2);
+                    circle(-toy.toySize * 0.4, -toy.toySize * 0.7, toy.toySize * 1.0);
+                    // Beak
+                    fill(255, 165, 0);
+                    triangle(-toy.toySize * 0.9, -toy.toySize * 0.7, 
+                            -toy.toySize * 1.2, -toy.toySize * 0.6,
+                            -toy.toySize * 1.2, -toy.toySize * 0.8);
+                    // Eye
+                    fill(0);
+                    noStroke();
+                    circle(-toy.toySize * 0.5, -toy.toySize * 0.8, toy.toySize * 0.12);
+                    break;
+            }
+            pop();
+        }
+
+        // Draw the entire game scene (drop zone, toys, claw, etc.)
+        function drawGame() {
+            // Draw drop zone as a closed rectangle (not open at the bottom)
+            fill(60, 80, 100, 100);
+            stroke(100, 120, 140);
+            strokeWeight(2);
+            rect(dropZone.x - dropZone.width/2, dropZone.y - dropZone.height/2, 
+                 dropZone.width, dropZone.height, 8); // Rounded corners
+
+            // Draw drop zone border 
+            noFill();
+            stroke(255, 255, 255, 180);
+            strokeWeight(3);
+            rect(dropZone.x - dropZone.width/2, dropZone.y - dropZone.height/2, 
+                 dropZone.width, dropZone.height, 8);
+
+            // Draw "DROP ZONE" text
+            fill(255);
+            noStroke();
+            textAlign(CENTER);
+            textSize(12);
+            text("DROP ZONE", dropZone.x, dropZone.y - 60);
+
+            // Draw all toys (including dropped ones that are still falling)
+            toys.forEach(toy => {
+                if (!toy.collected) {
+                    drawToy(toy);
+                }
+            });
+            droppedToys.forEach(toy => {
+                drawToy(toy);
+            });
+
+            // Draw claw cable
+            stroke(150);
+            strokeWeight(3);
+            line(clawConstraint.pointA.x, clawConstraint.pointA.y,
+                 clawBody.position.x, clawBody.position.y);
+
+            // Draw claw (no rotation)
+            push();
+            translate(clawBody.position.x, clawBody.position.y);
+            fill(180);
+            stroke(220);
+            strokeWeight(2);
+            rect(-30, -15, 60, 30, 5);
+            // Claw arms - proper grabbing mechanism
+            strokeWeight(4);
+            stroke(160);
+            if (clawOpen) {
+                // Open claw arms
+                line(-25, 15, -35, 45);
+                line(25, 15, 35, 45);
+                line(-15, 15, -20, 45);
+                line(15, 15, 20, 45);
+                line(-5, 15, -8, 45);
+                line(5, 15, 8, 45);
+            } else {
+                // Closed claw arms - converging to center
+                line(-25, 15, -8, 45);
+                line(25, 15, 8, 45);
+                line(-15, 15, -4, 45);
+                line(15, 15, 4, 45);
+                line(-5, 15, 0, 45);
+                line(5, 15, 0, 45);
+            }
+            pop();
+
+            // Draw ceiling track
+            stroke(100);
+            strokeWeight(8);
+            line(0, 50, gameWidth, 50);
+
+            // Draw claw position indicator
+            fill(255, 100, 100);
+            noStroke();
+            circle(clawConstraint.pointA.x, 50, 10);
+        }
+
+        // Update the UI panel with current stats and status
+        function updateUI() {
+            document.getElementById('toysCollected').textContent = toysCollected;
+            document.getElementById('attempts').textContent = attempts;
+            document.getElementById('successRate').textContent = 
+                attempts > 0 ? Math.round((toysCollected / attempts) * 100) + '%' : '0%';
+            // Update status
+            let statusText = '';
+            switch(clawState) {
+                case STATES.MOVING_TO_TARGET:
+                    statusText = 'Moving to position...';
+                    break;
+                case STATES.LOWERING:
+                    statusText = 'Lowering claw...';
+                    break;
+                case STATES.GRABBING:
+                    statusText = 'Grabbing toy...';
+                    break;
+                case STATES.LIFTING:
+                    statusText = grabbedToy ? 'Lifting plush toy!' : 'Lifting...';
+                    break;
+                case STATES.MOVING_TO_DROP:
+                    statusText = 'Moving to drop zone...';
+                    break;
+                case STATES.DROPPING:
+                    statusText = 'Dropping toy...';
+                    break;
+                case STATES.RETURNING:
+                    statusText = 'Returning to start...';
+                    break;
+            }
+            document.getElementById('status').textContent = statusText;
+        }
+
+        // Reset the game (called by button)
+        function resetGame() {
+            initializeGame();
+        }
+
+        // p5.js preload 
+        window.preload = function() {};
+    </script>
+</body>
+</html>

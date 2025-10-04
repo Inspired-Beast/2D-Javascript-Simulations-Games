@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Realistic Mudslide Simulation</title>
+  <style>
+    /* Basic page styling */
+    body {
+      margin: 0; 
+      background: #1a1a2e; 
+      color: #eee; 
+      font-family: Arial, sans-serif; 
+      user-select: none; 
+      overflow: hidden;
+    }
+    /* UI container styling */
+    #ui {
+      position: absolute; 
+      top: 10px; 
+      left: 10px; 
+      z-index: 20;
+      background: rgba(0,0,0,0.8); 
+      padding: 12px 18px; 
+      border-radius: 10px; 
+      max-width: 340px; 
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    /* Button styling */
+    button {
+      background: linear-gradient(145deg, #444, #666); 
+      border: none; 
+      color: #eee; 
+      padding: 10px 15px; 
+      font-size: 14px; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      margin-top: 8px; 
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    button:hover { 
+      background: linear-gradient(145deg, #555, #777); 
+    }
+    /* Info text styling */
+    #info { 
+      margin-top: 12px; 
+      font-size: 14px; 
+      line-height: 1.4; 
+    }
+    /* Dialog box styling */
+    #dialog {
+      position: absolute; 
+      top: 10px; 
+      right: 10px; 
+      z-index: 30;
+      background: rgba(0,0,0,0.9); 
+      padding: 8px 12px; 
+      border-radius: 8px;
+      max-width: 180px; 
+      font-size: 11px; 
+      color: #eee; 
+      box-shadow: 0 0 15px rgba(0,0,0,0.8);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    /* Status colors */
+    .warning { color: #ff6b6b; font-weight: bold; }
+    .safe { color: #4ecdc4; }
+    .danger { color: #ff4757; }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- UI panel with controls and info -->
+  <div id="ui">
+    <button id="resetBtn">🔄 Reset Simulation</button>
+    <div id="info">
+      <div>🌧️ Rainfall: <span id="rainLevel">0</span> mm</div>
+      <div>📊 Status: <span id="status">Heavy Rain</span></div>
+      <div>🏔️ Liquefied Cells: <span id="mudCount">0</span></div>
+      <div>🛣️ Road Impact: <span id="roadImpact">Clear</span></div>
+    </div>
+  </div>
+  
+  <!-- Monitoring dialog showing saturation and stability -->
+  <div id="dialog">
+    <strong>🌧️ Monitor</strong>
+    <div>Saturation: <span id="avgMoisture">0%</span></div>
+    <div id="layerMoisture"></div>
+    <div id="stabilityAlert"></div>
+  </div>
+
+  <script type="module">
+    import p5 from "p5";
+
+    const sketch = (p) => {
+      // Arrays to hold simulation data
+      let terrain = [];              // Terrain height per column
+      let soilGrid = [];             // 2D grid of soil cells
+      let rainDrops = [];            // Array of rain drop objects
+      let roadMudAccumulation = [];  // Mud accumulation on road per row
+      let terrainMudFlow = [];       // Amount of mud flowing on terrain per column
+      let mudParticles = [];         // Individual mud particles for realistic flow
+
+      // UI elements references
+      let rainLevelEl, statusEl, resetBtn, mudCountEl, roadImpactEl, avgMoistureEl, stabilityAlertEl, layerMoistureEl;
+      
+      // Simulation state variables
+      let rainActive = true;         // Is it raining?
+      let rainAccumulated = 0;       // Total rainfall accumulated
+      let mudslideInitiated = false; // Has mudslide started?
+      let frameCounter = 0;          // Frame count for animations
+
+      // Constants defining simulation grid and parameters
+      const WIDTH = window.innerWidth;
+      const HEIGHT = window.innerHeight;
+      const GRID_COLS = 100;         // Number of columns in grid
+      const GRID_ROWS = 50;          // Number of rows in grid
+      const CELL_WIDTH = WIDTH / GRID_COLS;   // Width of each cell in pixels
+      const CELL_HEIGHT = HEIGHT / GRID_ROWS; // Height of each cell in pixels
+      const ROAD_WIDTH_COLS = 30;    // Width of road in columns
+      const RAIN_INTENSITY = 3.0;    // Rainfall intensity per frame
+      const INFILTRATION_RATE = 0.012; // Rate at which rain infiltrates soil
+      const LIQUEFACTION_THRESHOLD = 0.7; // Threshold for soil liquefaction
+      const SOIL_LAYERS = 4;         // Number of soil layers for monitoring
+
+      // Class representing individual mud particles for visual realism
+      class MudParticle {
+        constructor(x, y, size, velocity) {
+          this.x = x;                 // X position
+          this.y = y;                 // Y position
+          this.size = size;           // Particle size
+          this.velocity = velocity;   // Velocity vector (p5.Vector)
+          this.life = 1.0;            // Life span (opacity)
+          // Random brownish color for mud particle
+          this.color = p.color(p.random(80, 120), p.random(50, 80), p.random(25, 45));
+        }
+
+        // Update particle position and life
+        update() {
+          this.x += this.velocity.x;
+          this.y += this.velocity.y;
+          this.velocity.y += 0.1;     // Gravity effect
+          this.velocity.x *= 0.98;    // Friction slows horizontal movement
+          this.life -= 0.008;         // Fade out over time
+          this.size *= 0.995;         // Shrink slowly
+        }
+
+        // Draw particle as ellipse with fading opacity
+        draw() {
+          if (this.life <= 0 || this.size < 1) return;
+          p.fill(p.red(this.color), p.green(this.color), p.blue(this.color), this.life * 180);
+          p.noStroke();
+          p.ellipse(this.x, this.y, this.size, this.size * 0.8);
+        }
+
+        // Check if particle is dead (invisible or out of screen)
+        isDead() {
+          return this.life <= 0 || this.size < 1 || this.y > HEIGHT;
+        }
+      }
+
+      // Class representing a soil cell in the grid
+      class SoilCell {
+        constructor(col, row, baseHeight) {
+          this.col = col;             // Column index
+          this.row = row;             // Row index
+          this.baseHeight = baseHeight; // Terrain height at this column
+          this.moisture = p.random(0.05, 0.15); // Initial moisture level
+          this.porePressure = 0;      // Pore water pressure
+          this.liquefied = false;     // Is soil liquefied?
+          this.stable = true;         // Is soil stable?
+          this.depth = p.max(0, row - baseHeight); // Depth below terrain surface
+          this.soilAmount = 1.0;      // Amount of soil present (1 = full)
+          this.slideOffset = 0;       // Horizontal slide offset in pixels
+          this.hasSlid = false;       // Has this cell slid already?
+          this.slideVelocity = 0;     // Velocity of sliding soil
+          this.cohesion = p.random(0.3, 0.8); // Soil cohesion factor (strength)
+          
+          // Assign soil type and color based on depth
+          if (this.depth <= 2) {
+            this.soilType = 'topsoil';
+            this.color = p.color(101, 67, 33);
+            this.cohesion *= 0.7; // Topsoil less cohesive
+          } else if (this.depth <= 5) {
+            this.soilType = 'subsoil';
+            this.color = p.color(139, 69, 19);
+          } else if (this.depth <= 8) {
+            this.soilType = 'clay';
+            this.color = p.color(160, 82, 45);
+            this.cohesion *= 1.3; // Clay more cohesive
+          } else {
+            this.soilType = 'bedrock';
+            this.color = p.color(105, 105, 105);
+            this.cohesion *= 2.0; // Bedrock very cohesive
+          }
+        }
+        
+        // Update moisture based on rain and neighboring cells
+        updateMoisture(rainActive, soilAbove, soilBelow, soilLeft, soilRight) {
+          if (rainActive) {
+            // Direct infiltration at terrain surface
+            if (this.row === p.floor(this.baseHeight)) {
+              this.moisture += INFILTRATION_RATE * 2.5;
+            } 
+            // Percolation from above soil cell if wet
+            else if (soilAbove && soilAbove.moisture > 0.6) {
+              let percolationRate = (soilAbove.moisture - 0.6) * 0.008;
+              this.moisture += percolationRate;
+              soilAbove.moisture -= percolationRate * 0.3;
+            }
+          }
+          
+          // Lateral moisture flow with slope effect
+          let slopeEffect = this.col < GRID_COLS - ROAD_WIDTH_COLS - 1 ? 1.2 : 1.0;
+          if (soilLeft && this.moisture > soilLeft.moisture + 0.15) {
+            let lateralFlow = (this.moisture - soilLeft.moisture) * 0.003 * slopeEffect;
+            this.moisture -= lateralFlow;
+            soilLeft.moisture += lateralFlow * 0.8;
+          }
+          if (soilRight && this.moisture > soilRight.moisture + 0.15) {
+            let lateralFlow = (this.moisture - soilRight.moisture) * 0.003 * slopeEffect;
+            this.moisture -= lateralFlow;
+            soilRight.moisture += lateralFlow * 0.8;
+          }
+          
+          // Drainage to soil below if saturated
+          if (soilBelow && this.moisture > 0.8) {
+            let drainageRate = (this.moisture - 0.8) * 0.006;
+            this.moisture -= drainageRate;
+            soilBelow.moisture += drainageRate * 0.9;
+          }
+          
+          // Clamp moisture between 0 and 1
+          this.moisture = p.constrain(this.moisture, 0, 1);
+        }
+        
+        // Update pore water pressure based on moisture and depth
+        updatePorePressure() {
+          let depthFactor = p.min(this.depth / 15, 1);
+          this.porePressure = (this.moisture * 0.8) + (depthFactor * this.moisture * 0.7);
+        }
+        
+        // Check if soil liquefies based on moisture, pore pressure, cohesion, and depth
+        checkLiquefaction() {
+          // Base liquefaction threshold by soil type
+          let threshold = this.soilType === 'topsoil' ? 0.6 : 
+                         this.soilType === 'subsoil' ? 0.7 : 
+                         this.soilType === 'clay' ? 0.8 : 0.9;
+          
+          // Adjust threshold by cohesion (stronger soil resists liquefaction)
+          threshold *= this.cohesion;
+          
+          // Liquefaction conditions
+          if (this.moisture >= threshold && 
+              this.porePressure >= 0.5 && 
+              this.depth > 0 && 
+              this.soilAmount > 0.2) {
+            this.liquefied = true;
+            this.stable = false;
+          } else {
+            this.liquefied = false;
+            this.stable = true;
+          }
+        }
+        
+        // Simulate soil sliding toward the road (right side)
+        slideTowardRoad() {
+          // If not liquefied or soil too little or at road edge, slow down sliding
+          if (!this.liquefied || this.soilAmount < 0.2 || this.col >= GRID_COLS - ROAD_WIDTH_COLS - 1) {
+            this.slideVelocity *= 0.85; // Deceleration due to friction
+            this.slideOffset += this.slideVelocity;
+            if (this.slideOffset < 0.1) this.slideOffset = 0;
+            return;
+          }
+          
+          // Calculate acceleration based on moisture and cohesion
+          let slideAcceleration = 0.3 * this.moisture * (1 / this.cohesion);
+          if (this.soilType === 'topsoil') slideAcceleration *= 1.3; // Topsoil slides easier
+          else if (this.soilType === 'clay') slideAcceleration *= 0.7; // Clay slides less
+          
+          this.slideVelocity += slideAcceleration;
+          this.slideVelocity *= 0.95; // Air resistance slows slide
+          this.slideOffset += this.slideVelocity;
+          
+          // Generate mud particles visually during sliding
+          if (this.slideVelocity > 0.5 && p.random() < 0.3) {
+            let particleX = this.col * CELL_WIDTH + this.slideOffset + p.random(-5, 5);
+            let particleY = this.row * CELL_HEIGHT + p.random(CELL_HEIGHT);
+            let particleSize = p.random(2, 6);
+            let particleVel = p.createVector(this.slideVelocity * 0.8 + p.random(-1, 1), p.random(-2, 1));
+            mudParticles.push(new MudParticle(particleX, particleY, particleSize, particleVel));
+          }
+          
+          // When slide offset exceeds cell width, transfer soil to next cell
+          if (this.slideOffset > CELL_WIDTH) {
+            if (this.col + 1 < GRID_COLS - ROAD_WIDTH_COLS) {
+              let nextCell = soilGrid[this.col + 1][this.row];
+              let transferAmount = p.min(this.soilAmount, 0.15);
+              
+              this.soilAmount -= transferAmount;
+              nextCell.soilAmount += transferAmount;
+              nextCell.moisture = p.max(nextCell.moisture, this.moisture * 0.95);
+              
+              this.slideOffset -= CELL_WIDTH;
+              
+              if (this.soilAmount < 0.2) this.hasSlid = true;
+              
+              // Accumulate mud on road if near road edge
+              if (this.col >= GRID_COLS - ROAD_WIDTH_COLS - 3) {
+                let roadY = this.row;
+                if (roadY >= 0 && roadY < GRID_ROWS) {
+                  roadMudAccumulation[roadY] = (roadMudAccumulation[roadY] || 0) + transferAmount * 25;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Class representing a single rain drop
+      class RainDrop {
+        constructor() {
+          this.reset();
+          this.y = p.random(-HEIGHT, 0); // Start at random height above screen
+        }
+        
+        // Reset rain drop to top with random properties
+        reset() {
+          this.x = p.random(0, WIDTH * 0.87);
+          this.y = p.random(-HEIGHT * 2, -10);
+          this.speed = p.random(18, 30);
+          this.length = p.random(20, 35);
+          this.thickness = p.random(1.5, 2.5);
+          this.opacity = p.random(130, 220);
+        }
+        
+        // Update position, reset if hits terrain
+        update() {
+          let col = p.floor(this.x / CELL_WIDTH);
+          if (col < 0) col = 0;
+          if (col >= GRID_COLS) col = GRID_COLS - 1;
+          let terrainY = terrain[col] * CELL_HEIGHT;
+
+          if (this.y + this.length >= terrainY) {
+            this.reset();
+            this.y = p.random(-HEIGHT * 0.5, 0);
+          } else {
+            this.y += this.speed;
+          }
+        }
+        
+        // Draw rain drop as a line with slight splash on terrain
+        draw() {
+          p.stroke(180, 210, 240, this.opacity);
+          p.strokeWeight(this.thickness);
+          p.line(this.x, this.y, this.x, this.y + this.length);
+          
+          let col = p.floor(this.x / CELL_WIDTH);
+          if (col >= 0 && col < GRID_COLS - ROAD_WIDTH_COLS) {
+            let terrainY = terrain[col] * CELL_HEIGHT;
+            if (this.y + this.length > terrainY - 3 && this.y + this.length < terrainY + 8) {
+              p.noStroke();
+              p.fill(180, 210, 240, 100);
+              p.ellipse(this.x, terrainY, 5, 2);
+            }
+          }
+        }
+      }
+
+      // Generate terrain heights with noise and slope
+      function generateTerrain() {
+        terrain = [];
+        for (let col = 0; col < GRID_COLS; col++) {
+          // Base slope from left to right
+          let baseSlope = p.map(col, 0, GRID_COLS - ROAD_WIDTH_COLS - 1, GRID_ROWS * 0.2, GRID_ROWS * 0.7);
+          // Add layered Perlin noise for natural variation
+          let noiseVal = p.noise(col * 0.03) + p.noise(col * 0.08) * 0.4 + p.noise(col * 0.15) * 0.2;
+          let noiseHeight = p.map(noiseVal, 0, 1.6, -GRID_ROWS * 0.15, GRID_ROWS * 0.15);
+          terrain[col] = p.constrain(baseSlope + noiseHeight, 0, GRID_ROWS - 1);
+        }
+      }
+
+      // Initialize soil grid with SoilCell objects
+      function createSoilGrid() {
+        soilGrid = [];
+        for (let col = 0; col < GRID_COLS; col++) {
+          soilGrid[col] = [];
+          for (let row = 0; row < GRID_ROWS; row++) {
+            soilGrid[col][row] = new SoilCell(col, row, terrain[col]);
+          }
+        }
+        roadMudAccumulation = [];
+        terrainMudFlow = new Array(GRID_COLS).fill(0);
+        mudParticles = [];
+      }
+
+      // Create rain drops for rainfall simulation
+      function createRainDrops() {
+        rainDrops = [];
+        for (let i = 0; i < 400; i++) {
+          rainDrops.push(new RainDrop());
+        }
+      }
+
+      // Update UI display for soil moisture layers and stability
+      function updateSoilLayersDisplay() {
+        if (!layerMoistureEl) return;
+        
+        let html = '';
+        let criticalLayers = 0;
+        
+        for (let layer = 0; layer < SOIL_LAYERS; layer++) {
+          let totalMoisture = 0, count = 0, criticalCells = 0;
+          
+          for (let col = 0; col < GRID_COLS - ROAD_WIDTH_COLS; col++) {
+            let targetRow = p.floor(terrain[col]) + layer * 3;
+            if (targetRow < GRID_ROWS && soilGrid[col] && soilGrid[col][targetRow]) {
+              let cell = soilGrid[col][targetRow];
+              totalMoisture += cell.moisture;
+              if (cell.liquefied) criticalCells++;
+              count++;
+            }
+          }
+          
+          if (count > 0) {
+            let moisturePercent = (totalMoisture / count) * 100;
+            let criticalPercent = (criticalCells / count) * 100;
+            let status = moisturePercent < 30 ? 'OK' : moisturePercent < 55 ? 'Wet' : moisturePercent < 75 ? 'Sat' : 'CRIT';
+            let statusColor = moisturePercent < 30 ? '#4CAF50' : moisturePercent < 55 ? '#FFC107' : moisturePercent < 75 ? '#FF9800' : '#FF5722';
+            
+            if (criticalPercent > 10) criticalLayers++;
+            
+            html += `<div style="margin:3px 0; padding:3px; background:rgba(255,255,255,0.05); border-radius:3px; font-size:10px;">
+              <div><b>L${layer+1}</b> ${status} ${moisturePercent.toFixed(0)}%</div>
+              <div style="background:#333;width:100%;height:4px;border-radius:2px;margin:2px 0;">
+                <div style="background:${statusColor};width:${moisturePercent}%;height:4px;border-radius:2px;"></div>
+              </div>
+              ${criticalPercent > 0 ? `<div style="color:#ff4757;font-size:9px;">⚠️ ${criticalPercent.toFixed(0)}% sliding</div>` : ''}
+            </div>`;
+          }
+        }
+        
+        layerMoistureEl.innerHTML = html;
+        
+        if (stabilityAlertEl) {
+          if (criticalLayers >= 3) {
+            stabilityAlertEl.innerHTML = '<div class="danger" style="font-size:11px;">🚨 CRITICAL</div>';
+          } else if (criticalLayers >= 1) {
+            stabilityAlertEl.innerHTML = '<div class="warning" style="font-size:11px;">⚠️ UNSTABLE</div>';
+          } else {
+            stabilityAlertEl.innerHTML = '<div class="safe" style="font-size:11px;">✅ STABLE</div>';
+          }
+        }
+      }
+
+      // Draw smooth terrain shape with bezier curves and texture
+      function drawSmoothTerrain() {
+        p.fill(101, 67, 33);
+        p.noStroke();
+        p.beginShape();
+        p.vertex(0, HEIGHT);
+        
+        for (let col = 0; col < GRID_COLS - ROAD_WIDTH_COLS; col++) {
+          let x = col * CELL_WIDTH;
+          let y = terrain[col] * CELL_HEIGHT;
+          if (col === 0) {
+            p.vertex(x, y);
+          } else {
+            // Calculate control points for smooth bezier curve
+            let prevX = (col - 1) * CELL_WIDTH;
+            let prevY = terrain[col - 1] * CELL_HEIGHT;
+            let nextX = col < GRID_COLS - ROAD_WIDTH_COLS - 1 ? (col + 1) * CELL_WIDTH : x;
+            let nextY = col < GRID_COLS - ROAD_WIDTH_COLS - 1 ? terrain[col + 1] * CELL_HEIGHT : y;
+            let cp1x = prevX + (x - prevX) * 0.5;
+            let cp1y = prevY;
+            let cp2x = x - (nextX - x) * 0.3;
+            let cp2y = y;
+            p.bezierVertex(cp1x, cp1y, cp2x, cp2y, x, y);
+          }
+        }
+        
+        p.vertex((GRID_COLS - ROAD_WIDTH_COLS) * CELL_WIDTH, HEIGHT);
+        p.endShape(p.CLOSE);
+        
+        // Add some texture ellipses for natural look
+        for (let col = 0; col < GRID_COLS - ROAD_WIDTH_COLS; col += 2) {
+          let x = col * CELL_WIDTH;
+          let y = terrain[col] * CELL_HEIGHT;
+          p.fill(139, 69, 19, 120);
+          for (let i = 0; i < 3; i++) {
+            p.ellipse(x + p.random(CELL_WIDTH * 2), y + p.random(10, 30), p.random(2, 5), p.random(2, 4));
+          }
+          p.fill(105, 105, 105, 80);
+          if (p.random() > 0.7) {
+            p.ellipse(x + p.random(CELL_WIDTH * 2), y + p.random(15, 40), p.random(3, 8), p.random(3, 6));
+          }
+        }
+      }
+
+      // Draw soil layers with color, moisture, liquefaction, and sliding effects
+      function drawSoilLayers() {
+        for (let col = 0; col < GRID_COLS - ROAD_WIDTH_COLS; col++) {
+          for (let row = 0; row < GRID_ROWS; row++) {
+            if (!soilGrid[col] || !soilGrid[col][row]) continue;
+            let cell = soilGrid[col][row];
+            if (cell.row < cell.baseHeight || cell.soilAmount <= 0.1) continue; // Skip above terrain or empty
+            
+            let x = cell.col * CELL_WIDTH;
+            let y = cell.row * CELL_HEIGHT;
+            let soilAlpha = cell.hasSlid ? 100 : p.map(cell.soilAmount, 0, 1, 150, 255);
+            let drawColor = cell.color;
+            
+            // Mix color for wet soil
+            if (cell.moisture > 0.4) {
+              let wetness = p.map(cell.moisture, 0.4, 1.0, 0, 0.8);
+              drawColor = p.lerpColor(drawColor, p.color(62, 39, 35), wetness);
+            }
+            // Add shimmer for liquefied soil
+            if (cell.liquefied) {
+              drawColor = p.lerpColor(drawColor, p.color(101, 67, 33), 0.8);
+              let shimmer = p.sin(frameCounter * 0.1 + col + row) * 10;
+              soilAlpha += shimmer;
+            }
+            
+            p.fill(p.red(drawColor), p.green(drawColor), p.blue(drawColor), soilAlpha);
+            p.noStroke();
+            
+            // Draw soil rectangle with slide offset
+            p.rect(x + cell.slideOffset, y, CELL_WIDTH, CELL_HEIGHT);
+            
+            // Draw soft edges blending with neighbors
+            let leftCell = col > 0 ? soilGrid[col - 1][row] : null;
+            let rightCell = col < GRID_COLS - ROAD_WIDTH_COLS - 1 ? soilGrid[col + 1][row] : null;
+            if (leftCell && leftCell.soilAmount > 0.1 && leftCell.row >= leftCell.baseHeight) {
+              p.fill(p.red(drawColor), p.green(drawColor), p.blue(drawColor), soilAlpha * 0.3);
+              p.ellipse(x + cell.slideOffset, y + CELL_HEIGHT/2, CELL_WIDTH * 0.3, CELL_HEIGHT);
+            }
+            if (rightCell && rightCell.soilAmount > 0.1 && rightCell.row >= rightCell.baseHeight) {
+              p.fill(p.red(drawColor), p.green(drawColor), p.blue(drawColor), soilAlpha * 0.3);
+              p.ellipse(x + CELL_WIDTH + cell.slideOffset, y + CELL_HEIGHT/2, CELL_WIDTH * 0.3, CELL_HEIGHT);
+            }
+            
+            // Visualize water on soil surface
+            if (cell.moisture > 0.6) {
+              let waterAlpha = cell.moisture * 120;
+              p.fill(100, 150, 255, waterAlpha);
+              p.ellipse(x + cell.slideOffset + CELL_WIDTH/2, y + CELL_HEIGHT/2, CELL_WIDTH * 0.8, CELL_HEIGHT * 0.6);
+              if (cell.moisture > 0.8) {
+                p.fill(150, 200, 255, 180);
+                for (let w = 0; w < 2; w++) {
+                  p.ellipse(x + cell.slideOffset + p.random(CELL_WIDTH), y + p.random(CELL_HEIGHT), p.random(3, 7), p.random(2, 5));
+                }
+              }
+            }
+            
+            // Darker shading for deeper soil layers
+            if (cell.depth > 3) {
+              p.fill(80, 50, 25, soilAlpha * 0.4);
+              p.rect(x + cell.slideOffset + 1, y + 1, CELL_WIDTH - 2, CELL_HEIGHT - 2);
+            }
+            
+            // Overlay for soil that has slid
+            if (cell.hasSlid) {
+              p.fill(60, 60, 60, 120);
+              p.rect(x + cell.slideOffset, y, CELL_WIDTH, CELL_HEIGHT);
+              p.fill(100, 100, 100, 80);
+              for (let e = 0; e < 2; e++) {
+                p.ellipse(x + cell.slideOffset + p.random(CELL_WIDTH), y + p.random(CELL_HEIGHT), p.random(2, 6), p.random(2, 4));
+              }
+            }
+          }
+        }
+      }
+
+      // Update mud flow on terrain based on liquefied soil and sliding velocity
+      function updateTerrainMudFlow() {
+        // Reset mud flow array to zero
+        terrainMudFlow.fill(0);
+
+        // Accumulate mud flow from liquefied soil cells
+        for (let col = 0; col < GRID_COLS - ROAD_WIDTH_COLS; col++) {
+          for (let row = 0; row < GRID_ROWS; row++) {
+            let cell = soilGrid[col][row];
+            if (!cell) continue;
+            if (cell.liquefied && cell.soilAmount > 0.2 && cell.row >= cell.baseHeight) {
+              // Mud amount influenced by soil amount, moisture, and slide velocity
+              let mudAmount = cell.soilAmount * cell.moisture * 20 * (1 + cell.slideVelocity);
+              terrainMudFlow[col] += mudAmount;
+            }
+          }
+        }
+
+        // Simulate downhill flow by transferring mud to next column
+        for (let col = 0; col < GRID_COLS - ROAD_WIDTH_COLS - 1; col++) {
+          let flowAmount = terrainMudFlow[col] * 0.35; // Flow rate
+          terrainMudFlow[col] -= flowAmount;
+          terrainMudFlow[col + 1] += flowAmount;
+        }
+
+        // Slight decay to simulate mud settling and viscosity
+        for (let col = 0; col < GRID_COLS - ROAD_WIDTH_COLS; col++) {
+          terrainMudFlow[col] *= 0.96;
+        }
+      }
+
+      // Draw mud flow on terrain with texture and debris
+      function drawTerrainMudFlow() {
+        p.noStroke();
+        for (let col = 0; col < GRID_COLS - ROAD_WIDTH_COLS; col++) {
+          let mudHeight = p.min(terrainMudFlow[col] / 3, CELL_HEIGHT * 1.5);
+          if (mudHeight < 1) continue; // Skip very small flows
+          let x = col * CELL_WIDTH;
+          let baseY = terrain[col] * CELL_HEIGHT;
+
+          // Base mud shape with wavy top edge
+          p.fill(101, 67, 33, 200);
+          p.beginShape();
+          p.vertex(x, baseY + CELL_HEIGHT);
+          p.vertex(x, baseY + CELL_HEIGHT - mudHeight);
+
+          for (let i = 0; i <= 3; i++) {
+            let ix = x + (i * CELL_WIDTH * 0.33);
+            let slantY = baseY + CELL_HEIGHT - mudHeight + (i * CELL_WIDTH * 0.15);
+            let flowVariation = p.sin(frameCounter * 0.04 + col * 0.5 + i) * 3;
+            p.vertex(ix, slantY + flowVariation);
+          }
+
+          p.vertex(x + CELL_WIDTH, baseY + CELL_HEIGHT);
+          p.endShape(p.CLOSE);
+
+          // Mud flow texture ellipses for visual complexity
+          p.fill(139, 69, 19, 160);
+          for (let i = 0; i < 4; i++) {
+            let flowX = x + p.random(CELL_WIDTH);
+            let flowY = baseY + CELL_HEIGHT - mudHeight / 2 + (flowX - x) * 0.15;
+            p.ellipse(flowX, flowY, p.random(4, 10), p.random(2, 6));
+          }
+          
+          // Debris in heavy mud flow
+          if (mudHeight > CELL_HEIGHT * 0.5) {
+            p.fill(80, 50, 30, 180);
+            for (let j = 0; j < 2; j++) {
+              let debrisX = x + p.random(CELL_WIDTH);
+              let debrisY = baseY + CELL_HEIGHT - mudHeight * 0.7 + (debrisX - x) * 0.15;
+              p.ellipse(debrisX, debrisY, p.random(3, 8), p.random(2, 6));
+            }
+          }
+        }
+      }
+
+      // Update mud particles and remove dead ones
+      function updateMudParticles() {
+        for (let i = mudParticles.length - 1; i >= 0; i--) {
+          mudParticles[i].update();
+          if (mudParticles[i].isDead()) {
+            mudParticles.splice(i, 1);
+          }
+        }
+        
+        // Limit max particles for performance
+        if (mudParticles.length > 200) {
+          mudParticles.splice(0, mudParticles.length - 200);
+        }
+      }
+
+      // Draw all mud particles
+      function drawMudParticles() {
+        mudParticles.forEach(particle => particle.draw());
+      }
+
+      // p5.js setup function - called once at start
+      p.setup = () => {
+        p.createCanvas(WIDTH, HEIGHT);
+        p.frameRate(60);
+        
+        generateTerrain();   // Create terrain heights
+        createSoilGrid();    // Initialize soil grid
+        createRainDrops();   // Create rain drops
+        
+        // Get UI elements references
+        rainLevelEl = document.getElementById("rainLevel");
+        statusEl = document.getElementById("status");
+        resetBtn = document.getElementById("resetBtn");
+        mudCountEl = document.getElementById("mudCount");
+        roadImpactEl = document.getElementById("roadImpact");
+        avgMoistureEl = document.getElementById("avgMoisture");
+        stabilityAlertEl = document.getElementById("stabilityAlert");
+        layerMoistureEl = document.getElementById("layerMoisture");
+        
+        // Reset button reloads page
+        resetBtn.onclick = () => location.reload();
+      };
+
+      // p5.js draw function - called every frame
+      p.draw = () => {
+        frameCounter++;
+        p.background(5, 8, 20); // Dark background
+        
+        if (rainActive) {
+          rainAccumulated += RAIN_INTENSITY; // Accumulate rainfall
+        }
+        
+        // Variables to track moisture and liquefaction stats
+        let totalMoisture = 0, count = 0, liquefiedCount = 0;
+        
+        // Update all soil cells
+        for (let col = 0; col < GRID_COLS; col++) {
+          for (let row = 0; row < GRID_ROWS; row++) {
+            if (!soilGrid[col] || !soilGrid[col][row]) continue;
+            
+            let cell = soilGrid[col][row];
+            let soilAbove = row > 0 ? soilGrid[col][row - 1] : null;
+            let soilBelow = row < GRID_ROWS - 1 ? soilGrid[col][row + 1] : null;
+            let soilLeft = col > 0 ? soilGrid[col - 1][row] : null;
+            let soilRight = col < GRID_COLS - 1 ? soilGrid[col + 1][row] : null;
+            
+            // Update moisture, pore pressure, liquefaction, and sliding
+            cell.updateMoisture(rainActive, soilAbove, soilBelow, soilLeft, soilRight);
+            cell.updatePorePressure();
+            cell.checkLiquefaction();
+            cell.slideTowardRoad();
+            
+            totalMoisture += cell.moisture;
+            if (cell.liquefied) liquefiedCount++;
+            count++;
+          }
+        }
+
+        // Update mud flow on terrain and mud particles
+        updateTerrainMudFlow();
+        updateMudParticles();
+
+        // Draw terrain, mud flow, soil layers, and mud particles
+        drawSmoothTerrain();
+        drawTerrainMudFlow();
+        drawSoilLayers();
+        drawMudParticles();
+        
+        // Draw road polygon on right side
+        let roadStartCol = GRID_COLS - ROAD_WIDTH_COLS;
+        let roadStartX = roadStartCol * CELL_WIDTH;
+        let roadStartY = terrain[roadStartCol] * CELL_HEIGHT;
+        let roadEndX = WIDTH;
+        let roadEndY = roadStartY + (roadEndX - roadStartX) * 0.15;
+        
+        p.fill(25, 25, 25);
+        p.noStroke();
+        p.beginShape();
+        p.vertex(roadStartX, 0);
+        p.vertex(roadStartX, roadStartY);
+        p.vertex(roadEndX, roadEndY);
+        p.vertex(roadEndX, HEIGHT);
+        p.vertex(roadStartX, HEIGHT);
+        p.endShape(p.CLOSE);
+        
+        // Draw mud accumulation on road with texture and debris
+        for (let roadY = 0; roadY < GRID_ROWS; roadY++) {
+          if (roadMudAccumulation[roadY] && roadMudAccumulation[roadY] > 3) {
+            let y = roadY * CELL_HEIGHT;
+            let mudHeight = p.min(roadMudAccumulation[roadY] / 3, CELL_HEIGHT * 2);
+            
+            p.noStroke();
+            p.fill(101, 67, 33, 255);
+            
+            p.beginShape();
+            p.vertex(roadStartX, y + CELL_HEIGHT);
+            p.vertex(roadStartX, y + CELL_HEIGHT - mudHeight);
+            
+            for (let i = 0; i <= ROAD_WIDTH_COLS; i++) {
+              let x = roadStartX + i * CELL_WIDTH;
+              let slantY = y + CELL_HEIGHT - mudHeight + (i * CELL_WIDTH) * 0.15;
+              let flowVariation = p.sin(frameCounter * 0.025 + i * 0.5) * 4;
+              p.vertex(x, slantY + flowVariation);
+            }
+            
+            p.vertex(roadStartX + ROAD_WIDTH_COLS * CELL_WIDTH, y + CELL_HEIGHT);
+            p.endShape(p.CLOSE);
+            
+            p.fill(139, 69, 19, 200);
+            for (let i = 0; i < 6; i++) {
+              let flowX = roadStartX + i * (ROAD_WIDTH_COLS * CELL_WIDTH) / 6;
+              let flowY = y + CELL_HEIGHT - mudHeight/2 + (flowX - roadStartX) * 0.15;
+              p.ellipse(flowX, flowY, p.random(6, 12), p.random(3, 7));
+            }
+            
+            if (mudHeight > CELL_HEIGHT * 0.7) {
+              p.fill(160, 82, 45, 180);
+              for (let j = 0; j < 8; j++) {
+                let flowX = roadStartX + p.random(ROAD_WIDTH_COLS * CELL_WIDTH);
+                let flowY = y + CELL_HEIGHT - mudHeight/2 + (flowX - roadStartX) * 0.15;
+                p.ellipse(flowX, flowY, p.random(3, 10), p.random(2, 6));
+              }
+              
+              p.fill(105, 105, 105, 200);
+              for (let k = 0; k < 4; k++) {
+                let flowX = roadStartX + p.random(ROAD_WIDTH_COLS * CELL_WIDTH);
+                let flowY = y + CELL_HEIGHT - mudHeight * 0.8 + (flowX - roadStartX) * 0.15;
+                p.ellipse(flowX, flowY, p.random(4, 10), p.random(3, 8));
+              }
+            }
+          }
+        }
+        
+        // Draw rain overlay and rain drops if raining
+        if (rainActive) {
+          p.fill(0, 60, 120, 40);
+          p.rect(0, 0, WIDTH, HEIGHT);
+          p.fill(200, 220, 255, 20);
+          p.rect(0, 0, WIDTH, HEIGHT);
+          
+          rainDrops.forEach(drop => {
+            drop.update();
+            drop.draw();
+          });
+        }
+        
+        // Calculate average moisture for UI
+        let avgMoisture = count > 0 ? (totalMoisture / count) * 100 : 0;
+        
+        // Update UI every 30 frames (~0.5 seconds)
+        if (frameCounter % 30 === 0) {
+          updateSoilLayersDisplay();
+          rainLevelEl.textContent = rainAccumulated.toFixed(1);
+          mudCountEl.textContent = liquefiedCount;
+          avgMoistureEl.textContent = avgMoisture.toFixed(1) + "%";
+          
+          // Update status based on liquefied cells count
+          if (!mudslideInitiated && liquefiedCount > 25) {
+            mudslideInitiated = true;
+            statusEl.textContent = "🚨 MUDSLIDE IN PROGRESS!";
+          } else if (liquefiedCount > 10) {
+            statusEl.textContent = "⚠️ SOIL UNSTABLE";
+          } else {
+            statusEl.textContent = "🌧️ Heavy Rain";
+          }
+          
+          // Update road impact status based on mud accumulation
+          let totalRoadMud = roadMudAccumulation.reduce((sum, val) => sum + (val || 0), 0);
+          if (totalRoadMud > 300) {
+            roadImpactEl.textContent = "🚨 SEVERE - Road Blocked";
+            roadImpactEl.className = "danger";
+          } else if (totalRoadMud > 120) {
+            roadImpactEl.textContent = "⚠️ MODERATE - Hazardous";
+            roadImpactEl.className = "warning";
+          } else if (totalRoadMud > 30) {
+            roadImpactEl.textContent = "⚠️ MINOR - Debris Present";
+            roadImpactEl.className = "warning";
+          } else {
+            roadImpactEl.textContent = "✅ Clear";
+            roadImpactEl.className = "safe";
+          }
+        }
+      };
+    };
+
+    // Create new p5 instance with the sketch
+    new p5(sketch);
+  </script>
+</body>
+</html>

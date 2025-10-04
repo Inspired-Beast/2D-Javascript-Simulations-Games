@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Desert Plant Sunlight Reflection Simulation (p5.js)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Styling -->
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #f4e4bc 0%, #e8d5a3 100%);
+      font-family: 'Arial', sans-serif;
+      color: #5a4a3a;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      backdrop-filter: blur(10px);
+    }
+    h1 {
+      text-align: center;
+      color: #8b4513;
+      margin-bottom: 10px;
+      font-size: 2.5em;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .subtitle {
+      text-align: center;
+      color: #a0522d;
+      margin-bottom: 30px;
+      font-size: 1.2em;
+      font-style: italic;
+    }
+    .controls {
+      text-align: center;
+      margin-top: 20px;
+    }
+    button {
+      background: linear-gradient(45deg, #ff6b35, #f7931e);
+      color: white;
+      border: none;
+      padding: 12px 25px;
+      border-radius: 25px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    .info-panel {
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 15px;
+      padding: 20px;
+      margin-top: 20px;
+      border-left: 5px solid #ff6b35;
+    }
+    .info-panel h3 {
+      color: #8b4513;
+      margin-top: 0;
+    }
+    .info-panel p {
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+    #sketch-holder {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .simulation-status {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 18px;
+      font-weight: bold;
+      color: #d32f2f;
+    }
+  </style>
+  <!-- Importmap for p5.js ESM -->
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h1>🌱 Desert Plant Adaptation Comparison</h1>
+    <p class="subtitle">Non-reflective vs. Reflective Leaves - Heat Absorption & Water Retention</p>
+    <div id="sketch-holder"></div>
+    <div class="simulation-status" id="status"></div>
+    <div class="controls">
+      <button id="resetBtn">🔄 Reset Simulation</button>
+    </div>
+    <div class="info-panel">
+      <h3>🔬 Comparison Analysis</h3>
+      <p><strong>Non-Reflective Leaves (Left):</strong> Dark green leaves absorb sunlight, generating heat waves and causing rapid water evaporation.</p>
+      <p><strong>Reflective Leaves (Right):</strong> Light green leaves reflect sunlight away, maintaining cooler temperatures and conserving water.</p>
+      <p><strong>Desert Adaptation:</strong> Reflective leaf surfaces are a key survival strategy in arid environments, found in plants like desert sage and lamb's ear.</p>
+    </div>
+  </div>
+  <script type="module">
+    import p5 from "p5";
+
+    // --- Simulation parameters ---
+    const CANVAS_W = 900;
+    const CANVAS_H = 700;
+    const PLANT_Y = 520;
+    const MATTE_X = 225;
+    const REFLECT_X = 675;
+
+    // Water levels and rates
+    let matteWaterLevel = 100;
+    let reflectiveWaterLevel = 100;
+    // Significantly increased drain rates for faster simulation and more contrast
+    const matteWaterDrainRate = 0.8;  // Increased from 0.3 - non-reflective loses water much faster
+    const reflectiveWaterDrainRate = 0.12; // Increased from 0.06 - reflective still loses water but slower
+
+    // Sun ray, heat, and reflection arrays
+    let sunRays = [];
+    let reflectedRays = [];
+    let heatWaves = [];
+
+    // Plant data
+    let mattePlant, reflectivePlant;
+
+    // Timer for sun rays and water
+    let raySpawnTimer = 0;
+    let lastWaterUpdate = 0;
+
+    // Simulation state
+    let simulationActive = true;
+
+    // --- Simple plant structure generator with branches (matching reference image) ---
+    function createSimplePlant(baseX, baseY, isReflective) {
+      const mainStemHeight = 100;
+      const leaves = [];
+      const branches = [];
+    
+      // Create branch pairs along the stem (like in the reference image)
+      const branchPairs = [
+        { y: baseY - 20, length: 30, size: 1.0 },   // Bottom branches
+        { y: baseY - 40, length: 35, size: 1.1 },   // Second branches
+        { y: baseY - 60, length: 32, size: 1.0 },   // Third branches
+        { y: baseY - 80, length: 28, size: 0.9 },   // Top branches
+      ];
+
+      branchPairs.forEach((pair, index) => {
+        // Left branch
+        const leftBranchEnd = {
+          x: baseX - pair.length,
+          y: pair.y - 5
+        };
+        branches.push({
+          startX: baseX,
+          startY: pair.y,
+          endX: leftBranchEnd.x,
+          endY: leftBranchEnd.y,
+          side: 'left'
+        });
+      
+        // Right branch
+        const rightBranchEnd = {
+          x: baseX + pair.length,
+          y: pair.y - 5
+        };
+        branches.push({
+          startX: baseX,
+          startY: pair.y,
+          endX: rightBranchEnd.x,
+          endY: rightBranchEnd.y,
+          side: 'right'
+        });
+      
+        // Left leaf at end of branch
+        leaves.push({
+          x: leftBranchEnd.x,
+          y: leftBranchEnd.y,
+          width: 35 * pair.size,
+          height: 50 * pair.size,
+          angle: -0.3 + (Math.random() - 0.5) * 0.2,
+          isReflective,
+          side: 'left'
+        });
+      
+        // Right leaf at end of branch
+        leaves.push({
+          x: rightBranchEnd.x,
+          y: rightBranchEnd.y,
+          width: 35 * pair.size,
+          height: 50 * pair.size,
+          angle: 0.3 + (Math.random() - 0.5) * 0.2,
+          isReflective,
+          side: 'right'
+        });
+      });
+
+      return {
+        baseX,
+        baseY,
+        mainStemHeight,
+        branches,
+        leaves,
+        isReflective
+      };
+    }
+
+    // --- Sun Ray class ---
+    class SunRay {
+      constructor(startX, startY, targetX, targetY, isReflective = false) {
+        this.startX = startX;
+        this.startY = startY;
+        this.targetX = targetX;
+        this.targetY = targetY;
+        this.currentX = startX;
+        this.currentY = startY;
+        this.speed = 5; // Increased from 3 for faster rays
+        this.active = true;
+        this.completed = false;
+        this.isReflective = isReflective;
+        this.alpha = 1;
+        this.fadeOut = false;
+        this.fadeTimer = 0;
+      }
+    
+      update() {
+        if (!this.active || !simulationActive) return;
+        if (this.fadeOut) {
+          this.fadeTimer++;
+          this.alpha = Math.max(0, 1 - this.fadeTimer / 20); // Faster fade from 30
+          if (this.alpha <= 0) this.active = false;
+          return;
+        }
+        if (this.completed) return;
+      
+        const dx = this.targetX - this.currentX;
+        const dy = this.targetY - this.currentY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+      
+        if (distance > this.speed) {
+          this.currentX += (dx / distance) * this.speed;
+          this.currentY += (dy / distance) * this.speed;
+        } else {
+          this.currentX = this.targetX;
+          this.currentY = this.targetY;
+          this.completed = true;
+          if (this.isReflective) this.createReflection();
+          else this.createHeat();
+          setTimeout(() => { this.fadeOut = true; }, 300); // Faster fade from 500
+        }
+      }
+    
+      createReflection() {
+        // Create MORE reflection rays
+        for (let i = 0; i < 2; i++) {
+          const baseAngle = -Math.PI / 3;
+          const reflectionAngle = baseAngle + (Math.random() - 0.5) * 1.0; // Wider spread
+          const reflectionLength = 100 + Math.random() * 60; // Longer rays
+          const endX = this.currentX + Math.cos(reflectionAngle) * reflectionLength;
+          const endY = this.currentY + Math.sin(reflectionAngle) * reflectionLength;
+          reflectedRays.push(new ReflectedRay(this.currentX, this.currentY, endX, endY));
+        }
+      }
+    
+      createHeat() {
+        // Create MORE heat waves
+        for (let i = 0; i < 5; i++) { // Increased from 3
+          heatWaves.push(new HeatWave(
+            this.currentX + (Math.random() - 0.5) * 30,
+            this.currentY
+          ));
+        }
+      }
+    
+      draw(p) {
+        if (!this.active) return;
+        p.push();
+        p.strokeWeight(4); // Thicker rays
+        p.stroke(p.lerpColor(p.color(255,255,150,0.9*255*this.alpha), p.color(255,200,50,255*this.alpha), 0.5));
+        p.line(this.startX, this.startY, this.currentX, this.currentY);
+        p.strokeWeight(8); // Thicker glow
+        p.stroke(255,255,100,0.4*255*this.alpha);
+        p.line(this.startX, this.startY, this.currentX, this.currentY);
+        p.pop();
+      }
+    }
+
+    // --- Reflected Ray class ---
+    class ReflectedRay {
+      constructor(startX, startY, endX, endY) {
+        this.startX = startX;
+        this.startY = startY;
+        this.endX = endX;
+        this.endY = endY;
+        this.currentX = startX;
+        this.currentY = startY;
+        this.speed = 6; // Increased from 4
+        this.active = true;
+        this.life = 60; // Increased from 50
+        this.maxLife = 60;
+      }
+    
+      update() {
+        if (!this.active || !simulationActive) return;
+        const dx = this.endX - this.currentX;
+        const dy = this.endY - this.currentY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance > this.speed && this.life > 0) {
+          this.currentX += (dx / distance) * this.speed;
+          this.currentY += (dy / distance) * this.speed;
+          this.life--;
+        } else {
+          this.active = false;
+        }
+      }
+    
+      draw(p) {
+        if (!this.active) return;
+        const alpha = this.life / this.maxLife;
+        p.push();
+        p.strokeWeight(3); // Thicker reflection rays
+        p.stroke(255,255,255,alpha*255);
+        p.line(this.startX, this.startY, this.currentX, this.currentY);
+        p.stroke(200,220,255,alpha*0.8*255);
+        p.line(this.startX, this.startY, this.currentX, this.currentY);
+        p.pop();
+      }
+    }
+
+    // --- Heat Wave class ---
+    class HeatWave {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.life = 100; // Increased from 80
+        this.maxLife = 100;
+        this.amplitude = 8; // Increased from 5
+        this.frequency = 0.15; // Increased from 0.1
+        this.speed = 1.5; // Increased from 1
+      }
+    
+      update() {
+        if (!simulationActive) return;
+        this.y -= this.speed;
+        this.life--;
+        if (this.life <= 0) this.active = false;
+      }
+    
+      draw(p) {
+        if (this.life <= 0) return;
+        const alpha = this.life / this.maxLife;
+        p.push();
+        p.stroke(255,80,30,alpha*0.8*255); // More intense heat color
+        p.strokeWeight(3); // Thicker heat waves
+        p.noFill();
+        p.beginShape();
+        for (let y = this.y; y > this.y - 40; y -= 2) { // Longer heat waves
+          const wave = Math.sin((this.y - y) * this.frequency) * this.amplitude * alpha;
+          p.vertex(this.x + wave, y);
+        }
+        p.endShape();
+        p.pop();
+      }
+    }
+
+    // --- Draw background ---
+    function drawBackground(p) {
+      // Sky gradient
+      p.push();
+      let skyGradient = p.drawingContext.createLinearGradient(0, 0, 0, CANVAS_H * 0.6);
+      skyGradient.addColorStop(0, "#87CEEB");
+      skyGradient.addColorStop(1, "#F0E68C");
+      p.drawingContext.fillStyle = skyGradient;
+      p.rect(0, 0, CANVAS_W, CANVAS_H * 0.6);
+      p.pop();
+    
+      // Sand/ground
+      p.noStroke();
+      p.fill("#DEB887");
+      p.rect(0, CANVAS_H * 0.6, CANVAS_W, CANVAS_H * 0.4);
+    
+      // Foreground
+      p.fill("#CD853F");
+      p.rect(0, CANVAS_H * 0.75, CANVAS_W, CANVAS_H * 0.25);
+    }
+
+    // --- Draw sun ---
+    function drawSun(p) {
+      const sunX = CANVAS_W / 2;
+      const sunY = 100;
+      const sunRadius = 40;
+    
+      // Sun glow
+      p.push();
+      let glowGradient = p.drawingContext.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunRadius + 20);
+      glowGradient.addColorStop(0, "rgba(255,255,100,0.8)");
+      glowGradient.addColorStop(1, "rgba(255,255,100,0)");
+      p.drawingContext.fillStyle = glowGradient;
+      p.ellipse(sunX, sunY, (sunRadius+20)*2, (sunRadius+20)*2);
+    
+      // Sun body
+      let sunGradient = p.drawingContext.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunRadius);
+      sunGradient.addColorStop(0, "#FFD700");
+      sunGradient.addColorStop(1, "#FFA500");
+      p.drawingContext.fillStyle = sunGradient;
+      p.ellipse(sunX, sunY, sunRadius*2, sunRadius*2);
+    
+      // Sun rays
+      p.stroke(255,200,50,180);
+      p.strokeWeight(3);
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const x1 = sunX + Math.cos(angle) * (sunRadius + 10);
+        const y1 = sunY + Math.sin(angle) * (sunRadius + 10);
+        const x2 = sunX + Math.cos(angle) * (sunRadius + 30);
+        const y2 = sunY + Math.sin(angle) * (sunRadius + 30);
+        p.line(x1, y1, x2, y2);
+      }
+      p.pop();
+    }
+
+    // --- Draw simple plant with branches and degradation effects ---
+    function drawSimplePlant(p, structure, waterLevel) {
+      let healthFactor;
+      if (structure.isReflective) {
+        healthFactor = waterLevel / 100;
+      } else {
+        // Non-reflective plant shows more dramatic degradation
+        healthFactor = Math.pow(waterLevel / 100, 1.5); // Exponential decay for more dramatic effect
+      }
+    
+      // color degradation
+      const healthyGreenMatte = p.color(46, 125, 50, 240);
+      const healthyGreenReflective = p.color(139, 195, 74, 240);
+      const brownColor = p.color(139, 69, 19, 240);
+      const deadColor = p.color(101, 67, 33, 240); // Darker brown for very low health
+
+      // Calculate current colors based on health
+      let currentMatteColor, currentReflectiveColor;
+      if (healthFactor > 0.5) {
+        currentMatteColor = p.lerpColor(healthyGreenMatte, brownColor, (1 - healthFactor) * 2);
+        currentReflectiveColor = p.lerpColor(healthyGreenReflective, brownColor, (1 - healthFactor) * 2);
+      } else {
+        currentMatteColor = p.lerpColor(brownColor, deadColor, (0.5 - healthFactor) * 2);
+        currentReflectiveColor = p.lerpColor(brownColor, deadColor, (0.5 - healthFactor) * 2);
+      }
+
+      // Draw main stem with degradation
+      p.push();
+      const stemColor = structure.isReflective ? 
+        p.lerpColor(deadColor, p.color("#6B8E23"), healthFactor) : 
+        p.lerpColor(deadColor, p.color("#4A6B2F"), healthFactor);
+      p.stroke(stemColor);
+      p.strokeWeight(8);
+      p.strokeCap(p.ROUND);
+      p.line(structure.baseX, structure.baseY, structure.baseX, structure.baseY - structure.mainStemHeight);
+      p.pop();
+
+      // Draw branches with degradation
+      structure.branches.forEach(branch => {
+        p.push();
+        p.stroke(structure.isReflective ? 
+          p.lerpColor(deadColor, p.color("#6B8E23"), healthFactor) : 
+          p.lerpColor(deadColor, p.color("#4A6B2F"), healthFactor));
+        p.strokeWeight(4);
+        p.strokeCap(p.ROUND);
+        p.line(branch.startX, branch.startY, branch.endX, branch.endY);
+        p.pop();
+      });
+
+      // Draw leaves with effects and dramatic degradation
+      structure.leaves.forEach((leaf, index) => {
+        p.push();
+        p.translate(leaf.x, leaf.y);
+        
+        // Wilting effect - more dramatic drooping
+        const wiltingAngle = (1 - healthFactor) * (leaf.side === 'left' ? 0.6 : -0.6); // Increased from 0.2
+        const wiltingScale = 0.5 + (healthFactor * 0.5); // Leaves shrink as they wilt
+        
+        p.rotate(leaf.angle + wiltingAngle);
+        p.scale(wiltingScale);
+      
+        // Leaf colors and effects
+        if (structure.isReflective) {
+          // Reflective leaves with dynamic shine based on health
+          p.fill(currentReflectiveColor);
+          p.stroke(p.lerpColor(deadColor, p.color(104, 159, 56, 200), healthFactor));
+          p.strokeWeight(2);
+        
+          // Main leaf shape
+          p.ellipse(0, 0, leaf.width, leaf.height);
+        
+          // Shine effects that diminish dramatically with health
+          p.noStroke();
+        
+          // Primary shine spot (bright white) - more dramatic reduction
+          p.fill(255, 255, 255, 220 * Math.pow(healthFactor, 0.5));
+          p.ellipse(-leaf.width * 0.15, -leaf.height * 0.2, leaf.width * 0.3, leaf.height * 0.2);
+        
+          // Secondary shine spot (softer)
+          p.fill(255, 255, 255, 150 * Math.pow(healthFactor, 0.5));
+          p.ellipse(leaf.width * 0.1, -leaf.height * 0.1, leaf.width * 0.2, leaf.height * 0.15);
+        
+          // Tertiary shine spots (subtle highlights)
+          p.fill(255, 255, 255, 100 * Math.pow(healthFactor, 0.5));
+          p.ellipse(-leaf.width * 0.05, leaf.height * 0.15, leaf.width * 0.15, leaf.height * 0.1);
+          p.ellipse(leaf.width * 0.2, leaf.height * 0.05, leaf.width * 0.1, leaf.height * 0.08);
+        
+          // Animated shimmer effect
+          const shimmerOffset = Math.sin(Date.now() * 0.005 + index) * 4; // Faster shimmer
+          p.fill(255, 255, 255, 80 * Math.pow(healthFactor, 0.5));
+          p.ellipse(shimmerOffset, -leaf.height * 0.3, leaf.width * 0.4, leaf.height * 0.1);
+        
+        } else {
+          // Matte leaves with degradation (no shine)
+          p.fill(currentMatteColor);
+          p.stroke(p.lerpColor(deadColor, p.color(27, 94, 32, 200), healthFactor));
+          p.strokeWeight(2);
+        
+          // Main leaf shape
+          p.ellipse(0, 0, leaf.width, leaf.height);
+        }
+      
+        // Central vein (for both types) - fades with health
+        p.strokeWeight(1.5);
+        const veinAlpha = healthFactor * 0.8 + 0.2;
+        p.stroke(structure.isReflective ? 
+          p.lerpColor(p.color(104,159,56,veinAlpha), p.color(104,159,56,veinAlpha), healthFactor) : 
+          p.lerpColor(p.color(27,94,32,veinAlpha), p.color(27,94,32,veinAlpha), healthFactor));
+        p.line(0, -leaf.height/2 + 8, 0, leaf.height/2 - 8);
+      
+        p.pop();
+      });
+    }
+
+    // --- Draw water meters ---
+    function drawWaterMeter(p, x, y, level, label, color) {
+      const meterWidth = 180;
+      const meterHeight = 25;
+    
+      p.push();
+      // Background
+      p.noStroke();
+      p.fill(0,0,0,80);
+      p.rect(x, y, meterWidth, meterHeight, 8);
+    
+      // Water level
+      p.fill(color);
+      p.rect(x, y, (level / 100) * meterWidth, meterHeight, 8);
+    
+      // Border
+      p.stroke(51);
+      p.strokeWeight(2);
+      p.noFill();
+      p.rect(x, y, meterWidth, meterHeight, 8);
+    
+      // Label
+      p.noStroke();
+      p.fill(51);
+      p.textSize(14);
+      p.textAlign(p.LEFT, p.BOTTOM);
+      p.text(`${label}: ${level.toFixed(1)}%`, x, y - 5);
+      p.pop();
+    }
+
+    // --- Draw labels ---
+    function drawLabels(p) {
+      p.push();
+      p.textFont("Arial");
+      p.textStyle(p.BOLD);
+      p.textSize(18);
+      p.textAlign(p.CENTER, p.BOTTOM);
+    
+      p.fill(46,125,50);
+      p.text("NON-REFLECTIVE LEAVES", MATTE_X, CANVAS_H - 40);
+    
+      p.fill(107,142,35);
+      p.text("REFLECTIVE LEAVES", REFLECT_X, CANVAS_H - 40);
+    
+      p.textSize(16);
+      p.fill(255,87,34);
+      p.text("🔥 HEAT", MATTE_X - 80, 200);
+    
+      p.fill(3,169,244);
+      p.text("✨ REFLECTED RAYS", REFLECT_X + 100, 200);
+      p.pop();
+    }
+
+    // --- Create sun rays for faster generation ---
+    function createSunRays() {
+      if (!simulationActive) return;
+    
+      // Create MORE rays for effect
+      const raysPerCycle = 2; // Increased from 1
+      
+      for (let i = 0; i < raysPerCycle; i++) {
+        if (mattePlant.leaves.length > 0) {
+          const matteTarget = mattePlant.leaves[Math.floor(Math.random() * mattePlant.leaves.length)];
+          const matteStartX = CANVAS_W / 2 - 80 + Math.random() * 160; // Wider spread
+          sunRays.push(new SunRay(matteStartX, 140, matteTarget.x, matteTarget.y, false));
+        }
+      
+        if (reflectivePlant.leaves.length > 0) {
+          const reflectiveTarget = reflectivePlant.leaves[Math.floor(Math.random() * reflectivePlant.leaves.length)];
+          const reflectiveStartX = CANVAS_W / 2 - 80 + Math.random() * 160; // Wider spread
+          sunRays.push(new SunRay(reflectiveStartX, 140, reflectiveTarget.x, reflectiveTarget.y, true));
+        }
+      }
+    }
+
+    // --- Update simulation status ---
+    function updateSimulationStatus() {
+      const statusElement = document.getElementById('status');
+      // Simulation stops when non-reflective plant's water level drops to 5% or below
+      if (matteWaterLevel <= 5 && simulationActive) {
+        simulationActive = false;
+        statusElement.textContent = "⚠️ SIMULATION STOPPED - Non-Reflective leaves plant has died from water depletion! Please reset.";
+        statusElement.style.display = 'block';
+      } else if (simulationActive) {
+        statusElement.style.display = 'none';
+      }
+    }
+
+    // --- p5.js sketch ---
+    const sketch = (p) => {
+      p.setup = () => {
+        let cnv = p.createCanvas(CANVAS_W, CANVAS_H);
+        cnv.parent("sketch-holder");
+        p.frameRate(60);
+        resetSimulation();
+      };
+
+      p.draw = () => {
+        p.clear();
+        drawBackground(p);
+        drawSun(p);
+
+        // Draw plants, passing current water levels for visual degradation
+        drawSimplePlant(p, mattePlant, matteWaterLevel);
+        drawSimplePlant(p, reflectivePlant, reflectiveWaterLevel);
+
+        // Update and draw sun rays
+        sunRays = sunRays.filter(ray => ray.active);
+        sunRays.forEach(ray => { ray.update(); ray.draw(p); });
+
+        // Update and draw reflected rays
+        reflectedRays = reflectedRays.filter(ray => ray.active);
+        reflectedRays.forEach(ray => { ray.update(); ray.draw(p); });
+
+        // Update and draw heat waves
+        heatWaves = heatWaves.filter(wave => wave.life > 0);
+        heatWaves.forEach(wave => { wave.update(); wave.draw(p); });
+
+        // Create new sun rays 
+        if (simulationActive) {
+          raySpawnTimer++;
+          if (raySpawnTimer >= 25) { 
+            createSunRays();
+            raySpawnTimer = 0;
+          }
+        }
+
+        // Update water levels 
+        if (simulationActive && p.millis() - lastWaterUpdate > 300) { // Reduced from 500 for faster updates
+          matteWaterLevel = Math.max(0, matteWaterLevel - matteWaterDrainRate);
+          reflectiveWaterLevel = Math.max(0, reflectiveWaterLevel - reflectiveWaterDrainRate);
+          lastWaterUpdate = p.millis();
+        }
+
+        // Check simulation status
+        updateSimulationStatus();
+
+        // Draw UI elements
+        drawWaterMeter(p, 50, CANVAS_H - 120, matteWaterLevel, "Non-reflective Leaves Plant Water Level", p.color(255,107,107));
+        drawWaterMeter(p, CANVAS_W - 270, CANVAS_H - 120, reflectiveWaterLevel, "Reflective Leaves Plant Water level", p.color(78,205,196));
+        drawLabels(p);
+      };
+    };
+
+    // --- Reset simulation ---
+    function resetSimulation() {
+      sunRays = [];
+      reflectedRays = [];
+      heatWaves = [];
+      matteWaterLevel = 100;
+      reflectiveWaterLevel = 100;
+      raySpawnTimer = 0;
+      lastWaterUpdate = 0;
+      simulationActive = true;
+    
+      // Create simple plants matching reference image
+      mattePlant = createSimplePlant(MATTE_X, PLANT_Y, false);
+      reflectivePlant = createSimplePlant(REFLECT_X, PLANT_Y, true);
+    
+      // Hide status message
+      document.getElementById('status').style.display = 'none';
+    }
+
+    // --- Button event ---
+    document.getElementById("resetBtn").onclick = () => {
+      resetSimulation();
+    };
+
+    // --- Start p5.js ---
+    new p5(sketch);
+
+  </script>
+</body>
+</html>

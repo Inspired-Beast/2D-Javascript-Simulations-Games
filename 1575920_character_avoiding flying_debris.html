@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Storm Debris Path Avoidance Simulation</title>
+    <!-- Styling -->
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            overflow-x: hidden;
+        }
+        .container { max-width: 1200px; margin: 0 auto; text-align: center; }
+        h1 { margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);}
+        .controls { margin: 20px 0; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;}
+        button { padding: 12px 24px; font-size: 16px; font-weight: bold; color: white; background: linear-gradient(45deg, #ff6b6b, #ee5a52); border: none; border-radius: 25px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);}
+        button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6);}
+        button:active { transform: translateY(0);}
+        .info { margin: 15px 0; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 10px; backdrop-filter: blur(10px);}
+        canvas { border: 3px solid rgba(255,255,255,0.3); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); background: linear-gradient(180deg, #87ceeb, #4682b4);}
+        .legend { margin-top: 15px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; font-size: 14px;}
+        .legend-item { display: flex; align-items: center; gap: 8px;}
+        .legend-color { width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;}
+        .status { margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 5px; font-size: 14px;}
+    </style>
+    <!-- Library links -->
+    <script type="importmap">
+        {
+          "imports": {
+            "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm",
+            "matter-js": "https://cdn.jsdelivr.net/npm/matter-js@0.19.0/+esm"
+          }
+        }
+    </script>
+</head>
+<body>
+    <!-- HTML outline -->
+    <div class="container">
+        <h1>🌪️ Storm Debris Road Navigation Simulation</h1>
+        <div class="info">
+            Watch as the realistic person navigates up a road, avoiding debris that follows wind patterns. 
+            The character will shift, stop, or go back to avoid collisions while trying to reach safety.
+        </div>
+        <div class="controls">
+            <button id="resetBtn">🔄 Reset Simulation</button>
+        </div>
+        <div class="status" id="status">Status: Walking forward</div>
+        <div id="canvas-container"></div>
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FFD700;"></div>
+                <span>Person</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #32CD32;"></div>
+                <span>Target</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #DAA520;"></div>
+                <span>Hay Bales</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FFB6C1;"></div>
+                <span>Papers</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #C0C0C0;"></div>
+                <span>Tin Cans</span>
+            </div>
+        </div>
+    </div>
+    <!-- Main script -->
+    <script type="module">
+        // Importing modules
+        import p5 from "p5";
+        import Matter from "matter-js";
+
+        // Isometric projection helper functions for X and Y
+        function isoX(x, y) {
+            return 0.8 * (x - y) + 400;
+        }
+        function isoY(x, y) {
+            return 0.4 * (x + y) + 80;
+        }
+
+        window.addEventListener('load', function () {
+            // Physics engine and world
+            let engine, world;
+            // Array to hold all active debris objects
+            let activeDebris = [];
+            // p5 canvas reference
+            let canvas;
+            // Flag to indicate if simulation is complete
+            let simulationComplete = false;
+
+            // Character (person) object with all state and animation properties
+            let character = {
+                x: 400, y: 900, vx: 0, vy: 0, radius: 15,
+                state: 'walking', direction: 0, walkCycle: 0, speed: 1.5, maxSpeed: 3.5,
+                stopTime: 0, targetX: 400, headBob: 0, armSwing: 0, legSwing: 0, breathingCycle: 0,
+                lastSafeX: 400, lastSafeY: 900
+            };
+
+            // Target (safety) location
+            let target = { x: 400, y: 120, radius: 25 };
+
+            // Road geometry and position
+            let road = {
+                widthBottom: 400,
+                widthTop: 100,
+                centerX: 400,
+                topY: 40,
+                bottomY: 950
+            };
+
+            // Debris spawner configuration
+            let debrisSpawner = {
+                lastSpawnTime: 0, spawnInterval: 800,
+                types: ['hay', 'paper', 'tin'],
+                directions: ['left']
+            };
+
+            // Arrays for weather effects
+            let windParticles = [], raindrops = [], frameCounter = 0;
+            // Wind direction and strength
+            let windDirection = { x: 1, y: 0.3 };
+            let windStrength = 0.002;
+            // Last status text for UI
+            let lastStatusText = "";
+
+            // p5 setup function: initializes canvas and simulation
+            function setup() {
+                canvas = createCanvas(800, 600);
+                canvas.parent('canvas-container');
+                engine = Matter.Engine.create();
+                world = engine.world;
+                engine.world.gravity.y = 0.3;
+                initializeSimulation();
+                document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+            }
+
+            // Resets all simulation state and objects
+            function initializeSimulation() {
+                // Remove all debris from physics world
+                activeDebris.forEach(d => Matter.World.remove(world, d.body));
+                activeDebris = [];
+                simulationComplete = false;
+                // Reset character state
+                character.x = 400; character.y = 900; character.vx = 0; character.vy = 0;
+                character.state = 'walking'; character.direction = 0; character.walkCycle = 0;
+                character.stopTime = 0; character.targetX = 400;
+                character.headBob = 0; character.armSwing = 0; character.legSwing = 0; character.breathingCycle = 0;
+                character.lastSafeX = 400; character.lastSafeY = 900;
+                // Reset debris spawner and wind
+                debrisSpawner.lastSpawnTime = millis();
+                windDirection.x = random(0.8, 1.5);
+                windDirection.y = random(-0.1, 0.2);
+                // Initialize weather effects
+                initializeEffects();
+                updateStatus();
+            }
+
+            // Initializes wind and rain particle effects
+            function initializeEffects() {
+                windParticles = [];
+                for (let i = 0; i < 25; i++) {
+                    windParticles.push({
+                        x: random(width),
+                        y: random(height),
+                        vx: windDirection.x * random(1, 3),
+                        vy: windDirection.y * random(0.5, 1.5),
+                        alpha: random(40, 100)
+                    });
+                }
+                raindrops = [];
+                for (let i = 0; i < 80; i++) {
+                    raindrops.push({
+                        x: random(width),
+                        y: random(height),
+                        speed: random(6, 10),
+                        length: random(8, 15)
+                    });
+                }
+            }
+
+            // p5 draw function: main render loop
+            function draw() {
+                frameCounter++;
+                if (!simulationComplete) updateSimulation();
+                drawBackground();
+                drawRoad();
+                drawWeatherEffects();
+                drawDebris();
+                drawCharacter();
+                drawTarget();
+                drawUI();
+            }
+
+            // Updates all simulation logic (physics, character, debris, etc.)
+            function updateSimulation() {
+                Matter.Engine.update(engine);
+
+                // Check if character crosses the horizontal success line at the top of the road
+                if (!simulationComplete && character.y <= road.topY + 20) {
+                    simulationComplete = true;
+                    character.state = 'celebrating';
+                    character.vx = 0;
+                    character.vy = 0;
+                    updateStatus();
+                    return;
+                }
+
+                spawnDebris();
+                updateCharacter();
+                applyWindForces();
+                cleanupDebris();
+                updateStatus();
+            }
+
+            // Spawns new debris at intervals
+            function spawnDebris() {
+                let currentTime = millis();
+                if (currentTime - debrisSpawner.lastSpawnTime > debrisSpawner.spawnInterval) {
+                    let count = floor(random(2, 4));
+                    for (let i = 0; i < count; i++) createNewDebris();
+                    debrisSpawner.lastSpawnTime = currentTime;
+                    debrisSpawner.spawnInterval = random(600, 1200);
+                }
+            }
+
+            // Creates a new debris object and adds it to the simulation
+            function createNewDebris() {
+                let type = random(debrisSpawner.types);
+                let direction = 'left';
+                let x, y, vx, vy;
+                let baseWindVx = windDirection.x * random(1.2, 2.2);
+                let baseWindVy = windDirection.y * random(0.7, 1.5);
+
+                // Spawn debris at a random Y along the road
+                let ySpawn = random(road.topY + 40, road.bottomY - 40);
+                let roadWidthAtY = lerp(road.widthTop, road.widthBottom, (ySpawn - road.topY) / (road.bottomY - road.topY));
+                x = road.centerX - roadWidthAtY / 2 - 180;
+                y = ySpawn;
+
+                // Set velocity based on type (paper is slowest)
+                if (type === 'paper') {
+                    vx = abs(baseWindVx) + random(1.0, 1.7);
+                    vy = baseWindVy + random(-0.7, 1.2);
+                } else if (type === 'hay') {
+                    vx = abs(baseWindVx) + random(1.7, 2.5);
+                    vy = baseWindVy + random(-0.7, 1.2);
+                } else {
+                    vx = abs(baseWindVx) + random(2.2, 3.5);
+                    vy = baseWindVy + random(-0.7, 1.2);
+                }
+
+                // Create physics body and visual properties
+                let body, size, color;
+                switch (type) {
+                    case 'hay':
+                        body = Matter.Bodies.rectangle(x, y, 35, 25, { restitution: 0.6, friction: 0.8, density: 0.8 });
+                        size = { w: 35, h: 25 };
+                        color = [218, 165, 32];
+                        break;
+                    case 'paper':
+                        body = Matter.Bodies.rectangle(x, y, 15, 20, { restitution: 0.3, friction: 0.1, density: 0.1 });
+                        size = { w: 15, h: 20 };
+                        color = [255, 182, 193];
+                        break;
+                    case 'tin':
+                        body = Matter.Bodies.circle(x, y, 12, { restitution: 0.8, friction: 0.5, density: 1.2 });
+                        size = { w: 24, h: 24 };
+                        color = [192, 192, 192];
+                        break;
+                }
+                Matter.Body.setVelocity(body, { x: vx, y: vy });
+                activeDebris.push({
+                    body: body,
+                    type: type,
+                    color: color,
+                    size: size,
+                    spawnDirection: direction
+                });
+                Matter.World.add(world, body);
+            }
+
+            // Updates character state, movement, and threat avoidance
+            function updateCharacter() {
+                if (simulationComplete || character.state === 'celebrating') {
+                    character.vx = 0;
+                    character.vy = 0;
+                    character.walkCycle += 0.2;
+                    character.breathingCycle += 0.1;
+                    return;
+                }
+
+                // Detect all nearby threats (debris)
+                let threats = detectAllThreats();
+
+                if (threats.length > 0) {
+                    threats.sort((a, b) => a.distance - b.distance);
+                    let mainThreat = threats[0];
+
+                    // Try to find a safe lane (left, center, right)
+                    let lanes = [
+                        road.centerX - getRoadWidthAtY(character.y) / 2.5,
+                        road.centerX,
+                        road.centerX + getRoadWidthAtY(character.y) / 2.5
+                    ];
+                    let safeLane = null;
+                    for (let laneX of lanes) {
+                        if (isLaneSafe(laneX, character.y, threats)) {
+                            safeLane = laneX;
+                            break;
+                        }
+                    }
+                    // If a safe lane is found, shift to it
+                    if (safeLane !== null && abs(safeLane - character.x) > 10) {
+                        character.state = 'shifting';
+                        character.direction = safeLane > character.x ? 1 : -1;
+                        character.targetX = safeLane;
+                    } else if (mainThreat.distance < 60) {
+                        character.state = 'backing';
+                    } else {
+                        character.state = 'stopping';
+                        character.stopTime = frameCounter;
+                    }
+                } else {
+                    character.state = 'walking';
+                    character.direction = 0;
+                    character.targetX = road.centerX;
+                }
+                executeAction();
+                character.x += character.vx;
+                character.y += character.vy;
+                let roadWidthAtY = getRoadWidthAtY(character.y);
+                character.x = constrain(character.x, road.centerX - roadWidthAtY / 2 + character.radius, road.centerX + roadWidthAtY / 2 - character.radius);
+                character.y = constrain(character.y, road.topY + character.radius, road.bottomY - character.radius);
+                if (character.state === 'walking' || character.state === 'shifting') {
+                    character.walkCycle += 0.15;
+                    character.headBob += 0.12;
+                    character.armSwing += 0.18;
+                    character.legSwing += 0.25;
+                }
+                character.breathingCycle += 0.08;
+                if (detectAllThreats().length === 0) {
+                    character.lastSafeX = character.x;
+                    character.lastSafeY = character.y;
+                }
+            }
+
+            // Returns the road width at a given y position
+            function getRoadWidthAtY(y) {
+                let t = (y - road.topY) / (road.bottomY - road.topY);
+                return lerp(road.widthTop, road.widthBottom, t);
+            }
+
+            // Checks if a given lane is safe from all threats
+            function isLaneSafe(x, y, threats) {
+                for (let t of threats) {
+                    let dx = t.debris.body.position.x - x;
+                    let dy = t.debris.body.position.y - y;
+                    let distance = sqrt(dx * dx + dy * dy);
+                    if (distance < 60) return false;
+                }
+                return true;
+            }
+
+            // Detects all debris that are a threat to the character
+            function detectAllThreats() {
+                let threats = [];
+                activeDebris.forEach(debris => {
+                    let dx = debris.body.position.x - character.x;
+                    let dy = debris.body.position.y - character.y;
+                    let distance = sqrt(dx * dx + dy * dy);
+                    if (dx > -60 && dx < 160 && abs(dy) < 90 && distance < 180) {
+                        let futureX = debris.body.position.x + debris.body.velocity.x * 30;
+                        let futureY = debris.body.position.y + debris.body.velocity.y * 30;
+                        let futureDx = futureX - character.x;
+                        let futureDy = futureY - character.y;
+                        let futureDistance = sqrt(futureDx * futureDx + futureDy * futureDy);
+                        if ((abs(futureDy) < 60 && abs(futureDx) < 90) || distance < 80) {
+                            threats.push({
+                                debris: debris,
+                                distance: distance,
+                                dx: dx,
+                                dy: dy,
+                                futureX: futureX,
+                                futureY: futureY
+                            });
+                        }
+                    }
+                });
+                return threats;
+            }
+
+            // Executes the character's current action (walking, shifting, stopping, backing)
+            function executeAction() {
+                switch (character.state) {
+                    case 'walking':
+                        character.vx = 0;
+                        character.vy = -character.speed;
+                        break;
+                    case 'shifting':
+                        let targetDiff = character.targetX - character.x;
+                        character.vx = targetDiff * 0.10;
+                        character.vy = -character.speed * 0.8;
+                        if (abs(targetDiff) < 10) {
+                            character.state = 'walking';
+                            character.direction = 0;
+                        }
+                        break;
+                    case 'stopping':
+                        character.vx *= 0.7;
+                        character.vy *= 0.7;
+                        if (frameCounter - character.stopTime > 30) {
+                            character.state = 'walking';
+                        }
+                        break;
+                    case 'backing':
+                        character.vx *= 0.8;
+                        character.vy = character.speed * 0.7;
+                        if (frameCounter % 60 === 0) {
+                            character.state = 'walking';
+                        }
+                        break;
+                }
+                character.vx = constrain(character.vx, -character.maxSpeed, character.maxSpeed);
+                character.vy = constrain(character.vy, -character.maxSpeed, character.maxSpeed);
+            }
+
+            // Applies wind forces to all debris
+            function applyWindForces() {
+                if (frameCounter % 300 === 0) {
+                    windDirection.x += random(-0.1, 0.2);
+                    windDirection.y += random(-0.1, 0.1);
+                    windDirection.x = constrain(windDirection.x, 0.8, 2);
+                    windDirection.y = constrain(windDirection.y, -0.2, 0.4);
+                }
+                let windX = windDirection.x * windStrength + sin(frameCounter * 0.02) * windStrength * 0.5;
+                let windY = windDirection.y * windStrength + sin(frameCounter * 0.03) * windStrength * 0.3;
+                activeDebris.forEach(d => {
+                    let multiplier = 1;
+                    if (d.type === 'paper') multiplier = 8;
+                    else if (d.type === 'hay') multiplier = 3;
+                    else if (d.type === 'tin') multiplier = 0.5;
+                    Matter.Body.applyForce(d.body, d.body.position, {
+                        x: windX * multiplier,
+                        y: windY * multiplier
+                    });
+                });
+            }
+
+            // Removes debris that have left the visible area
+            function cleanupDebris() {
+                activeDebris = activeDebris.filter(d => {
+                    let pos = d.body.position;
+                    let shouldRemove =
+                        pos.x < -300 ||
+                        pos.x > width + 300 ||
+                        pos.y < -200 ||
+                        pos.y > road.bottomY + 200;
+                    if (shouldRemove) {
+                        Matter.World.remove(world, d.body);
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            // Draws the animated background gradient
+            function drawBackground() {
+                for (let i = 0; i <= height; i++) {
+                    let inter = map(i, 0, height, 0, 1);
+                    let c = lerpColor(color(40, 40, 70), color(20, 20, 40), inter);
+                    stroke(c);
+                    line(0, i, width, i);
+                }
+            }
+
+            // Draws the road, lane lines, and the green success line
+            function drawRoad() {
+                let topLeft = { x: road.centerX - road.widthTop / 2, y: road.topY };
+                let topRight = { x: road.centerX + road.widthTop / 2, y: road.topY };
+                let bottomLeft = { x: road.centerX - road.widthBottom / 2, y: road.bottomY };
+                let bottomRight = { x: road.centerX + road.widthBottom / 2, y: road.bottomY };
+
+                fill(50, 50, 50, 230);
+                stroke(180, 180, 180, 180);
+                strokeWeight(4);
+                beginShape();
+                vertex(isoX(topLeft.x, topLeft.y), isoY(topLeft.x, topLeft.y));
+                vertex(isoX(topRight.x, topRight.y), isoY(topRight.x, topRight.y));
+                vertex(isoX(bottomRight.x, bottomRight.y), isoY(bottomRight.x, bottomRight.y));
+                vertex(isoX(bottomLeft.x, bottomLeft.y), isoY(bottomLeft.x, bottomLeft.y));
+                endShape(CLOSE);
+
+                // Draw yellow lane lines
+                stroke(255, 255, 0);
+                strokeWeight(3);
+                let numLanes = 14;
+                for (let i = 0; i < numLanes; i++) {
+                    let t = i / numLanes;
+                    let y1 = lerp(road.topY, road.bottomY, t);
+                    let y2 = lerp(road.topY, road.bottomY, t + 0.04);
+                    let x1 = road.centerX;
+                    let x2 = road.centerX;
+                    line(isoX(x1, y1), isoY(x1, y1), isoX(x2, y2), isoY(x2, y2));
+                }
+
+                // Draw the success line across the whole road at the top
+                stroke(0, 255, 0);
+                strokeWeight(6);
+                line(
+                    isoX(road.centerX - road.widthTop / 2, road.topY),
+                    isoY(road.centerX - road.widthTop / 2, road.topY),
+                    isoX(road.centerX + road.widthTop / 2, road.topY),
+                    isoY(road.centerX + road.widthTop / 2, road.topY)
+                );
+            }
+
+            // Draws rain and wind particle effects
+            function drawWeatherEffects() {
+                stroke(150, 150, 200, 120);
+                strokeWeight(1);
+                for (let drop of raindrops) {
+                    let windInfluence = windDirection.x * 2;
+                    let x1 = isoX(drop.x, drop.y);
+                    let y1 = isoY(drop.x, drop.y);
+                    let x2 = isoX(drop.x - windInfluence, drop.y + drop.length);
+                    let y2 = isoY(drop.x - windInfluence, drop.y + drop.length);
+                    line(x1, y1, x2, y2);
+                    drop.y += drop.speed;
+                    drop.x += windDirection.x * 0.5;
+                    if (drop.y > height) {
+                        drop.y = -10;
+                        drop.x = random(width + 20);
+                    }
+                    if (drop.x > width + 50) {
+                        drop.x = -10;
+                    }
+                }
+                for (let p of windParticles) {
+                    stroke(255, 255, 255, p.alpha);
+                    strokeWeight(2);
+                    let x1 = isoX(p.x, p.y);
+                    let y1 = isoY(p.x, p.y);
+                    let x2 = isoX(p.x - p.vx * 4, p.y - p.vy * 4);
+                    let y2 = isoY(p.x - p.vx * 4, p.y - p.vy * 4);
+                    line(x1, y1, x2, y2);
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    if (p.x > width) {
+                        p.x = -10;
+                        p.y = random(height);
+                        p.vx = windDirection.x * random(1, 3);
+                        p.vy = windDirection.y * random(0.5, 1.5);
+                    }
+                }
+            }
+
+            // Draws all debris objects (hay, paper, tin)
+            function drawDebris() {
+                activeDebris.forEach(d => {
+                    push();
+                    let px = d.body.position.x;
+                    let py = d.body.position.y;
+                    let angle = d.body.angle;
+                    translate(isoX(px, py), isoY(px, py));
+                    rotate(angle + PI / 12);
+                    fill(d.color[0], d.color[1], d.color[2]);
+                    stroke(0, 100);
+                    strokeWeight(2);
+                    if (d.type === 'hay') {
+                        rectMode(CENTER);
+                        rect(0, 0, d.size.w, d.size.h, 6);
+                        stroke(139, 69, 19);
+                        strokeWeight(1);
+                        for (let i = -15; i < 15; i += 4) {
+                            line(i, -10, i, 10);
+                        }
+                    } else if (d.type === 'paper') {
+                        rectMode(CENTER);
+                        rect(0, 0, d.size.w, d.size.h, 3);
+                        stroke(0, 120);
+                        strokeWeight(1);
+                        for (let i = -8; i < 8; i += 3) {
+                            line(-6, i, 6, i);
+                        }
+                    } else if (d.type === 'tin') {
+                        ellipse(0, 0, d.size.w, d.size.h);
+                        fill(255, 120);
+                        ellipse(-4, -4, 8, 8);
+                    }
+                    pop();
+                });
+            }
+
+            // Draws the animated character (person) with all body parts and state
+            function drawCharacter() {
+                push();
+                let px = character.x;
+                let py = character.y;
+                translate(isoX(px, py), isoY(px, py));
+                let walkOffset = sin(character.walkCycle) * 2;
+                let headBob = sin(character.headBob) * 1;
+                let armSwing = sin(character.armSwing) * 8;
+                let legSwing = sin(character.legSwing) * 6;
+                let breathing = sin(character.breathingCycle) * 0.5;
+                let facing = character.direction;
+                if (character.vx > 0.1) facing = 1;
+                else if (character.vx < -0.1) facing = -1;
+                fill(100, 150, 200);
+                stroke(0);
+                strokeWeight(2);
+                ellipse(0, -15 + walkOffset + breathing, 20, 28);
+                fill(255, 220, 177);
+                ellipse(0, -35 + walkOffset + headBob, 18, 18);
+                fill(101, 67, 33);
+                ellipse(0, -40 + walkOffset + headBob, 16, 12);
+                fill(255);
+                ellipse(-4 * (facing || 1), -37 + walkOffset + headBob, 4, 4);
+                ellipse(4 * (facing || 1), -37 + walkOffset + headBob, 4, 4);
+                fill(0);
+                ellipse(-4 * (facing || 1), -37 + walkOffset + headBob, 2, 2);
+                ellipse(4 * (facing || 1), -37 + walkOffset + headBob, 2, 2);
+                stroke(0);
+                strokeWeight(1);
+                point(0, -32 + walkOffset + headBob);
+                if (character.state === 'celebrating') {
+                    stroke(255, 0, 0);
+                    strokeWeight(2);
+                    noFill();
+                    arc(0, -28 + walkOffset + headBob, 8, 6, 0, PI);
+                } else {
+                    stroke(0);
+                    strokeWeight(1);
+                    line(-2, -28 + walkOffset + headBob, 2, -28 + walkOffset + headBob);
+                }
+                stroke(255, 220, 177);
+                strokeWeight(5);
+                let leftArmX = -10 + (character.state === 'shifting' ? character.direction * 3 : 0);
+                let rightArmX = 10 + (character.state === 'shifting' ? character.direction * 3 : 0);
+                line(leftArmX, -25 + walkOffset, leftArmX - armSwing, -8 + walkOffset);
+                line(rightArmX, -25 + walkOffset, rightArmX + armSwing, -8 + walkOffset);
+                fill(255, 220, 177);
+                noStroke();
+                ellipse(leftArmX - armSwing, -8 + walkOffset, 6, 6);
+                ellipse(rightArmX + armSwing, -8 + walkOffset, 6, 6);
+                fill(50, 50, 150);
+                stroke(0);
+                strokeWeight(2);
+                ellipse(-6 + legSwing, 2 + walkOffset, 10, 22);
+                ellipse(6 - legSwing, 2 + walkOffset, 10, 22);
+                fill(50, 25, 0);
+                ellipse(-6 + legSwing, 12 + walkOffset, 12, 8);
+                ellipse(6 - legSwing, 12 + walkOffset, 12, 8);
+                fill(255, 255, 0);
+                textAlign(CENTER);
+                textSize(10);
+                let stateText = character.state.toUpperCase();
+                if (character.state === 'celebrating') {
+                    stateText = "SUCCESS!";
+                    fill(0, 255, 0);
+                }
+                text(stateText, 0, -50);
+                if (character.direction !== 0) {
+                    stroke(255, 255, 0);
+                    strokeWeight(3);
+                    let arrowDir = character.direction;
+                    line(0, -45, arrowDir * 15, -45);
+                    line(arrowDir * 15, -45, arrowDir * 12, -47);
+                    line(arrowDir * 15, -45, arrowDir * 12, -43);
+                }
+                if (character.state === 'celebrating') {
+                    for (let i = 0; i < 5; i++) {
+                        fill(random(255), random(255), random(255), 150);
+                        noStroke();
+                        let sparkleX = random(-30, 30);
+                        let sparkleY = random(-50, -20);
+                        ellipse(sparkleX, sparkleY, random(3, 8), random(3, 8));
+                    }
+                }
+                pop();
+            }
+
+            // Draws the target (safety) area with a pulsing effect
+            function drawTarget() {
+                push();
+                let px = target.x;
+                let py = target.y;
+                translate(isoX(px, py), isoY(px, py));
+                let pulseSize = target.radius + sin(frameCounter * 0.1) * 3;
+                fill(50, 255, 50, 150);
+                stroke(0, 255, 0);
+                pop();
+            }
+
+            // Draws UI overlays (success message, etc.)
+            function drawUI() {
+                if (simulationComplete) {
+                    push();
+                    fill(0, 255, 0, 200);
+                    stroke(255);
+                    strokeWeight(1);
+                    rectMode(CENTER);
+                    rect(width / 2, height / 2, 400, 120);
+                    fill(255);
+                    textAlign(CENTER, CENTER);
+                    textSize(32);
+                    text("🎉 SAFETY REACHED! 🎉", width / 2, height / 2 - 20);
+                    textSize(18);
+                    text("Person successfully avoided all debris!", width / 2, height / 2 + 15);
+                    textSize(14);
+                    text("Click Reset to run simulation again", width / 2, height / 2 + 35);
+                    pop();
+                }
+            }
+
+            // Updates the status panel with current simulation state
+            function updateStatus() {
+                let statusElem = document.getElementById('status');
+                if (simulationComplete) {
+                    statusElem.textContent = "Status: SIMULATION COMPLETE - Safety Reached!";
+                    lastStatusText = statusElem.textContent;
+                    return;
+                }
+                let statusText = "";
+                switch (character.state) {
+                    case 'walking':
+                        statusText = "Walking forward";
+                        break;
+                    case 'shifting':
+                        statusText = `Shifting ${character.direction > 0 ? 'right' : 'left'}`;
+                        break;
+                    case 'stopping':
+                        statusText = "Stopping to avoid debris";
+                        break;
+                    case 'backing':
+                        statusText = "Backing up";
+                        break;
+                }
+                statusText += ` | Active debris: ${activeDebris.length}`;
+                statusText += ` | Wind: ${windDirection.x.toFixed(1)}, ${windDirection.y.toFixed(1)}`;
+                statusElem.textContent = `Status: ${statusText}`;
+                lastStatusText = statusElem.textContent;
+            }
+
+            // Resets the simulation when the reset button is clicked
+            function resetSimulation() {
+                initializeSimulation();
+            }
+
+            // Expose setup and draw for p5
+            window.setup = setup;
+            window.draw = draw;
+            new p5();
+        });
+    </script>
+</body>
+</html>

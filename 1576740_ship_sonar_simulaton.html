@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sonar Topography Simulation with Timing Analysis</title>
+    <!-- Importing Libraries -->
+    <script type="importmap">
+    {
+        "imports": {
+            "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"
+        }
+    }
+    </script>
+    <!-- Styling -->
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            color: white;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        #canvas-container {
+            border: 3px solid #4a90e2;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(74, 144, 226, 0.3);
+            background: #000;
+            margin-bottom: 20px;
+        }
+        #controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button {
+            background: linear-gradient(45deg, #4a90e2, #357abd);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .info {
+            text-align: center;
+            margin-top: 10px;
+            opacity: 0.8;
+        }
+        .summary-panel {
+            background: rgba(0,0,0,0.7);
+            border-radius: 8px;
+            padding: 10px 20px;
+            margin: 0 auto 10px auto;
+            color: #fff;
+            font-size: 15px;
+            width: 95%;
+            max-width: 1100px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+    <h1>🚢 Sonar Topography Simulation with Timing Analysis</h1>
+    <div id="canvas-container"></div>
+    <div id="controls">
+        <button id="resetBtn">🔄 Reset Simulation</button>
+        <button id="newBoatBtn">🚢 New Random Boat</button>
+        <div class="info">Boat with realistic directional sonar waves, wavefront return echoes, and comprehensive timing analysis</div>
+    </div>
+    <div id="bathymetry-summary" class="summary-panel"></div>
+    <script type="module">
+        import "p5";
+
+        // --- Simulation State Variables ---
+        let boat = null;
+        let pulses = [];
+        let oceanFloor = [];
+        let topographyMap = [];
+        let delayData = [];
+        let returnWaves = [];
+        let timingHistory = [];
+        let mapScrollX = 0;
+        let lastPulseTime = 0;
+        let pulseInterval = 2000;
+        let canvas;
+        let transmissionTime = 0;
+        let firstTransmissionTime = 0;
+        let allEchoesReceivedTime = 0;
+        let surveyComplete = false;
+        let pulseInProgress = false;
+        let boatMoving = false;
+        let moveTargetX = null;
+        let moveStep = 10;
+        let moveDelay = 20;
+        let moveDelayCounter = 0;
+        let boatDirection = 1;
+
+        // --- Canvas and Environment Constants ---
+        const CANVAS_WIDTH = 1200;
+        const CANVAS_HEIGHT = 900;
+        const WATER_SURFACE_MIN = 100;
+        const WATER_SURFACE_MAX = 140;
+        const OCEAN_FLOOR_START = 450;
+        const MAP_HEIGHT = 160; // Increased for more info
+        const GRAPH_HEIGHT = 180;
+        const MAIN_AREA_HEIGHT = 600;
+        const SOUND_SPEED = 1500;
+
+        // --- Bathymetry Graph State ---
+        let bathyHoverIdx = -1;
+
+        // --- Boat Class ---
+        class Boat {
+            constructor(x, waterLevel) {
+                this.x = x;
+                this.waterLevel = waterLevel;
+                this.y = waterLevel - 15;
+                this.width = 80;
+                this.height = 25;
+                this.hullDepth = 12;
+                this.sonarEmitter = new SonarEmitter(x, waterLevel + 25, this);
+                this.id = "BOAT_" + Math.random().toString(36).substr(2, 4).toUpperCase();
+                this.color = color(100, 200, 255);
+                this.positionStartTime = millis();
+                this.surveyStartTime = 0;
+                this.surveyEndTime = 0;
+                this.totalSurveyDuration = 0;
+                this.echoCount = 0;
+                this.averageEchoDelay = 0;
+            }
+            draw() {
+                // Draw hull and deck
+                fill(120, 80, 40);
+                stroke(90, 60, 30);
+                strokeWeight(2);
+                rect(this.x - this.width/2 + 5, this.waterLevel, this.width - 10, this.hullDepth, 0, 0, 8, 8);
+                fill(139, 69, 19);
+                stroke(101, 67, 33);
+                strokeWeight(2);
+                rect(this.x - this.width/2, this.y - this.height/2, this.width, this.height, 8, 8, 3, 3);
+                fill(160, 82, 45);
+                rect(this.x - 20, this.y - this.height/2 - 18, 40, 18, 5);
+                fill(135, 206, 235);
+                noStroke();
+                rect(this.x - 15, this.y - this.height/2 - 15, 8, 6, 2);
+                rect(this.x + 7, this.y - this.height/2 - 15, 8, 6, 2);
+                // Draw mast and flag
+                stroke(101, 67, 33);
+                strokeWeight(4);
+                line(this.x, this.y - this.height/2 - 18, this.x, this.y - this.height/2 - 50);
+                fill(255, 0, 0);
+                noStroke();
+                triangle(this.x, this.y - this.height/2 - 50, this.x + 25, this.y - this.height/2 - 42, this.x, this.y - this.height/2 - 34);
+                // Draw waterline and waves
+                stroke(64, 164, 223, 200);
+                strokeWeight(3);
+                line(0, this.waterLevel, CANVAS_WIDTH, this.waterLevel);
+                noStroke();
+                fill(64, 164, 223, 120);
+                for (let x = 0; x < CANVAS_WIDTH; x += 20) {
+                    let waveHeight = sin((x + millis() * 0.002) * 0.02) * 3;
+                    ellipse(x, this.waterLevel + waveHeight, 18, 8);
+                }
+                // Draw boat ID
+                fill(255);
+                noStroke();
+                textAlign(CENTER);
+                textSize(12);
+                text(this.id, this.x, this.y - this.height/2 - 60);
+                stroke(255, 255, 255, 100);
+                strokeWeight(1);
+                line(this.x - this.width/2 - 5, this.waterLevel, this.x + this.width/2 + 5, this.waterLevel);
+                // Draw sonar emitter
+                this.sonarEmitter.draw();
+
+                // --- Real-time Depth Measurement Display ---
+                let latestDepth = getLatestDepthAtBoat();
+                if (latestDepth !== null) {
+                    fill(255, 255, 0, 230);
+                    textSize(18);
+                    textAlign(CENTER);
+                    text(latestDepth + " m", this.x, this.sonarEmitter.y + 40);
+                }
+            }
+            update() {
+                this.sonarEmitter.update();
+                this.updateTimingAnalysis();
+            }
+            updateTimingAnalysis() {
+                let currentTime = millis();
+                let transmissions = delayData.filter(d => d.type === 'transmission' && d.boatId === this.id);
+                let echoes = delayData.filter(d => d.type === 'echo' && d.boatId === this.id);
+                if (transmissions.length > 0 && this.surveyStartTime === 0) {
+                    this.surveyStartTime = transmissions[0].time;
+                    firstTransmissionTime = this.surveyStartTime;
+                }
+                if (echoes.length > 0 && !surveyComplete) {
+                    let lastEchoTime = Math.max(...echoes.map(e => e.time));
+                    if (returnWaves.length === 0 && pulses.length === 0) {
+                        this.surveyEndTime = lastEchoTime;
+                        allEchoesReceivedTime = this.surveyEndTime;
+                        this.totalSurveyDuration = this.surveyEndTime - this.surveyStartTime;
+                        this.echoCount = echoes.length;
+                        if (echoes.length > 0) {
+                            let totalDelay = echoes.reduce((sum, echo) => sum + echo.delay, 0);
+                            this.averageEchoDelay = totalDelay / echoes.length;
+                        }
+                        surveyComplete = true;
+                        // Only keep the most recent survey in history
+                        timingHistory = [{
+                            boatId: this.id,
+                            position: {x: this.x, waterLevel: this.waterLevel},
+                            surveyStartTime: this.surveyStartTime,
+                            surveyEndTime: this.surveyEndTime,
+                            totalDuration: this.totalSurveyDuration,
+                            echoCount: this.echoCount,
+                            averageEchoDelay: this.averageEchoDelay
+                        }];
+                    }
+                }
+            }
+        }
+
+        // --- Sonar Emitter Class ---
+        class SonarEmitter {
+            constructor(x, y, boat) {
+                this.x = x;
+                this.y = y;
+                this.boat = boat;
+                this.isActive = false;
+                this.activationTime = 0;
+            }
+            draw() {
+                // Draw cable
+                stroke(150, 150, 150);
+                strokeWeight(3);
+                line(this.boat.x, this.boat.waterLevel + this.boat.hullDepth, this.x, this.y);
+                // Draw emitter
+                fill(80, 80, 80);
+                stroke(120, 120, 120);
+                strokeWeight(2);
+                ellipse(this.x, this.y, 30, 30);
+                fill(60, 60, 60);
+                noStroke();
+                ellipse(this.x, this.y, 20, 20);
+                // Draw pulse glow if active
+                if (this.isActive) {
+                    let pulseGlow = map(sin(millis() * 0.03), -1, 1, 100, 255);
+                    fill(0, 255, 255, pulseGlow * 0.3);
+                    noStroke();
+                    ellipse(this.x, this.y, 50, 50);
+                    for (let i = 1; i <= 4; i++) {
+                        stroke(0, 255, 255, (255 - i * 50) * (pulseGlow / 255));
+                        strokeWeight(2);
+                        noFill();
+                        ellipse(this.x, this.y, 30 + i * 15, 30 + i * 15);
+                    }
+                }
+            }
+            update() {
+                if (this.isActive && millis() - this.activationTime > 1500) {
+                    this.isActive = false;
+                }
+            }
+            emitSonarPulse() {
+                this.isActive = true;
+                this.activationTime = millis();
+                transmissionTime = millis();
+                let pulse = new SonarPulse(this.x, this.y, this.boat);
+                pulses.push(pulse);
+                delayData.push({
+                    time: millis(),
+                    frameTime: frameCount,
+                    type: 'transmission',
+                    boatId: this.boat.id,
+                    depth: 0,
+                    delay: 0
+                });
+            }
+        }
+
+        // --- Return Wave Class (Echo) ---
+        class ReturnWave {
+            constructor(startX, startY, centerAngle, beamWidth, intensity, depth, boat) {
+                this.centerX = startX;
+                this.centerY = startY;
+                this.centerAngle = centerAngle;
+                this.beamWidth = beamWidth;
+                this.intensity = intensity;
+                this.age = 0;
+                this.maxAge = 200;
+                this.wavefrontRadius = 0;
+                this.speed = 4;
+                this.depth = depth;
+                this.boat = boat;
+                this.hitBoat = false;
+                this.wavefrontSegments = [];
+                let numSegments = 15;
+                for (let i = 0; i < numSegments; i++) {
+                    let angle = map(i, 0, numSegments - 1, centerAngle - beamWidth/2, centerAngle + beamWidth/2);
+                    this.wavefrontSegments.push({
+                        angle: angle,
+                        intensity: intensity,
+                        active: true
+                    });
+                }
+            }
+            update() {
+                this.age++;
+                this.wavefrontRadius += this.speed;
+                for (let segment of this.wavefrontSegments) {
+                    if (segment.active) {
+                        segment.intensity = max(segment.intensity - 0.5, 0);
+                        let segmentX = this.centerX + cos(segment.angle) * this.wavefrontRadius;
+                        let segmentY = this.centerY + sin(segment.angle) * this.wavefrontRadius;
+                        if (segmentY <= this.boat.waterLevel) {
+                            segment.active = false;
+                        }
+                        if (segment.intensity <= 20) {
+                            segment.active = false;
+                        }
+                    }
+                }
+                // Register echo if any segment reaches the boat
+                if (!this.hitBoat && this.boat) {
+                    let bx = this.boat.sonarEmitter.x;
+                    let by = this.boat.sonarEmitter.y;
+                    for (let segment of this.wavefrontSegments) {
+                        if (segment.active) {
+                            let wx = this.centerX + cos(segment.angle) * this.wavefrontRadius;
+                            let wy = this.centerY + sin(segment.angle) * this.wavefrontRadius;
+                            if (dist(wx, wy, bx, by) < 25) {
+                                this.hitBoat = true;
+                                delayData.push({
+                                    time: millis(),
+                                    frameTime: frameCount,
+                                    type: 'echo',
+                                    boatId: this.boat.id,
+                                    depth: this.depth,
+                                    delay: millis() - transmissionTime,
+                                    intensity: segment.intensity,
+                                    travelTime: this.age * 2
+                                });
+                                break;
+                            }
+                        }
+                    }
+                }
+                return this.wavefrontSegments.some(segment => segment.active) && this.age < this.maxAge;
+            }
+            draw() {
+                // Draw echo wavefront
+                for (let i = 0; i < this.wavefrontSegments.length - 1; i++) {
+                    let segment1 = this.wavefrontSegments[i];
+                    let segment2 = this.wavefrontSegments[i + 1];
+                    if (segment1.active && segment2.active) {
+                        let x1 = this.centerX + cos(segment1.angle) * this.wavefrontRadius;
+                        let y1 = this.centerY + sin(segment1.angle) * this.wavefrontRadius;
+                        let x2 = this.centerX + cos(segment2.angle) * this.wavefrontRadius;
+                        let y2 = this.centerY + sin(segment2.angle) * this.wavefrontRadius;
+                        if (y1 >= this.boat.waterLevel && y2 >= this.boat.waterLevel) {
+                            let avgIntensity = (segment1.intensity + segment2.intensity) / 2;
+                            let alpha = map(avgIntensity, 0, 255, 0, 200);
+                            stroke(255, 200, 0, alpha);
+                            strokeWeight(5);
+                            line(x1, y1, x2, y2);
+                        }
+                    }
+                }
+                // Draw filled echo area
+                if (this.wavefrontRadius > 15) {
+                    fill(255, 200, 0, 25);
+                    noStroke();
+                    beginShape();
+                    vertex(this.centerX, this.centerY);
+                    for (let segment of this.wavefrontSegments) {
+                        if (segment.active) {
+                            let x = this.centerX + cos(segment.angle) * this.wavefrontRadius;
+                            let y = this.centerY + sin(segment.angle) * this.wavefrontRadius;
+                            if (y >= this.boat.waterLevel) {
+                                vertex(x, y);
+                            }
+                        }
+                    }
+                    endShape(CLOSE);
+                }
+                // Draw echo rings
+                for (let ring = 1; ring <= 4; ring++) {
+                    let ringRadius = this.wavefrontRadius - (ring * 10);
+                    if (ringRadius > 0) {
+                        stroke(255, 200, 0, 120 / ring);
+                        strokeWeight(3 / ring);
+                        noFill();
+                        let arcStartY = this.centerY + sin(this.centerAngle - this.beamWidth/2) * ringRadius;
+                        let arcEndY = this.centerY + sin(this.centerAngle + this.beamWidth/2) * ringRadius;
+                        if (arcStartY >= this.boat.waterLevel && arcEndY >= this.boat.waterLevel) {
+                            arc(this.centerX, this.centerY, ringRadius * 2, ringRadius * 2, 
+                                this.centerAngle - this.beamWidth/2, this.centerAngle + this.beamWidth/2);
+                        }
+                    }
+                }
+                // Highlight echo at boat
+                if (this.hitBoat) {
+                    fill(255, 255, 0, 200);
+                    noStroke();
+                    ellipse(this.boat.sonarEmitter.x, this.boat.sonarEmitter.y, 30, 30);
+                    for (let i = 1; i <= 3; i++) {
+                        stroke(255, 255, 0, 150 / i);
+                        strokeWeight(4 / i);
+                        noFill();
+                        ellipse(this.boat.sonarEmitter.x, this.boat.sonarEmitter.y, 30 + i * 12, 30 + i * 12);
+                    }
+                }
+            }
+        }
+
+        // --- Sonar Pulse Class (Outgoing) ---
+        class SonarPulse {
+            constructor(x, y, boat) {
+                this.centerX = x;
+                this.centerY = y;
+                this.boat = boat;
+                this.age = 0;
+                this.maxAge = 180;
+                this.soundSpeed = 4;
+                this.maxRange = 700;
+                this.reflectionPoints = [];
+                this.wavefrontRadius = 0;
+                this.beamWidth = PI/2.2;
+                this.wavefrontSegments = [];
+                let numSegments = 32;
+                for (let i = 0; i < numSegments; i++) {
+                    let angle = map(i, 0, numSegments - 1, PI/2 - this.beamWidth/2, PI/2 + this.beamWidth/2);
+                    this.wavefrontSegments.push({
+                        angle: angle,
+                        intensity: 255,
+                        active: true,
+                        hasReflected: false
+                    });
+                }
+            }
+            update() {
+                this.age++;
+                this.wavefrontRadius += this.soundSpeed;
+                for (let segment of this.wavefrontSegments) {
+                    if (segment.active) {
+                        segment.intensity = max(segment.intensity - 0.8, 0);
+                        this.checkWavefrontCollision(segment);
+                        if (this.wavefrontRadius > this.maxRange || segment.intensity <= 20) {
+                            segment.active = false;
+                        }
+                    }
+                }
+                if (this.wavefrontSegments.every(segment => !segment.active) || this.age > this.maxAge) {
+                    return false;
+                }
+                return true;
+            }
+            checkWavefrontCollision(segment) {
+                let segmentX = this.centerX + cos(segment.angle) * this.wavefrontRadius;
+                let segmentY = this.centerY + sin(segment.angle) * this.wavefrontRadius;
+                if (segmentX >= 0 && segmentX < CANVAS_WIDTH && segmentY > this.boat.waterLevel) {
+                    let floorIndex = Math.floor(segmentX / 5);
+                    if (floorIndex > 3 && floorIndex < oceanFloor.length - 4) {
+                        let yFloor = oceanFloor[floorIndex];
+                        if (segmentY >= yFloor && segment.intensity > 30 && !segment.hasReflected) {
+                            // Calculate local normal for realistic reflection
+                            let y1 = oceanFloor[Math.max(0, floorIndex - 3)];
+                            let y2 = oceanFloor[Math.min(oceanFloor.length - 1, floorIndex + 3)];
+                            let dx = 30;
+                            let dy = y2 - y1;
+                            let surfaceAngle = atan2(dy, dx);
+                            let normalAngle = surfaceAngle - PI/2;
+                            let incidentDir = createVector(cos(segment.angle), sin(segment.angle));
+                            let normalDir = createVector(cos(normalAngle), sin(normalAngle));
+                            let dotProduct = incidentDir.dot(normalDir);
+                            let reflectedDir = p5.Vector.sub(incidentDir, p5.Vector.mult(normalDir, 2 * dotProduct));
+                            let reflectedAngle = atan2(reflectedDir.y, reflectedDir.x);
+                            if (reflectedDir.y < 0) {
+                                let depth = yFloor - this.boat.waterLevel;
+                                let reflectedIntensity = segment.intensity * 0.9;
+                                let beamWidthReduced = this.beamWidth * 0.6;
+                                let reflectedWave = new ReturnWave(segmentX, yFloor, reflectedAngle, beamWidthReduced, reflectedIntensity, depth, this.boat);
+                                returnWaves.push(reflectedWave);
+                                // Add to topography map (real-time depth)
+                                topographyMap.push({
+                                    x: mapScrollX + (segmentX - CANVAS_WIDTH/2),
+                                    depth: Math.round(depth),
+                                    intensity: segment.intensity,
+                                    time: this.age,
+                                    boatId: this.boat.id
+                                });
+                                this.reflectionPoints.push({
+                                    x: segmentX,
+                                    y: yFloor,
+                                    age: 0,
+                                    intensity: segment.intensity,
+                                    angle: reflectedAngle
+                                });
+                            }
+                            segment.hasReflected = true;
+                            segment.intensity *= 0.3;
+                        }
+                    }
+                }
+            }
+            draw() {
+                // Draw outgoing pulse wavefront
+                for (let i = 0; i < this.wavefrontSegments.length - 1; i++) {
+                    let segment1 = this.wavefrontSegments[i];
+                    let segment2 = this.wavefrontSegments[i + 1];
+                    if (segment1.active && segment2.active) {
+                        let x1 = this.centerX + cos(segment1.angle) * this.wavefrontRadius;
+                        let y1 = this.centerY + sin(segment1.angle) * this.wavefrontRadius;
+                        let x2 = this.centerX + cos(segment2.angle) * this.wavefrontRadius;
+                        let y2 = this.centerY + sin(segment2.angle) * this.wavefrontRadius;
+                        let avgIntensity = (segment1.intensity + segment2.intensity) / 2;
+                        let alpha = map(avgIntensity, 0, 255, 0, 200);
+                        stroke(0, 255, 255, alpha);
+                        strokeWeight(5);
+                        line(x1, y1, x2, y2);
+                        fill(0, 255, 255, alpha);
+                        noStroke();
+                        ellipse(x1, y1, 8, 8);
+                    }
+                }
+                // Draw filled outgoing area
+                if (this.wavefrontRadius > 15) {
+                    fill(0, 255, 255, 25);
+                    noStroke();
+                    beginShape();
+                    vertex(this.centerX, this.centerY);
+                    for (let segment of this.wavefrontSegments) {
+                        if (segment.active) {
+                            let x = this.centerX + cos(segment.angle) * this.wavefrontRadius;
+                            let y = this.centerY + sin(segment.angle) * this.wavefrontRadius;
+                            vertex(x, y);
+                        }
+                    }
+                    endShape(CLOSE);
+                }
+                // Draw outgoing rings
+                for (let ring = 1; ring <= 4; ring++) {
+                    let ringRadius = this.wavefrontRadius - (ring * 18);
+                    if (ringRadius > 0) {
+                        stroke(0, 255, 255, 120 / ring);
+                        strokeWeight(3 / ring);
+                        noFill();
+                        arc(this.centerX, this.centerY, ringRadius * 2, ringRadius * 2, 
+                            PI/2 - this.beamWidth/2, PI/2 + this.beamWidth/2);
+                    }
+                }
+                // Draw reflection points
+                for (let i = this.reflectionPoints.length - 1; i >= 0; i--) {
+                    let point = this.reflectionPoints[i];
+                    point.age++;
+                    let pointAlpha = map(point.age, 0, 100, 255, 0);
+                    if (pointAlpha > 0) {
+                        fill(255, 255, 0, pointAlpha);
+                        noStroke();
+                        ellipse(point.x, point.y, 15, 15);
+                        for (let j = 1; j <= 5; j++) {
+                            stroke(255, 255, 0, pointAlpha / (j * 1.2));
+                            strokeWeight(3);
+                            noFill();
+                            ellipse(point.x, point.y, 15 + j * 8, 15 + j * 8);
+                        }
+                        stroke(255, 255, 0, pointAlpha * 0.7);
+                        strokeWeight(4);
+                        let reflectionLength = 35;
+                        line(point.x, point.y, 
+                             point.x + cos(point.angle) * reflectionLength,
+                             point.y + sin(point.angle) * reflectionLength);
+                        fill(255, 100, 0, pointAlpha * 0.9);
+                        noStroke();
+                        ellipse(point.x + cos(point.angle) * reflectionLength, 
+                               point.y + sin(point.angle) * reflectionLength, 10, 10);
+                    }
+                    if (point.age > 100) {
+                        this.reflectionPoints.splice(i, 1);
+                    }
+                }
+            }
+        }
+
+        // --- p5.js Setup ---
+        window.setup = function() {
+            canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+            canvas.parent('canvas-container');
+            generateOceanFloor();
+            createRandomBoat();
+            document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+            document.getElementById('newBoatBtn').addEventListener('click', createRandomBoat);
+        }
+
+        // --- p5.js Draw Loop ---
+        window.draw = function() {
+            // Draw water background
+            for (let i = 0; i <= MAIN_AREA_HEIGHT; i++) {
+                let inter = map(i, 0, MAIN_AREA_HEIGHT, 0, 1);
+                let c = lerpColor(color(135, 206, 235), color(25, 25, 112), inter);
+                stroke(c);
+                strokeWeight(1);
+                line(0, i, width, i);
+            }
+            fill(30, 30, 50);
+            noStroke();
+            rect(0, MAIN_AREA_HEIGHT, width, height - MAIN_AREA_HEIGHT);
+
+            // Draw ocean floor
+            drawOceanFloor();
+
+            // Draw boat and update
+            if (boat) {
+                boat.update();
+                boat.draw();
+            }
+
+            // Draw outgoing sonar pulses
+            for (let i = pulses.length - 1; i >= 0; i--) {
+                if (!pulses[i].update()) {
+                    pulses.splice(i, 1);
+                } else {
+                    pulses[i].draw();
+                }
+            }
+
+            // Draw return (echo) waves
+            for (let i = returnWaves.length - 1; i >= 0; i--) {
+                if (!returnWaves[i].update()) {
+                    returnWaves.splice(i, 1);
+                } else {
+                    returnWaves[i].draw();
+                }
+            }
+
+            // --- Boat movement and pulse logic ---
+            if (boat && !pulseInProgress && !boatMoving && moveDelayCounter === 0) {
+                boat.sonarEmitter.emitSonarPulse();
+                lastPulseTime = millis();
+                pulseInProgress = true;
+                surveyComplete = false;
+            }
+            if (pulseInProgress && returnWaves.length === 0 && pulses.length === 0) {
+                pulseInProgress = false;
+                boatMoving = true;
+                moveTargetX = boat.x + (moveStep * boatDirection);
+                moveDelayCounter = moveDelay;
+            }
+            if (moveDelayCounter > 0) {
+                moveDelayCounter--;
+            } else if (boatMoving) {
+                if (boatDirection > 0) {
+                    if (boat.x < CANVAS_WIDTH - 100) {
+                        boat.x += moveStep;
+                        boat.sonarEmitter.x += moveStep;
+                        boatMoving = false;
+                    } else {
+                        boatDirection = -1;
+                        boatMoving = false;
+                        moveTargetX = null;
+                        mapScrollX += 2;
+                    }
+                } else {
+                    if (boat.x > 100) {
+                        boat.x -= moveStep;
+                        boat.sonarEmitter.x -= moveStep;
+                        boatMoving = false;
+                    } else {
+                        boatDirection = 1;
+                        boatMoving = false;
+                        moveTargetX = null;
+                        mapScrollX += 2;
+                    }
+                }
+            }
+
+            // Draw bottom line
+            stroke(100, 100, 100);
+            strokeWeight(2);
+            line(0, MAIN_AREA_HEIGHT, width, MAIN_AREA_HEIGHT);
+
+            // Draw topography and delay graphs
+            drawTopographyMap();
+            drawDelayGraph();
+            drawUI();
+        }
+
+        // --- Create a new random boat ---
+        function createRandomBoat() {
+            let x = random(200, CANVAS_WIDTH - 200);
+            let waterLevel = random(WATER_SURFACE_MIN, WATER_SURFACE_MAX);
+            boat = new Boat(x, waterLevel);
+            pulses = [];
+            returnWaves = [];
+            delayData = [];
+            topographyMap = [];
+            surveyComplete = false;
+            firstTransmissionTime = 0;
+            allEchoesReceivedTime = 0;
+            pulseInProgress = false;
+            boatMoving = false;
+            moveTargetX = null;
+            moveDelayCounter = 0;
+            boatDirection = 1;
+        }
+
+        // --- Generate the ocean floor profile ---
+        function generateOceanFloor() {
+            oceanFloor = [];
+            for (let x = 0; x < CANVAS_WIDTH; x += 5) {
+                let baseDepth = OCEAN_FLOOR_START;
+                let variation = sin(x * 0.005) * 100 +
+                               sin(x * 0.015) * 50 +
+                               sin(x * 0.03) * 30 +
+                               sin(x * 0.1) * 15;
+                oceanFloor.push(baseDepth + variation);
+            }
+        }
+
+        // --- Draw the ocean floor ---
+        function drawOceanFloor() {
+            fill(101, 67, 33);
+            stroke(139, 69, 19);
+            strokeWeight(2);
+            beginShape();
+            vertex(-10, MAIN_AREA_HEIGHT + 10);
+            for (let i = 0; i < oceanFloor.length; i++) {
+                vertex(i * 5, min(oceanFloor[i], MAIN_AREA_HEIGHT - 10));
+            }
+            vertex(width + 10, MAIN_AREA_HEIGHT + 10);
+            endShape(CLOSE);
+        }
+
+        // --- Draw the improved real-time topography map ---
+        function drawTopographyMap() {
+            let mapY = MAIN_AREA_HEIGHT + 20;
+            let mapX = 10;
+            let mapW = width - 20;
+            let mapH = MAP_HEIGHT;
+
+            // Draw background and border
+            fill(0, 0, 0, 180);
+            stroke(0, 255, 255, 180);
+            strokeWeight(2);
+            rect(mapX, mapY, mapW, mapH, 8);
+
+            // Title
+            fill(255);
+            noStroke();
+            textAlign(LEFT);
+            textSize(16);
+            text("Bathymetric Profile - Real-time Depth Measurements", mapX + 15, mapY + 22);
+
+            // Axis labels
+            textSize(12);
+            textAlign(CENTER);
+            fill(200,255,255,180);
+            text("Distance (m)", mapX + mapW/2, mapY + mapH - 8);
+            textAlign(RIGHT);
+            text("Depth (m)", mapX + 40, mapY + 35);
+
+            // Draw grid
+            stroke(255,255,255,60);
+            strokeWeight(1);
+            let depthStep = 40;
+            let maxDepth = 350;
+            let yMin = mapY + 30;
+            let yMax = mapY + mapH - 30;
+            for (let i = 0; i <= maxDepth; i += depthStep) {
+                let y = yMax - (i * (yMax - yMin) / maxDepth);
+                line(mapX + 50, y, mapX + mapW - 20, y);
+                fill(255,255,255,180);
+                noStroke();
+                textAlign(RIGHT);
+                text(i + "m", mapX + 45, y + 4);
+            }
+            let distStep = 100;
+            let totalDist = getTotalSurveyDistance();
+            let nSteps = Math.floor(totalDist / distStep);
+            let xMin = mapX + 50;
+            let xMax = mapX + mapW - 20;
+            for (let i = 0; i <= nSteps; i++) {
+                let x = xMin + (i * (xMax - xMin) / Math.max(1, nSteps));
+                stroke(255,255,255,60);
+                line(x, yMax, x, yMin);
+                fill(255,255,255,180);
+                noStroke();
+                textAlign(CENTER);
+                text(i * distStep, x, yMax + 15);
+            }
+
+            // Draw legend
+            let legendX = mapX + mapW - 180;
+            let legendY = mapY + 30;
+            fill(255);
+            textAlign(LEFT);
+            textSize(12);
+            text("Legend:", legendX, legendY);
+            fill(255,255,0);
+            ellipse(legendX + 10, legendY + 18, 8, 8);
+            fill(255);
+            text("Depth Point", legendX + 22, legendY + 22);
+            fill(255,0,0);
+            ellipse(legendX + 10, legendY + 38, 10, 10);
+            fill(255);
+            text("Latest Point", legendX + 22, legendY + 42);
+            fill(0,255,255);
+            ellipse(legendX + 10, legendY + 58, 10, 10);
+            fill(255);
+            text("Boat Position", legendX + 22, legendY + 62);
+
+            // Draw profile line and points
+            if (topographyMap.length > 1) {
+                // Sort by x (distance)
+                let sorted = topographyMap.slice().sort((a,b)=>a.x-b.x);
+                // Clamp all points to graph area
+                let minX = sorted[0].x;
+                let maxX = sorted[sorted.length-1].x;
+                let minDepth = 0;
+                let maxDepthVal = maxDepth;
+                // Polyline
+                stroke(0,255,255,180);
+                strokeWeight(2);
+                noFill();
+                beginShape();
+                for (let i = 0; i < sorted.length; i++) {
+                    let px = map(sorted[i].x, minX, maxX, xMin, xMax, true);
+                    let py = map(sorted[i].depth, minDepth, maxDepthVal, yMax, yMin, true);
+                    vertex(px, py);
+                }
+                endShape();
+
+                // Draw all points
+                for (let i = 0; i < sorted.length; i++) {
+                    let px = map(sorted[i].x, minX, maxX, xMin, xMax, true);
+                    let py = map(sorted[i].depth, minDepth, maxDepthVal, yMax, yMin, true);
+                    fill(255,255,0,180);
+                    noStroke();
+                    ellipse(px, py, 7, 7);
+
+                    // Hover tooltip
+                    if (dist(mouseX, mouseY, px, py) < 10) {
+                        bathyHoverIdx = i;
+                        fill(0,0,0,220);
+                        stroke(255,255,0,180);
+                        strokeWeight(2);
+                        rect(px+12, py-30, 90, 32, 6);
+                        fill(255,255,0);
+                        noStroke();
+                        textAlign(LEFT);
+                        textSize(12);
+                        text("Depth: " + sorted[i].depth + "m", px+18, py-16);
+                        text("Dist: " + Math.round(sorted[i].x - minX) + "m", px+18, py-4);
+                    }
+                }
+                // Highlight latest point
+                let last = sorted[sorted.length-1];
+                let px = map(last.x, minX, maxX, xMin, xMax, true);
+                let py = map(last.depth, minDepth, maxDepthVal, yMax, yMin, true);
+                fill(255,0,0,220);
+                ellipse(px, py, 12, 12);
+
+                // Mark boat position
+                if (boat) {
+                    let boatDist = last.x - minX;
+                    let bx = map(last.x, minX, maxX, xMin, xMax, true);
+                    let by = map(last.depth, minDepth, maxDepthVal, yMax, yMin, true);
+                    fill(0,255,255,220);
+                    ellipse(bx, by, 14, 14);
+                }
+            }
+
+            // Draw axis lines
+            stroke(255,255,255,120);
+            strokeWeight(2);
+            line(xMin, yMin, xMin, yMax); // Y axis
+            line(xMin, yMax, xMax, yMax); // X axis
+
+            // Draw summary panel below graph
+            updateBathymetrySummary();
+        }
+
+        // --- Draw the sonar delay graph ---
+        function drawDelayGraph() {
+            let graphY = MAIN_AREA_HEIGHT + MAP_HEIGHT + 40;
+            fill(0, 0, 0, 180);
+            stroke(255, 255, 255, 120);
+            strokeWeight(1);
+            rect(10, graphY, width - 20, GRAPH_HEIGHT);
+            fill(255);
+            noStroke();
+            textAlign(LEFT);
+            textSize(14);
+            text("Sonar Delay Analysis - Transmission vs Echo Return Times", 25, graphY + 20);
+            let currentTime = millis();
+            let recentDelays = delayData.filter(d => currentTime - d.time < 20000);
+            // Draw grid
+            stroke(255, 255, 255, 60);
+            strokeWeight(1);
+            for (let i = 0; i <= 5; i++) {
+                let y = graphY + 30 + (i * (GRAPH_HEIGHT - 50) / 5);
+                line(60, y, width - 30, y);
+                fill(255, 255, 255, 200);
+                textAlign(LEFT);
+                textSize(10);
+                let depthLabel = Math.round(i * 70) + "m";
+                text(depthLabel, 15, y + 4);
+            }
+            for (let i = 0; i <= 10; i++) {
+                let x = 60 + (i * (width - 90) / 10);
+                line(x, graphY + 30, x, graphY + GRAPH_HEIGHT - 20);
+                if (i % 2 === 0) {
+                    fill(255, 255, 255, 200);
+                    textAlign(CENTER);
+                    textSize(10);
+                    text(i * 2 + "s", x, graphY + GRAPH_HEIGHT - 5);
+                }
+            }
+            // Draw echo and transmission points
+            recentDelays.forEach((signal, index) => {
+                if (signal.type === 'echo' && signal.depth > 0) {
+                    let x = map(currentTime - signal.time, 20000, 0, 60, width - 30);
+                    let y = map(signal.depth, 0, 350, graphY + 30, graphY + GRAPH_HEIGHT - 20);
+                    fill(255, 255, 0, 200);
+                    noStroke();
+                    ellipse(x, y, 6, 6);
+                    stroke(100, 255, 255, 150);
+                    strokeWeight(2);
+                    let delayHeight = map(signal.delay, 0, 2000, 0, 25);
+                    line(x, y, x, y - delayHeight);
+                    fill(255, signal.intensity, 0, signal.intensity);
+                    ellipse(x, y - delayHeight, 4, 4);
+                }
+                if (signal.type === 'transmission') {
+                    let x = map(currentTime - signal.time, 20000, 0, 60, width - 30);
+                    let y = graphY + 30;
+                    stroke(0, 255, 255, 255);
+                    strokeWeight(3);
+                    line(x, y, x, y + 25);
+                    fill(0, 255, 255);
+                    noStroke();
+                    ellipse(x, y, 8, 8);
+                }
+            });
+            // Draw legend
+            let legendX = width - 220;
+            let legendY = graphY + 40;
+            fill(255);
+            textAlign(LEFT);
+            textSize(11);
+            text("Legend:", legendX, legendY);
+            stroke(0, 255, 255);
+            strokeWeight(3);
+            line(legendX, legendY + 15, legendX + 20, legendY + 15);
+            fill(255);
+            text("Transmission", legendX + 25, legendY + 20);
+            fill(255, 255, 0);
+            noStroke();
+            ellipse(legendX + 10, legendY + 35, 6, 6);
+            fill(255);
+            text("Echo Return", legendX + 25, legendY + 40);
+            fill(255, 200, 0);
+            noStroke();
+            ellipse(legendX + 10, legendY + 55, 8, 8);
+            fill(255);
+            text("Return Wavefront", legendX + 25, legendY + 60);
+        }
+
+        // --- Draw the UI and statistics panel ---
+        function drawUI() {
+            fill(0, 0, 0, 160);
+            stroke(255, 255, 255, 150);
+            strokeWeight(1);
+            rect(15, 15, 300, 200);
+            fill(255);
+            noStroke();
+            textAlign(LEFT);
+            textSize(13);
+            text("Sonar System Statistics:", 25, 35);
+            if (boat) {
+                text("Boat ID: " + boat.id, 25, 55);
+                text("Position: (" + Math.round(boat.x) + ", " + Math.round(boat.waterLevel) + ")", 25, 70);
+                if (boat.surveyStartTime > 0) {
+                    text("Survey Started: " + formatTime(boat.surveyStartTime), 25, 85);
+                    if (surveyComplete) {
+                        text("Survey Completed: " + formatTime(boat.surveyEndTime), 25, 100);
+                        text("Total Survey Time: " + Math.round(boat.totalSurveyDuration) + "ms", 25, 115);
+                        text("Average Echo Delay: " + Math.round(boat.averageEchoDelay) + "ms", 25, 130);
+                        text("Echo Count: " + boat.echoCount, 25, 145);
+                    } else {
+                        text("Survey Status: In Progress", 25, 100);
+                        let elapsed = millis() - boat.surveyStartTime;
+                        text("Elapsed Time: " + Math.round(elapsed) + "ms", 25, 115);
+                        text("Current Echo Count: " + delayData.filter(d => d.type === 'echo').length, 25, 130);
+                    }
+                }
+            }
+            text("Active Pulses: " + pulses.length, 25, 160);
+            text("Return Waves: " + returnWaves.length, 25, 175);
+            text("Map Points: " + topographyMap.length, 25, 190);
+
+            // Show only the most recent survey timing history
+            if (timingHistory.length > 0) {
+                fill(0, 0, 0, 160);
+                stroke(255, 255, 255, 150);
+                strokeWeight(1);
+                rect(width - 350, 15, 330, 80);
+                fill(255);
+                textAlign(LEFT);
+                textSize(13);
+                text("Previous Survey Timing History:", width - 340, 35);
+                textSize(11);
+                let history = timingHistory[timingHistory.length - 1];
+                let yPos = 55;
+                text(history.boatId + ":", width - 340, yPos);
+                text("  Duration: " + Math.round(history.totalDuration) + "ms", width - 340, yPos + 12);
+                text("  Avg Delay: " + Math.round(history.averageEchoDelay) + "ms", width - 340, yPos + 24);
+            }
+
+            // Draw depth scale on left
+            fill(255, 255, 255, 200);
+            textAlign(LEFT);
+            textSize(10);
+            for (let i = 0; i <= 5; i++) {
+                let y = WATER_SURFACE_MAX + (i * 50);
+                if (y < OCEAN_FLOOR_START - 30) {
+                    text(i * 50 + "m", 5, y + 3);
+                    stroke(255, 255, 255, 100);
+                    strokeWeight(1);
+                    line(30, y, 50, y);
+                }
+            }
+        }
+
+        // --- Format time for display ---
+        function formatTime(timestamp) {
+            if (timestamp === 0) return "Not started";
+            let totalMs = timestamp % 60000;
+            let seconds = Math.floor(totalMs / 1000);
+            let milliseconds = Math.floor(totalMs % 1000);
+            return seconds + "." + milliseconds.toString().padStart(3, '0') + "s";
+        }
+
+        // --- Reset the simulation ---
+        function resetSimulation() {
+            pulses = [];
+            returnWaves = [];
+            topographyMap = [];
+            delayData = [];
+            timingHistory = [];
+            mapScrollX = 0;
+            lastPulseTime = 0;
+            transmissionTime = 0;
+            firstTransmissionTime = 0;
+            allEchoesReceivedTime = 0;
+            surveyComplete = false;
+            generateOceanFloor();
+            pulseInProgress = false;
+            boatMoving = false;
+            moveTargetX = null;
+            moveDelayCounter = 0;
+            boatDirection = 1;
+        }
+
+        // --- Get the latest depth at the boat's current position ---
+        function getLatestDepthAtBoat() {
+            if (!boat) return null;
+            // Find the most recent topography point near the boat's x
+            let minDist = 99999;
+            let bestDepth = null;
+            for (let i = topographyMap.length - 1; i >= 0; i--) {
+                let px = topographyMap[i].x + CANVAS_WIDTH/2;
+                if (abs(px - boat.x) < minDist) {
+                    minDist = abs(px - boat.x);
+                    bestDepth = topographyMap[i].depth;
+                }
+                if (minDist < 10) break;
+            }
+            // If no echo yet, estimate from ocean floor
+            if (bestDepth === null) {
+                let floorIndex = Math.floor(boat.x / 5);
+                if (floorIndex >= 0 && floorIndex < oceanFloor.length) {
+                    bestDepth = Math.round(oceanFloor[floorIndex] - boat.waterLevel);
+                }
+            }
+            return bestDepth;
+        }
+
+        // --- Get total survey distance for the bathymetry graph ---
+        function getTotalSurveyDistance() {
+            if (topographyMap.length < 2) return 1;
+            let sorted = topographyMap.slice().sort((a,b)=>a.x-b.x);
+            return Math.abs(sorted[sorted.length-1].x - sorted[0].x);
+        }
+
+        // --- Update the bathymetry summary panel below the graph ---
+        function updateBathymetrySummary() {
+            let el = document.getElementById('bathymetry-summary');
+            if (!el) return;
+            if (topographyMap.length < 2) {
+                el.innerHTML = "<b>Bathymetric Profile:</b> The graph above shows the measured depth (vertical axis) as a function of the boat's distance traveled (horizontal axis). Each yellow dot is a sonar depth measurement. The red dot is the latest measurement, and the cyan dot marks the boat's current position. Hover over a point to see its details.";
+                return;
+            }
+            let sorted = topographyMap.slice().sort((a,b)=>a.x-b.x);
+            let depths = sorted.map(d=>d.depth);
+            let minDepth = Math.min(...depths);
+            let maxDepth = Math.max(...depths);
+            let avgDepth = Math.round(depths.reduce((a,b)=>a+b,0)/depths.length);
+            let totalDist = Math.round(getTotalSurveyDistance());
+            el.innerHTML = `<b>Bathymetric Profile:</b> The graph above shows the measured depth (vertical axis) as a function of the boat's distance traveled (horizontal axis).<br>
+            <b>Surveyed Distance:</b> ${totalDist} m &nbsp; | &nbsp; <b>Min Depth:</b> ${minDepth} m &nbsp; | &nbsp; <b>Max Depth:</b> ${maxDepth} m &nbsp; | &nbsp; <b>Average Depth:</b> ${avgDepth} m.<br>
+            <span style="color:#ffff00;">●</span> Each yellow dot is a sonar depth measurement. <span style="color:#ff0000;">●</span> The red dot is the latest measurement. <span style="color:#00ffff;">●</span> The cyan dot marks the boat's current position. Hover over a point to see its details.`;
+        }
+
+        // --- Mouse moved event for bathymetry hover ---
+        window.mouseMoved = function() {
+            // Just triggers redraw for tooltip
+        }
+    </script>
+</body>
+</html>

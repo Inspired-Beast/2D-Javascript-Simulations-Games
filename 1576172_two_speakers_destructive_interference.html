@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Sound Wave Interference Simulation</title>
+    <!-- Styling -->
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #4fc3f7;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+            font-weight: 300;
+        }
+        .description {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #b0b0b0;
+            font-size: 1.1em;
+            line-height: 1.5;
+        }
+        .simulation-container {
+            background: #16213e;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 2px solid #2a4d7a;
+        }
+        #canvas-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .info-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .info-box {
+            background: #0f3460;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #2a4d7a;
+        }
+        .info-box h3 {
+            color: #4fc3f7;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid #666;
+        }
+        .destructive { background: #1a1a2e; }
+        .speaker { background: #ff5722; }
+        .wavefront { background: rgba(79, 195, 247, 0.3); }
+        .reset-btn {
+            display: block;
+            margin: 0 auto 18px auto;
+            padding: 8px 24px;
+            font-size: 1em;
+            background: #4fc3f7;
+            color: #16213e;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        .reset-btn:hover {
+            background: #1976d2;
+            color: #fff;
+        }
+        @media (max-width: 768px) {
+            .info-panel {
+                grid-template-columns: 1fr;
+            }
+            .legend {
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>2D Sound Wave Interference Simulation</h1>
+        <div class="description">
+            Two identical speakers emit synchronized sound waves, creating interference patterns with zones of silence (destructive interference) and amplification (constructive interference).
+        </div>
+        <div class="simulation-container">
+            <!-- Reset button to restart the simulation -->
+            <button class="reset-btn" id="resetBtn">Reset Simulation</button>
+            <div id="canvas-container"></div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color speaker"></div>
+                    <span>Speakers</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color wavefront"></div>
+                    <span>Wavefronts</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color destructive"></div>
+                    <span>Destructive (Silent)</span>
+                </div>
+            </div>
+            <div class="info-panel">
+                <div class="info-box">
+                    <h3>Wave Physics</h3>
+                    <p>When two waves of equal frequency and amplitude meet, they create interference patterns. Destructive interference occurs when waves are out of phase, causing them to cancel each other out in specific zones.</p>
+                </div>
+                <div class="info-box">
+                    <h3>Zones of Silence</h3>
+                    <p>The dark vertical bands represent areas where sound waves from both speakers arrive exactly out of phase, canceling each other out. These are the "quiet zones" where destructive interference minimizes sound amplitude.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Importing Modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"
+        }
+    }
+    </script>
+    <!-- Main Script -->
+    <script type="module">
+        import 'p5';
+
+        // --- Simulation parameters ---
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 500;
+        const SPEAKER_WIDTH = 40;
+        const SPEAKER_HEIGHT = 60;
+        const FREQUENCY = 0.02;    // Frequency of the sound waves
+        const AMPLITUDE = 100;     // Not used directly, but can be used for scaling
+        const WAVE_SPEED = 2;      // Controls speed of wavefront animation
+        const WAVELENGTH = 80;     // Wavelength of the sound waves
+
+        // Speaker positions (side view)
+        const speaker1 = { x: 80, y: CANVAS_HEIGHT / 2 };
+        const speaker2 = { x: CANVAS_WIDTH - 80, y: CANVAS_HEIGHT / 2 };
+
+        // Simulation state
+        let time = 0;              // Animation time variable
+        let destructiveBands = []; // Array to hold destructive interference band data
+
+        // --- p5.js sketch definition ---
+        const sketch = (p) => {
+            // Setup function: called once at the start
+            p.setup = () => {
+                // Create the canvas and attach it to the container
+                const canvas = p.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+                canvas.parent('canvas-container');
+            };
+
+            // Draw function: called every animation frame
+            p.draw = () => {
+                // Clear background
+                p.background(25, 25, 50);
+
+                // Advance time for animation
+                time += 0.05;
+
+                // Calculate destructive interference bands
+                calculateDestructiveBands();
+
+                // Draw all simulation visuals
+                drawDestructiveBands();
+                drawMovingWavefronts();
+                drawRealisticSpeakers();
+                labelSilentZones();
+                drawAmplitudeWaves(); // Draw the amplitude interaction graph at the bottom
+            };
+
+            // --- Calculate destructive interference bands ---
+            function calculateDestructiveBands() {
+                destructiveBands = [];
+                // Loop across the canvas horizontally
+                for (let x = 120; x < CANVAS_WIDTH - 120; x += 3) {
+                    // Distance from each speaker to this x
+                    const dist1 = Math.abs(x - speaker1.x);
+                    const dist2 = Math.abs(x - speaker2.x);
+                    // Path difference between the two waves
+                    const pathDiff = Math.abs(dist1 - dist2);
+
+                    // Find the nearest integer n such that pathDiff ≈ (n + 0.5) * WAVELENGTH
+                    // This is the condition for destructive interference (odd multiples of half-wavelength)
+                    const n = Math.round((pathDiff / WAVELENGTH) - 0.5);
+                    const expectedDestructive = (n + 0.5) * WAVELENGTH;
+                    const tolerance = 2.5; // pixels, adjust for band thickness
+
+                    if (Math.abs(pathDiff - expectedDestructive) < tolerance && n >= 0) {
+                        // Band strength for visual effect (closer to center = stronger)
+                        const strength = 1 - Math.min(Math.abs(pathDiff - expectedDestructive) / tolerance, 1);
+                        destructiveBands.push({
+                            x: x,
+                            strength: strength
+                        });
+                    }
+                }
+            }
+
+            // --- Draw destructive interference bands as dark vertical bands ---
+            function drawDestructiveBands() {
+                p.noStroke();
+                destructiveBands.forEach(band => {
+                    const opacity = band.strength * 200;
+                    // Main dark band
+                    p.fill(0, 0, 0, opacity);
+                    p.rect(band.x - 8, 0, 16, CANVAS_HEIGHT);
+                    // Subtle red outline for visibility
+                    p.fill(150, 50, 50, opacity * 0.5);
+                    p.rect(band.x - 9, 0, 2, CANVAS_HEIGHT);
+                    p.rect(band.x + 7, 0, 2, CANVAS_HEIGHT);
+                });
+            }
+
+            // --- Draw moving wavefronts from each speaker ---
+            function drawMovingWavefronts() {
+                p.noFill();
+                p.strokeWeight(2);
+                // Draw several expanding wavefronts from each speaker
+                for (let i = 0; i < 6; i++) {
+                    const radius = (time * WAVE_SPEED * 30 + i * WAVELENGTH) % (CANVAS_WIDTH * 0.7);
+                    const opacity = 255 - (radius / (CANVAS_WIDTH * 0.7)) * 255;
+                    if (opacity > 20) {
+                        p.stroke(79, 195, 247, opacity * 0.6);
+                        // Speaker 1
+                        p.circle(speaker1.x, speaker1.y, radius * 2);
+                        // Speaker 2
+                        p.circle(speaker2.x, speaker2.y, radius * 2);
+                    }
+                }
+            }
+
+            // --- Draw stylized speakers on both sides ---
+            function drawRealisticSpeakers() {
+                // Speaker 1 (left)
+                p.fill(60, 60, 80);
+                p.noStroke();
+                p.rect(speaker1.x - SPEAKER_WIDTH/2, speaker1.y - SPEAKER_HEIGHT/2, SPEAKER_WIDTH, SPEAKER_HEIGHT, 5);
+                // Speaker cone
+                p.fill(40, 40, 60);
+                p.circle(speaker1.x + 5, speaker1.y, 35);
+                p.fill(255, 87, 34);
+                p.circle(speaker1.x + 5, speaker1.y, 25);
+                p.fill(20, 20, 40);
+                p.circle(speaker1.x + 5, speaker1.y, 8);
+                // Speaker 2 (right)
+                p.fill(60, 60, 80);
+                p.rect(speaker2.x - SPEAKER_WIDTH/2, speaker2.y - SPEAKER_HEIGHT/2, SPEAKER_WIDTH, SPEAKER_HEIGHT, 5);
+                // Speaker cone
+                p.fill(40, 40, 60);
+                p.circle(speaker2.x - 5, speaker2.y, 35);
+                p.fill(255, 87, 34);
+                p.circle(speaker2.x - 5, speaker2.y, 25);
+                p.fill(20, 20, 40);
+                p.circle(speaker2.x - 5, speaker2.y, 8);
+                // Speaker labels
+                p.fill(255);
+                p.textAlign(p.CENTER);
+                p.textSize(12);
+                p.text('S1', speaker1.x, speaker1.y + 40);
+                p.text('S2', speaker2.x, speaker2.y + 40);
+            }
+
+            // --- Label silent zones and add instruction text ---
+            function labelSilentZones() {
+                p.fill(255, 200, 200);
+                p.textAlign(p.CENTER);
+                p.textSize(14);
+                p.stroke(0, 0, 0);
+                p.strokeWeight(1);
+                // Label a few strong destructive bands at the top
+                let labelCount = 0;
+                destructiveBands.forEach((band, index) => {
+                    if (band.strength > 0.8 && labelCount < 3 && index % 15 === 0) {
+                        p.text('SILENT ZONE', band.x, 30);
+                        labelCount++;
+                    }
+                });
+                // Add instruction text at the bottom
+                p.fill(150, 150, 255);
+                p.textSize(11);
+                p.noStroke();
+                p.text('Black bands show destructive interference - zones of silence', CANVAS_WIDTH/2, CANVAS_HEIGHT - 20);
+            }
+
+            // --- Draw amplitude waves for both speakers and their sum at the bottom ---
+            function drawAmplitudeWaves() {
+                // Graph area parameters
+                const yBase = CANVAS_HEIGHT - 8; // Baseline for graph
+                const graphHeight = 38;          // Height of the graph area
+                const numSamples = 180;          // Number of points in the graph
+                const xStart = 120;
+                const xEnd = CANVAS_WIDTH - 120;
+                const dx = (xEnd - xStart) / (numSamples - 1);
+
+                // Draw background for amplitude graph area
+                p.noStroke();
+                p.fill(20, 30, 60, 180);
+                p.rect(xStart, yBase - graphHeight, xEnd - xStart, graphHeight + 8, 6);
+
+                // Arrays to store amplitude values for plotting
+                let amp1Arr = [];
+                let amp2Arr = [];
+                let sumArr = [];
+
+                // Calculate amplitudes for each sample point
+                for (let i = 0; i < numSamples; i++) {
+                    const x = xStart + i * dx;
+                    // Distance from each speaker to this x
+                    const d1 = Math.abs(x - speaker1.x);
+                    const d2 = Math.abs(x - speaker2.x);
+
+                    // --- Realistic attenuation: amplitude decays as 1/distance ---
+                    // Avoid division by zero at the speaker location
+                    const att1 = 1 / Math.max(d1, 1);
+                    const att2 = 1 / Math.max(d2, 1);
+
+                    // Phase at this point for each speaker
+                    const phase1 = 2 * Math.PI * (d1 / WAVELENGTH - time * FREQUENCY);
+                    const phase2 = 2 * Math.PI * (d2 / WAVELENGTH - time * FREQUENCY);
+
+                    // Individual amplitudes with attenuation
+                    const amp1 = Math.sin(phase1) * att1;
+                    const amp2 = Math.sin(phase2) * att2;
+                    // Combined amplitude (sum)
+                    const sum = amp1 + amp2;
+                    amp1Arr.push(amp1);
+                    amp2Arr.push(amp2);
+                    sumArr.push(sum);
+                }
+
+                // Find max absolute value for normalization (for sum)
+                const maxSum = Math.max(...sumArr.map(Math.abs), 0.01);
+                const maxInd = Math.max(...amp1Arr.map(Math.abs).concat(amp2Arr.map(Math.abs)), 0.01);
+
+                // Helper to map amplitude to y position in graph
+                function ampToY(amp, max) {
+                    // Map [-max, max] to [yBase, yBase-graphHeight]
+                    return yBase - ((amp + max) / (2 * max)) * graphHeight;
+                }
+
+                // Draw sum (interference) wave
+                p.noFill();
+                p.stroke(30, 200, 255, 220);
+                p.strokeWeight(2.2);
+                p.beginShape();
+                for (let i = 0; i < numSamples; i++) {
+                    const x = xStart + i * dx;
+                    p.vertex(x, ampToY(sumArr[i], maxSum));
+                }
+                p.endShape();
+
+                // Draw individual waves (from each speaker)
+                // Speaker 1: orange
+                p.noFill();
+                p.stroke(255, 180, 60, 180);
+                p.strokeWeight(1.2);
+                p.beginShape();
+                for (let i = 0; i < numSamples; i++) {
+                    const x = xStart + i * dx;
+                    p.vertex(x, ampToY(amp1Arr[i], maxInd));
+                }
+                p.endShape();
+                // Speaker 2: purple
+                p.noFill();
+                p.stroke(180, 100, 255, 180);
+                p.strokeWeight(1.2);
+                p.beginShape();
+                for (let i = 0; i < numSamples; i++) {
+                    const x = xStart + i * dx;
+                    p.vertex(x, ampToY(amp2Arr[i], maxInd));
+                }
+                p.endShape();
+
+                // Draw axis line
+                p.stroke(120, 180, 255, 120);
+                p.strokeWeight(1.2);
+                p.line(xStart, yBase, xEnd, yBase);
+
+                // Draw amplitude scale labels and legend
+                p.noStroke();
+                p.textSize(10);
+                p.fill(180, 220, 255, 180);
+                p.textAlign(p.LEFT, p.BOTTOM);
+                p.text('Amplitude', xStart + 4, yBase - graphHeight - 2);
+                p.textAlign(p.RIGHT, p.BOTTOM);
+                p.text('Max', xEnd - 2, yBase - graphHeight - 2);
+                p.textAlign(p.RIGHT, p.TOP);
+                p.text('Min', xEnd - 2, yBase + 2);
+
+                // Legend for amplitude graph
+                p.textAlign(p.LEFT, p.TOP);
+                p.fill(30, 200, 255, 220);
+                p.text('Sum', xStart + 4, yBase - graphHeight + 2);
+                p.fill(255, 180, 60, 180);
+                p.text('S1', xStart + 40, yBase - graphHeight + 2);
+                p.fill(180, 100, 255, 180);
+                p.text('S2', xStart + 70, yBase - graphHeight + 2);
+            }
+        };
+
+        // --- Initialize p5.js ---
+        let p5Instance = new p5(sketch);
+
+        // --- Reset button functionality ---
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            // Reset the time variable to zero
+            time = 0;
+        });
+    </script>
+</body>
+</html>

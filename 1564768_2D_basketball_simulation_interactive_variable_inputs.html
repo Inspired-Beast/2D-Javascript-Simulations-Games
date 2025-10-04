@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Realistic Basketball Simulator</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+      }
+    }
+  </script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #eaeaea;
+      font-family: Arial, sans-serif;
+      color: #333;
+      overflow: hidden;
+    }
+    #controls {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(255, 255, 255, 0.97);
+      padding: 20px;
+      border-radius: 15px;
+      z-index: 100;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      border: 2px solid #bfa16a;
+    }
+    .control-row {
+      margin: 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .slider {
+      width: 140px;
+      height: 8px;
+      border-radius: 5px;
+      background: #bfa16a;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #e07a1b;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(224, 122, 27, 0.3);
+    }
+    .value {
+      min-width: 60px;
+      color: #e07a1b;
+      font-weight: bold;
+      text-align: center;
+    }
+    button {
+      padding: 12px 24px;
+      margin: 8px 5px;
+      border: none;
+      border-radius: 25px;
+      background: linear-gradient(45deg, #e07a1b, #bfa16a);
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 5px 15px rgba(224, 122, 27, 0.2);
+    }
+    #stats {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.97);
+      padding: 20px;
+      border-radius: 15px;
+      z-index: 100;
+      text-align: center;
+      border: 2px solid #bfa16a;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    }
+    #message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      font-weight: bold;
+      color: #e07a1b;
+      text-shadow: 0 0 20px rgba(224, 122, 27, 0.2);
+      opacity: 0;
+      transition: opacity 0.5s;
+      z-index: 200;
+      pointer-events: none;
+    }
+    h3 {
+      margin-top: 0;
+      color: #e07a1b;
+      text-align: center;
+    }
+    label {
+      min-width: 60px;
+      font-size: 14px;
+    }
+    #gameCanvas {
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <h3>🏀 Basketball Simulator</h3>
+    <div class="control-row">
+      <label>Angle:</label>
+      <input type="range" class="slider" id="angleSlider" min="25" max="65" value="45" />
+      <span class="value" id="angleValue">45°</span>
+    </div>
+    <div class="control-row">
+      <label>Velocity:</label>
+      <input type="range" class="slider" id="powerSlider" min="12" max="28" value="20" />
+      <span class="value" id="powerValue">20m/s</span>
+    </div>
+    <div class="control-row">
+      <label>Distance:</label>
+      <input type="range" class="slider" id="distanceSlider" min="8" max="20" value="12" />
+      <span class="value" id="distanceValue">12m</span>
+    </div>
+    <button id="shootBtn">🚀 SHOOT</button>
+    <button id="resetBtn">🔄 RESET</button>
+  </div>
+  <div id="stats">
+    <h3>📊 Stats</h3>
+    <div>Shots: <span id="shotCount">0</span></div>
+    <div>Baskets: <span id="basketCount">0</span></div>
+    <div>Accuracy: <span id="accuracy">0%</span></div>
+    <div>Best Streak: <span id="streak">0</span></div>
+  </div>
+  <div id="message"></div>
+
+  <script type="module">
+    import p5 from 'p5';
+
+    new p5((p) => {
+      // --- Constants ---
+      const GRAVITY = 0.4,
+        BALL_SIZE = 35,
+        RIM_WIDTH = 90,
+        RIM_HEIGHT = 12,
+        HOOP_HEIGHT = 280,
+        PIXELS_PER_METER = 50;
+      let ball,
+        netAnimation = [],
+        launched = false,
+        trajectory = [];
+      let gameStats = { shots: 0, baskets: 0, streak: 0, bestStreak: 0 };
+      let params = { angle: 45, power: 20, distance: 12 };
+      let floorTexture, backboardTexture;
+
+      // Backboard and rim positions
+      let backboard = {
+        x: 0,
+        y: 0,
+        w: 120,
+        h: 60, // will be set in drawHoop()
+      };
+      let rim = {
+        x: 0,
+        y: 0,
+        r: RIM_WIDTH / 2,
+      };
+
+      class Basketball {
+        constructor(x, y) {
+          this.startX = x;
+          this.startY = y;
+          this.x = x;
+          this.y = y;
+          this.vx = 0;
+          this.vy = 0;
+          this.size = BALL_SIZE;
+          this.rotation = 0;
+          this.hasScored = false;
+          this.bounces = 0;
+          this.stopped = false;
+          this.prevY = y;
+        }
+        update() {
+          if (!launched || this.stopped) return;
+          this.prevY = this.y;
+          this.x += this.vx;
+          this.y += this.vy;
+          this.vy += GRAVITY;
+          this.rotation += this.vx * 0.02;
+          // Floor collision
+          if (this.y > p.height - 80 - this.size / 2) {
+            this.y = p.height - 80 - this.size / 2;
+            this.vy *= -0.5; // lose more energy
+            this.vx *= 0.7;
+            this.bounces++;
+            if (p.abs(this.vy) < 0.7 && p.abs(this.vx) < 0.5) {
+              this.vx = 0;
+              this.vy = 0;
+              this.stopped = true;
+            }
+          }
+          this.checkHoopCollision();
+        }
+        draw() {
+          // Ball shadow: always visible, soft, and adapts to height
+          let shadowY = p.height - 80;
+          let shadowX = this.x;
+          let distToFloor = p.max(0, this.y - (p.height - 80 - this.size / 2));
+          let shadowAlpha = p.map(distToFloor, 0, 200, 120, 10, true);
+          let shadowSize = p.map(distToFloor, 0, 200, this.size * 1.2, this.size * 2.2, true);
+          p.push();
+          p.noStroke();
+          p.drawingContext.save();
+          p.drawingContext.globalAlpha = shadowAlpha / 255;
+          for (let i = 0; i < 3; i++) {
+            p.fill(80, 60, 30, 80 - i * 20);
+            p.ellipse(shadowX, shadowY, shadowSize + i * 10, (shadowSize + i * 10) * 0.45);
+          }
+          p.drawingContext.globalAlpha = 1;
+          p.drawingContext.restore();
+          p.pop();
+
+          // Ball
+          p.push();
+          p.translate(this.x, this.y);
+          p.rotate(this.rotation);
+          this.drawRealisticBasketball();
+          p.pop();
+        }
+        drawRealisticBasketball() {
+          let radius = this.size / 2;
+          // Main body with gradient
+          for (let r = radius; r > 0; r -= 2) {
+            let inter = p.map(r, 0, radius, 0, 1);
+            let c = p.lerpColor(p.color(210, 90, 20), p.color(255, 170, 60), inter);
+            p.fill(c);
+            p.noStroke();
+            p.ellipse(0, 0, r * 2);
+          }
+          // Lines: one vertical, one horizontal, two curved
+          p.stroke(40, 20, 10);
+          p.strokeWeight(3);
+          p.noFill();
+          // Vertical
+          p.line(0, -radius + 5, 0, radius - 5);
+          // Horizontal
+          p.line(-radius + 5, 0, radius - 5, 0);
+          // Left curve
+          p.arc(0, 0, radius * 1.8, radius * 1.8, p.PI + p.QUARTER_PI / 1.5, -p.QUARTER_PI / 1.5);
+          // Right curve
+          p.arc(0, 0, radius * 1.8, radius * 1.8, p.QUARTER_PI / 1.5, p.PI - p.QUARTER_PI / 1.5);
+          // Highlight
+          p.fill(255, 220, 170, 120);
+          p.noStroke();
+          p.ellipse(-radius / 3, -radius / 3, radius / 2);
+        }
+        checkHoopCollision() {
+          // Rim collision (left and right) - improved logic
+          const hoopX = rim.x;
+          const hoopY = rim.y;
+          // Only count basket if ball is moving downward and crosses rim's y-level between rim's left and right
+          const rimLeft = hoopX - RIM_WIDTH / 2 + 10;
+          const rimRight = hoopX + RIM_WIDTH / 2 - 10;
+          if (
+            !this.hasScored &&
+            this.prevY < hoopY &&
+            this.y >= hoopY && // crosses rim from above
+            this.x > rimLeft &&
+            this.x < rimRight &&
+            this.vy > 0 // moving downward
+          ) {
+            this.hasScored = true;
+            gameStats.baskets++;
+            gameStats.streak++;
+            if (gameStats.streak > gameStats.bestStreak) gameStats.bestStreak = gameStats.streak;
+            this.animateNet();
+            this.showScoreMessage();
+          }
+          // Rim posts collision
+          const rimPostRadius = 6;
+          // Left rim post
+          let dxL = this.x - (hoopX - RIM_WIDTH / 2);
+          let dyL = this.y - (hoopY + RIM_HEIGHT / 2);
+          let distL = p.sqrt(dxL * dxL + dyL * dyL);
+          if (distL < this.size / 2 + rimPostRadius && this.x < hoopX) {
+            let angle = p.atan2(dyL, dxL);
+            this.x = hoopX - RIM_WIDTH / 2 + p.cos(angle) * (this.size / 2 + rimPostRadius);
+            this.y = hoopY + RIM_HEIGHT / 2 + p.sin(angle) * (this.size / 2 + rimPostRadius);
+            let v = p.createVector(this.vx, this.vy);
+            let n = p.createVector(dxL, dyL).normalize();
+            let dot = v.dot(n);
+            let reflect = p5.Vector.sub(v, p5.Vector.mult(n, 2 * dot));
+            this.vx = reflect.x * 0.7;
+            this.vy = reflect.y * 0.7;
+          }
+          // Right rim post
+          let dxR = this.x - (hoopX + RIM_WIDTH / 2);
+          let dyR = this.y - (hoopY + RIM_HEIGHT / 2);
+          let distR = p.sqrt(dxR * dxR + dyR * dyR);
+          if (distR < this.size / 2 + rimPostRadius && this.x > hoopX) {
+            let angle = p.atan2(dyR, dxR);
+            this.x = hoopX + RIM_WIDTH / 2 + p.cos(angle) * (this.size / 2 + rimPostRadius);
+            this.y = hoopY + RIM_HEIGHT / 2 + p.sin(angle) * (this.size / 2 + rimPostRadius);
+            let v = p.createVector(this.vx, this.vy);
+            let n = p.createVector(dxR, dyR).normalize();
+            let dot = v.dot(n);
+            let reflect = p5.Vector.sub(v, p5.Vector.mult(n, 2 * dot));
+            this.vx = reflect.x * 0.7;
+            this.vy = reflect.y * 0.7;
+          }
+        }
+        animateNet() {
+          for (let i = 0; i < netAnimation.length; i++) netAnimation[i] = 20;
+        }
+        showScoreMessage() {
+          const messages = [
+            'SWISH! 🏀',
+            'BASKET! 🔥',
+            'PERFECT! ⭐',
+            'AMAZING! 💯',
+            'ON FIRE! 🚀',
+            'INCREDIBLE! ✨',
+          ];
+          const messageEl = document.getElementById('message');
+          messageEl.textContent = messages[Math.floor(Math.random() * messages.length)];
+          messageEl.style.opacity = '1';
+          setTimeout(() => {
+            messageEl.style.opacity = '0';
+          }, 2500);
+        }
+        launch(angle, power) {
+          const angleRad = p.radians(angle);
+          this.vx = p.cos(angleRad) * power * 0.8;
+          this.vy = -p.sin(angleRad) * power * 0.8;
+          this.hasScored = false;
+          this.bounces = 0;
+          this.stopped = false;
+          this.prevY = this.y;
+          gameStats.shots++;
+        }
+        reset() {
+          this.x = this.startX;
+          this.y = this.startY;
+          this.vx = 0;
+          this.vy = 0;
+          this.rotation = 0;
+          this.hasScored = false;
+          this.bounces = 0;
+          this.stopped = false;
+          this.prevY = this.y;
+        }
+      }
+
+      p.setup = function () {
+        p.createCanvas(p.windowWidth, p.windowHeight);
+        ball = new Basketball(200, p.height - 200);
+        for (let i = 0; i < 8; i++) netAnimation.push(0);
+        calculateTrajectory();
+        setupControls();
+        createTextures();
+      };
+
+      function createTextures() {
+        floorTexture = p.createGraphics(800, 400);
+        floorTexture.background(210, 170, 90);
+        for (let i = 0; i < 800; i += 80) {
+          let woodShade = p.random(0.93, 1.07);
+          floorTexture.fill(210 * woodShade, 170 * woodShade, 90 * woodShade);
+          floorTexture.rect(i, 0, 80, 400);
+          floorTexture.stroke(170, 130, 70, 100);
+          floorTexture.strokeWeight(1.5);
+          for (let j = 0; j < 5; j++) {
+            floorTexture.line(i + 10, j * 80 + p.random(-8, 8), i + 70, j * 80 + p.random(-8, 8));
+          }
+        }
+        backboardTexture = p.createGraphics(120, 60);
+        backboardTexture.background(200, 220, 240, 180);
+        backboardTexture.stroke(180, 200, 220, 180);
+        for (let i = 0; i < 120; i += 2) {
+          backboardTexture.line(i, 0, i, 60);
+        }
+        backboardTexture.stroke(60, 60, 60, 180);
+        backboardTexture.strokeWeight(4);
+        backboardTexture.noFill();
+        backboardTexture.rect(2, 2, 116, 56, 6);
+        backboardTexture.stroke(200, 40, 40, 220);
+        backboardTexture.strokeWeight(3);
+        backboardTexture.rect(35, 20, 50, 28, 2);
+      }
+
+      p.draw = function () {
+        p.background(234, 234, 234);
+
+        drawCourt();
+        drawHoop();
+        drawTrajectory();
+        ball.update();
+        ball.draw();
+        updateStats();
+        for (let i = 0; i < netAnimation.length; i++) {
+          if (netAnimation[i] > 0) netAnimation[i] *= 0.95;
+        }
+      };
+
+      function drawCourt() {
+        p.push();
+        p.tint(255, 230);
+        p.image(floorTexture, 0, p.height - 80, p.width, 80);
+        p.pop();
+        p.fill(255, 255, 255, 30);
+        p.noStroke();
+        p.rect(0, p.height - 80, p.width, 80);
+        p.stroke(170, 130, 70, 120);
+        p.strokeWeight(2);
+        p.line(0, p.height - 80, p.width, p.height - 80);
+      }
+
+      function drawHoop() {
+        const hoopX = ball.startX + params.distance * PIXELS_PER_METER;
+        const hoopY = p.height - HOOP_HEIGHT;
+        backboard.w = 120;
+        backboard.h = 60;
+        backboard.x = hoopX - backboard.w / 2;
+        backboard.y = hoopY - backboard.h;
+        rim.x = hoopX;
+        rim.y = hoopY;
+
+        p.push();
+        p.image(backboardTexture, backboard.x, backboard.y, backboard.w, backboard.h);
+        p.pop();
+
+        p.fill(255, 120, 20, 255);
+        p.stroke(200, 80, 10, 200);
+        p.strokeWeight(4);
+        p.ellipse(rim.x, rim.y, RIM_WIDTH, RIM_HEIGHT);
+
+        p.fill(255, 220, 180, 150);
+        p.noStroke();
+        p.ellipse(rim.x - 10, rim.y - 3, RIM_WIDTH / 3, RIM_HEIGHT / 2);
+        p.stroke(255, 255, 255, 200);
+        p.strokeWeight(2);
+        let netSegments = 8;
+        for (let i = 0; i < netSegments; i++) {
+          let angle = p.map(i, 0, netSegments, 0, p.TWO_PI);
+          let x1 = rim.x + p.cos(angle) * (RIM_WIDTH / 2 - 5);
+          let y1 = rim.y;
+          let swayX = p.sin(p.millis() * 0.003 + i) * (netAnimation[i] || 0) * 0.5;
+          let swayY = p.cos(p.millis() * 0.002 + i) * (netAnimation[i] || 0) * 0.3;
+          let x2 = rim.x + p.cos(angle) * (RIM_WIDTH / 3) + swayX;
+          let y2 = rim.y + 40 + swayY;
+          for (let j = 0; j < 3; j++) {
+            let segmentAlpha = p.map(j, 0, 2, 200, 100);
+            p.stroke(255, 255, 255, segmentAlpha);
+            let segX = p.lerp(x1, x2, j / 2);
+            let segY = p.lerp(y1, y2, j / 2);
+            let nextSegX = p.lerp(x1, x2, (j + 1) / 2);
+            let nextSegY = p.lerp(y1, y2, (j + 1) / 2);
+            p.line(segX, segY, nextSegX, nextSegY);
+          }
+        }
+      }
+
+      function drawTrajectory() {
+        if (launched) return;
+        p.stroke(224, 122, 27, 100);
+        p.strokeWeight(2);
+        p.noFill();
+        p.beginShape();
+        for (let i = 0; i < trajectory.length; i += 3) {
+          p.vertex(trajectory[i].x, trajectory[i].y);
+        }
+        p.endShape();
+      }
+
+      function calculateTrajectory() {
+        trajectory = [];
+        const angleRad = p.radians(params.angle);
+        let vx = p.cos(angleRad) * params.power * 0.8;
+        let vy = -p.sin(angleRad) * params.power * 0.8;
+        let x = ball.startX,
+          y = ball.startY;
+        for (let i = 0; i < 300; i++) {
+          trajectory.push({ x, y });
+          x += vx;
+          y += vy;
+          vy += GRAVITY;
+          if (y >= p.height - 80) break;
+        }
+      }
+
+      function shoot() {
+        if (launched) return;
+        ball.launch(params.angle, params.power);
+        launched = true;
+      }
+
+      function resetGame() {
+        ball.reset();
+        launched = false;
+        calculateTrajectory();
+        document.getElementById('message').style.opacity = '0';
+        if (gameStats.shots > 0 && !ball.hasScored) gameStats.streak = 0;
+      }
+
+      function updateStats() {
+        document.getElementById('shotCount').textContent = gameStats.shots;
+        document.getElementById('basketCount').textContent = gameStats.baskets;
+        document.getElementById('streak').textContent = gameStats.bestStreak;
+        const accuracy =
+          gameStats.shots > 0 ? Math.round((gameStats.baskets / gameStats.shots) * 100) : 0;
+        document.getElementById('accuracy').textContent = accuracy + '%';
+      }
+
+      function setupControls() {
+        const angleSlider = document.getElementById('angleSlider');
+        const powerSlider = document.getElementById('powerSlider');
+        const distanceSlider = document.getElementById('distanceSlider');
+        angleSlider.oninput = function () {
+          params.angle = parseInt(this.value);
+          document.getElementById('angleValue').textContent = this.value + '°';
+          calculateTrajectory();
+        };
+        powerSlider.oninput = function () {
+          params.power = parseInt(this.value);
+          document.getElementById('powerValue').textContent = `${this.value}m/s`;
+          calculateTrajectory();
+        };
+        distanceSlider.oninput = function () {
+          params.distance = parseInt(this.value);
+          document.getElementById('distanceValue').textContent = this.value + 'm';
+          calculateTrajectory();
+        };
+        document.getElementById('shootBtn').onclick = shoot;
+        document.getElementById('resetBtn').onclick = resetGame;
+      }
+
+      p.windowResized = function () {
+        p.resizeCanvas(p.windowWidth, p.windowHeight);
+        ball.startY = p.height - 200;
+        ball.y = p.height - 200;
+        calculateTrajectory();
+      };
+    });
+  </script>
+</body>
+</html>

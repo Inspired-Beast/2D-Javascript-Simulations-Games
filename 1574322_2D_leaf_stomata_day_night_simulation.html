@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Crisp Stomata Water Vapor Simulation</title>
+  <style>
+    /* Basic page and container styling */
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      display: flex; justify-content: center; align-items: center;
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+    #canvas-container {
+      position: relative;
+      width: 900px;
+      height: 600px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+      border-radius: 20px;
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      overflow: hidden;
+    }
+    /* UI panel styling */
+    .ui {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 260px; /* widened to fit wind speed */
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 15px;
+      padding: 18px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+      color: #2e5b2e;
+      font-size: 14px;
+      line-height: 1.5;
+      user-select: none;
+      z-index: 10;
+      backdrop-filter: blur(10px);
+    }
+    .ui b {
+      font-size: 18px;
+      display: block;
+      margin-bottom: 12px;
+      color: #1e3c72;
+      text-align: center;
+    }
+    .ui .value-display {
+      margin: 10px 0;
+      font-weight: 600;
+      padding: 8px 12px;
+      background: linear-gradient(135deg, #f0f8f0, #e8f5e8);
+      border-radius: 8px;
+      border-left: 4px solid #2e5b2e;
+      font-size: 13px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .ui .reset-button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 15px;
+      background: linear-gradient(135deg, #2e5b2e, #1e3f1e);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    .ui .reset-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div class="ui">
+    <b>🔬 Stomata Water Vapor Diffusion</b>
+    <div class="value-display">🕒 Time: <span id="time-val">6:00</span></div>
+    <div class="value-display">💧 Humidity: <span id="humidity-val">50%</span></div>
+    <div class="value-display">🌡️ Temperature: <span id="temp-val">22°C</span></div>
+    <div class="value-display">🌬️ Wind Speed: <span id="wind-val">0.0 m/s</span></div>
+    <div class="value-display">🌿 Stomata: <span id="stomata-val">Closed</span></div>
+    <div class="value-display">💨 Vapor Rate: <span id="vapor-val">Low</span></div>
+    <button class="reset-button" id="reset-button">🔄 Reset Simulation</button>
+  </div>
+<script type="module">
+import p5 from "p5";
+
+const sketch = (p) => {
+  // Canvas and simulation constants
+  const CANVAS_WIDTH = 900;
+  const CANVAS_HEIGHT = 600;
+  const DAY_LENGTH = 60 * 25; // Number of frames per simulated day cycle
+  const MORNING = 0.2;        // Fraction of day for morning transition
+  const EVENING = 0.8;        // Fraction of day for evening transition
+  const STOMATA_COUNT = 8;    // Number of stomata in microscopic view
+
+  // Environmental variables
+  let humidity = 50;
+  let temperature = 22;
+  let windSpeed = 0;          // Wind speed in m/s (randomized)
+  let dayFrame = 0;           // Current frame in day cycle
+  let lastRandomChange = 0;   // Frame count of last environment randomization
+  const RANDOM_CHANGE_INTERVAL = 180; // Frames between environment randomization
+
+  // UI elements references
+  let humidityVal, tempVal, timeVal, stomataVal, vaporVal, windVal, resetButton;
+
+  // Simulation state variables
+  let stomataOpenFrac = 0;    // Fraction stomata are open (0 to 1)
+  let h2oParticles = [];      // Array of water vapor particles
+  let stomataPositions = [];  // Positions and rotations of stomata
+  let vaporEmissionRate = 0;  // Current vapor emission rate
+
+  // Vein mesh variables for microscopic view
+  let veinPoints = [];        // Points in hexagonal vein mesh
+  let veinPairs = [];         // Pairs of points connected by veins
+  const veinGridSize = 26;    // Distance between vein points in grid
+  const veinRadius = 160;     // Radius of microscopic view circle
+
+  // Generates a stable hexagonal mesh of vein points and connections
+  function generateHexVeinMesh(centerX, centerY, radius) {
+    veinPoints = [];
+    veinPairs = [];
+    const dx = veinGridSize;
+    const dy = veinGridSize * Math.sqrt(3) / 2; // Vertical spacing for hex grid
+    let row = 0;
+    // Create points in hex grid pattern within circle radius
+    for (let y = centerY - radius; y <= centerY + radius; y += dy, row++) {
+      let offsetX = (row % 2) * (dx / 2); // Offset every other row for hex pattern
+      for (let x = centerX - radius + offsetX; x <= centerX + radius; x += dx) {
+        let dist = p.dist(x, y, centerX, centerY);
+        if (dist <= radius - 6) { // Keep points inside circle with margin
+          veinPoints.push({x, y});
+        }
+      }
+    }
+    // Connect each point to its 3 hex neighbors (right, down-right, down-left)
+    for (let i = 0; i < veinPoints.length; i++) {
+      let a = veinPoints[i];
+      for (let j = i + 1; j < veinPoints.length; j++) {
+        let b = veinPoints[j];
+        let d = p.dist(a.x, a.y, b.x, b.y);
+        // Connect points if distance matches grid spacing (dx or dy) within tolerance
+        if (Math.abs(d - dx) < 2 || Math.abs(d - dy) < 2) {
+          veinPairs.push([a, b]);
+        }
+      }
+    }
+  }
+
+  // Draws the vein mesh as wavy green lines between connected points
+  function drawVeinMesh() {
+    p.stroke(45, 95, 45, 160); // Lighter green color with some transparency
+    p.strokeWeight(2.2);
+    for (let k = 0; k < veinPairs.length; k++) {
+      let a = veinPairs[k][0];
+      let b = veinPairs[k][1];
+      drawWavyLine(a.x, a.y, b.x, b.y, 2.5, 2, 5);
+    }
+  }
+
+  // Randomly positions stomata within the microscopic view circle
+  function randomizeStomataPositions() {
+    stomataPositions = [];
+    const centerX = 550;
+    const centerY = 300;
+    const radius = 160 * 0.92; // Slightly smaller than full radius
+    const minDist = 55;        // Minimum distance between stomata
+    let attempts = 0;
+    // Try to place stomata randomly without overlapping too closely
+    while (stomataPositions.length < STOMATA_COUNT && attempts < 5000) {
+      attempts++;
+      let r = p.random(radius * 0.25, radius * 0.95);
+      let angle = p.random(0, p.TWO_PI);
+      let x = centerX + r * p.cos(angle);
+      let y = centerY + r * p.sin(angle);
+      let rot = p.random(-p.PI/2, p.PI/2);
+      let tooClose = false;
+      for (let pos of stomataPositions) {
+        let d = p.dist(x, y, pos.x, pos.y);
+        if (d < minDist) {
+          tooClose = true;
+          break;
+        }
+      }
+      let dFromCenter = p.dist(x, y, centerX, centerY);
+      if (!tooClose && dFromCenter < radius - 20) {
+        stomataPositions.push({x, y, angle: rot});
+      }
+    }
+    // If not enough stomata placed, fill remaining at center with random rotation
+    while (stomataPositions.length < STOMATA_COUNT) {
+      let rot = p.random(-p.PI/2, p.PI/2);
+      stomataPositions.push({x: centerX, y: centerY, angle: rot});
+    }
+  }
+
+  // Resets simulation state and environment variables
+  function resetSimulation() {
+    dayFrame = 0;
+    h2oParticles = [];
+    randomizeEnvironment();
+    randomizeStomataPositions();
+  }
+
+  // Randomizes humidity, temperature, and wind speed based on day cycle
+  function randomizeEnvironment() {
+    humidity = p.random(25, 85);
+    windSpeed = p.random(0, 2); // Wind speed between 0 and 2 m/s
+    let dayFrac = dayFrame / DAY_LENGTH;
+    let baseTemp = 18 + 12 * p.sin(p.TWO_PI * dayFrac - p.HALF_PI);
+    temperature = baseTemp + p.random(-5, 5);
+    updateUI();
+  }
+
+  // Updates UI elements with current simulation values
+  function updateUI() {
+    humidityVal.textContent = Math.round(humidity) + "%";
+    tempVal.textContent = Math.round(temperature) + "°C";
+    windVal.textContent = windSpeed.toFixed(1) + " m/s";
+    let dayFrac = dayFrame / DAY_LENGTH;
+    let hour = Math.floor(6 + 12 * dayFrac);
+    let min = Math.floor(((12 * dayFrac) % 1) * 60);
+    timeVal.textContent = `${hour}:${min.toString().padStart(2, '0')}`;
+    // Determine stomata status text based on opening fraction
+    let statusText = "Closed";
+    if (stomataOpenFrac > 0.7) statusText = "Wide Open";
+    else if (stomataOpenFrac > 0.4) statusText = "Open";
+    else if (stomataOpenFrac > 0.2) statusText = "Partially Open";
+    stomataVal.textContent = statusText;
+    // Determine vapor emission rate text
+    let vaporText = "None";
+    if (vaporEmissionRate > 0.8) vaporText = "Very High";
+    else if (vaporEmissionRate > 0.6) vaporText = "High";
+    else if (vaporEmissionRate > 0.4) vaporText = "Medium";
+    else if (vaporEmissionRate > 0.2) vaporText = "Low";
+    vaporVal.textContent = vaporText;
+  }
+
+  // Class representing a single water vapor particle
+  class H2OParticle {
+    constructor(startX, startY) {
+      this.pos = p.createVector(startX, startY);
+      this.vel = p.createVector(p.random(-0.3, 0.3), p.random(-1.0, -0.3));
+      this.lifespan = p.random(180, 260);
+      this.maxLifespan = this.lifespan;
+      this.size = p.random(5, 10);
+      this.trail = [];
+      this.trailLength = 6;
+      this.brownianForce = p.createVector(0, 0);
+    }
+    // Update particle position and velocity with environmental effects including wind
+    update() {
+      let humidityEffect = p.map(humidity, 20, 90, 1.1, 0.5, true);
+      let tempEffect = p.map(temperature, 10, 40, 0.7, 1.2, true);
+      // Wind effect adds horizontal velocity proportional to windSpeed with some randomness
+      let windEffect = windSpeed * 0.15; // scale wind speed effect
+      this.brownianForce.add(p.random(-0.03, 0.03), p.random(-0.03, 0.03));
+      this.brownianForce.mult(0.94);
+      this.vel.mult(0.995);
+      this.vel.add(windEffect, -0.003); // Add wind horizontal push and slight upward force
+      this.vel.add(this.brownianForce);
+      this.pos.add(this.vel.copy().mult(humidityEffect * tempEffect));
+      this.trail.push(this.pos.copy());
+      if (this.trail.length > this.trailLength) {
+        this.trail.shift();
+      }
+      this.lifespan--;
+    }
+    // Draw particle with fading trail and layered ellipses for depth
+    draw() {
+      let alpha = p.map(this.lifespan, 0, this.maxLifespan, 0, 255);
+      p.noFill();
+      for (let i = 0; i < this.trail.length - 1; i++) {
+        let trailAlpha = p.map(i, 0, this.trail.length - 1, 0, alpha * 0.7);
+        let trailWeight = p.map(i, 0, this.trail.length - 1, 1, 3);
+        p.stroke(40, 80, 120, trailAlpha);
+        p.strokeWeight(trailWeight);
+        if (this.trail[i] && this.trail[i + 1]) {
+          p.line(this.trail[i].x, this.trail[i].y, this.trail[i + 1].x, this.trail[i + 1].y);
+        }
+      }
+      p.noStroke();
+      p.fill(30, 60, 100, alpha);
+      p.ellipse(this.pos.x, this.pos.y, this.size);
+      p.fill(50, 80, 120, alpha);
+      p.ellipse(this.pos.x, this.pos.y, this.size * 0.7);
+      p.fill(80, 110, 150, alpha * 0.8);
+      p.ellipse(this.pos.x - this.size * 0.2, this.pos.y - this.size * 0.2, this.size * 0.3);
+    }
+    // Check if particle is still alive and within visible bounds
+    isAlive() {
+      return this.lifespan > 0 && this.pos.y > -100 && 
+             this.pos.x > -50 && this.pos.x < p.width + 50;
+    }
+  }
+
+  // Draws a realistic leaf shape on the left side of the canvas
+  function drawRealisticLeaf() {
+    p.push();
+    p.translate(150, 300);
+    p.noStroke();
+    p.fill(45, 120, 45);
+    p.beginShape();
+    p.vertex(0, -95);
+    p.bezierVertex(25, -85, 45, -60, 50, -30);
+    p.bezierVertex(55, 0, 50, 30, 45, 60);
+    p.bezierVertex(35, 85, 15, 95, 0, 95);
+    p.bezierVertex(-15, 95, -35, 85, -45, 60);
+    p.bezierVertex(-50, 30, -55, 0, -50, -30);
+    p.bezierVertex(-45, -60, -25, -85, 0, -95);
+    p.endShape(p.CLOSE);
+    p.fill(65, 140, 65, 180);
+    p.beginShape();
+    p.vertex(-5, -85);
+    p.bezierVertex(15, -75, 35, -50, 40, -20);
+    p.bezierVertex(42, 10, 35, 40, 25, 65);
+    p.bezierVertex(15, 80, 0, 85, -10, 80);
+    p.bezierVertex(-25, 75, -35, 50, -40, 20);
+    p.bezierVertex(-42, -10, -35, -40, -20, -65);
+    p.bezierVertex(-10, -80, -5, -85, -5, -85);
+    p.endShape(p.CLOSE);
+    // Add leaf texture with small ellipses
+    p.fill(55, 130, 55, 100);
+    for (let i = 0; i < 8; i++) {
+      let x = p.random(-40, 40);
+      let y = p.random(-80, 80);
+      if (p.abs(x) < 45 - p.abs(y) * 0.4) {
+        p.ellipse(x, y, 3, 2);
+      }
+    }
+    // Draw central leaf vein
+    p.stroke(40, 100, 40, 120);
+    p.strokeWeight(2);
+    p.line(0, -90, 0, 90);
+    p.stroke(60, 80, 40);
+    p.strokeWeight(4);
+    p.line(0, 95, 0, 110);
+    p.pop();
+  }
+
+  // Draws a smooth organic connection curve between two points
+  function drawOrganicConnection() {
+    p.stroke(255, 255, 255, 180);
+    p.strokeWeight(3);
+    p.noFill();
+    p.beginShape();
+    p.vertex(180, 300);
+    p.bezierVertex(280, 290, 320, 310, 360, 300);
+    p.bezierVertex(380, 295, 390, 305, 400, 300);
+    p.endShape();
+    // Draw connection endpoints as white circles
+    p.fill(255, 255, 255);
+    p.noStroke();
+    p.ellipse(180, 300, 6);
+    p.ellipse(400, 300, 6);
+  }
+
+  // Draws a wavy line between two points with given amplitude and frequency
+  function drawWavyLine(x1, y1, x2, y2, amplitude, frequency, steps) {
+    let points = [];
+    for (let i = 0; i <= steps; i++) {
+      let t = i / steps;
+      let x = p.lerp(x1, x2, t);
+      let y = p.lerp(y1, y2, t);
+      let dx = x2 - x1;
+      let dy = y2 - y1;
+      let len = Math.sqrt(dx*dx + dy*dy);
+      if (len > 0) {
+        // Calculate perpendicular vector for wave displacement
+        let nx = -dy / len;
+        let ny = dx / len;
+        // Calculate wave offset using sine function
+        let wave = Math.sin(t * Math.PI * frequency) * amplitude;
+        x += nx * wave;
+        y += ny * wave;
+      }
+      points.push({x, y});
+    }
+    p.noFill();
+    p.beginShape();
+    for (let pt of points) {
+      p.vertex(pt.x, pt.y);
+    }
+    p.endShape();
+  }
+
+  // Draws the microscopic view circle with veins and stomata
+  function drawMagnifiedStomata() {
+    let centerX = 550;
+    let centerY = 300;
+    let radius = 160;
+    p.noStroke();
+    p.fill(120, 190, 120);
+    p.ellipse(centerX, centerY, radius * 2); // Background circle
+    p.stroke(255, 255, 255);
+    p.strokeWeight(3);
+    p.noFill();
+    p.ellipse(centerX, centerY, radius * 2); // Circle border
+    p.stroke(60, 130, 60);
+    p.strokeWeight(8);
+    p.point(centerX, centerY); // Center point
+
+    // Draw the stable, visible, uniform hex mesh of veins
+    drawVeinMesh();
+
+    // Draw all stomata at their calculated positions
+    for (let i = 0; i < STOMATA_COUNT; i++) {
+      let pos = stomataPositions[i];
+      drawSingleStomata(pos.x, pos.y, pos.angle, stomataOpenFrac);
+    }
+    // Label the microscopic view
+    p.fill(255, 255, 255);
+    p.textSize(16);
+    p.textAlign(p.CENTER);
+    p.text("Microscopic View", centerX, centerY - radius - 25);
+  }
+
+  // Draws a single stomata with guard cells and opening pore
+  function drawSingleStomata(x, y, rotation, openFrac) {
+    p.push();
+    p.translate(x, y);
+    p.rotate(rotation);
+    
+    // Smaller opening with bulkier guard cells
+    const maxOpening = 8; // Further reduced opening
+    let opening = p.lerp(2, maxOpening, openFrac);
+    let guardCellLength = 40;
+    let guardCellWidth = p.lerp(14, 18, openFrac); // Bulkier when opening
+    
+    p.noStroke();
+    p.fill(50, 130, 50);
+    
+    // Draw bulkier guard cells that stay connected at ends
+    p.ellipse(-opening/2, 0, guardCellWidth, guardCellLength);
+    p.ellipse(opening/2, 0, guardCellWidth, guardCellLength);
+    
+    // Add connecting tissue at the ends to ensure they stay joined
+    p.fill(45, 120, 45);
+    p.ellipse(0, -guardCellLength/2.5, guardCellWidth * 0.6, 8);
+    p.ellipse(0, guardCellLength/2.5, guardCellWidth * 0.6, 8);
+    
+    // Highlights on guard cells
+    p.fill(80, 160, 80);
+    p.ellipse(-opening/2, -guardCellLength/4, guardCellWidth/3, guardCellLength/3);
+    p.ellipse(opening/2, -guardCellLength/4, guardCellWidth/3, guardCellLength/3);
+    
+    // Central pore (only visible when sufficiently open)
+    if (opening > 3) {
+      p.fill(20, 50, 20);
+      p.ellipse(0, 0, opening, guardCellLength * 0.6);
+    }
+    
+    p.pop();
+  }
+
+  // Draws the sun with rays at given position and transparency
+  function drawSun(x, y, alpha) {
+    p.push();
+    p.translate(x, y);
+    p.noStroke();
+    p.fill(255, 220, 50, alpha);
+    p.ellipse(0, 0, 60);
+    p.stroke(255, 220, 50, alpha);
+    p.strokeWeight(3);
+    for (let i = 0; i < 12; i++) {
+      let angle = (p.TWO_PI / 12) * i;
+      let x1 = p.cos(angle) * 35;
+      let y1 = p.sin(angle) * 35;
+      let x2 = p.cos(angle) * 50;
+      let y2 = p.sin(angle) * 50;
+      p.line(x1, y1, x2, y2);
+    }
+    p.pop();
+  }
+
+  // Draws the moon with craters at given position and transparency
+  function drawMoon(x, y, alpha) {
+    p.push();
+    p.translate(x, y);
+    p.noStroke();
+    p.fill(220, 220, 240, alpha);
+    p.ellipse(0, 0, 50);
+    p.fill(180, 180, 200, alpha);
+    p.ellipse(10, -8, 12);
+    p.ellipse(-8, 5, 8);
+    p.ellipse(5, 12, 6);
+    p.pop();
+  }
+
+  // Emits water vapor particles from open stomata based on environment and wind
+  function emitVapor() {
+    if (stomataOpenFrac > 0.15) {
+      let baseRate = stomataOpenFrac;
+      let tempEffect = p.map(temperature, 10, 40, 0.3, 1.8, true);
+      let humidityEffect = p.map(humidity, 20, 90, 1.6, 0.3, true);
+      // Wind increases vapor emission rate slightly
+      let windEffect = p.map(windSpeed, 0, 5, 1, 1.5, true);
+      vaporEmissionRate = baseRate * tempEffect * humidityEffect * windEffect;
+      let emissionProb = vaporEmissionRate * 0.35;
+      for (let pos of stomataPositions) {
+        if (p.random() < emissionProb) {
+          let offsetX = p.random(-6, 6);
+          let offsetY = p.random(-4, 4);
+          h2oParticles.push(new H2OParticle(pos.x + offsetX, pos.y + offsetY));
+        }
+      }
+    } else {
+      vaporEmissionRate = 0;
+    }
+  }
+
+  // p5.js setup function - initializes canvas and simulation
+  p.setup = () => {
+    p.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT).parent('canvas-container');
+    // Get references to UI elements
+    humidityVal = document.getElementById('humidity-val');
+    tempVal = document.getElementById('temp-val');
+    timeVal = document.getElementById('time-val');
+    stomataVal = document.getElementById('stomata-val');
+    vaporVal = document.getElementById('vapor-val');
+    windVal = document.getElementById('wind-val');
+    resetButton = document.getElementById('reset-button');
+    resetButton.onclick = resetSimulation;
+    randomizeStomataPositions();
+    resetSimulation();
+    // Generate the stable, uniform hex mesh ONCE for veins
+    generateHexVeinMesh(550, 300, veinRadius);
+  };
+
+  // p5.js draw function - called every frame to update and render simulation
+  p.draw = () => {
+    // Calculate fraction of day passed
+    let dayFrac = dayFrame / DAY_LENGTH;
+
+    // Define day and night background colors
+    let dayColor = p.color(135, 206, 250);
+    let nightColor = p.color(25, 25, 100);
+    let bgColor;
+
+    // Interpolate background color based on time of day
+    if (dayFrac < 0.3) {
+      bgColor = p.lerpColor(nightColor, dayColor, p.map(dayFrac, 0, 0.3, 0, 1));
+    } else if (dayFrac > 0.7) {
+      bgColor = p.lerpColor(dayColor, nightColor, p.map(dayFrac, 0.7, 1, 0, 1));
+    } else {
+      bgColor = dayColor;
+    }
+    p.background(bgColor);
+
+    // Randomize environment variables periodically
+    if (p.frameCount - lastRandomChange > RANDOM_CHANGE_INTERVAL) {
+      randomizeEnvironment();
+      lastRandomChange = p.frameCount;
+    }
+    dayFrame = (dayFrame + 1) % DAY_LENGTH;
+
+    // Calculate stomata opening fraction based on time of day and environment
+    let openFrac = 0;
+    if (dayFrac < MORNING) {
+      openFrac = p.map(dayFrac, 0, MORNING, 0, 1, true);
+    } else if (dayFrac > EVENING) {
+      openFrac = p.map(dayFrac, EVENING, 1, 1, 0, true);
+    } else {
+      openFrac = 1;
+    }
+    let humidityFactor = p.map(humidity, 20, 90, 0.5, 1.0, true);
+    let tempFactor = p.map(temperature, 10, 40, 0.6, 1.3, true);
+    stomataOpenFrac = openFrac * humidityFactor * tempFactor;
+    stomataOpenFrac = p.constrain(stomataOpenFrac, 0, 1);
+
+    // Calculate sun and moon positions and alpha for day/night cycle
+    let sunX = p.map(dayFrac, 0, 1, 80, p.width - 80);
+    let sunY = 80 - 60 * p.sin(p.PI * dayFrac);
+    let moonX = p.map((dayFrac + 0.5) % 1, 0, 1, 80, p.width - 80);
+    let moonY = 80 - 60 * p.sin(p.PI * ((dayFrac + 0.5) % 1));
+    let sunAlpha = p.constrain(p.map(dayFrac, 0.15, 0.85, 255, 0), 0, 255);
+    let moonAlpha = 255 - sunAlpha;
+
+    // Draw sun and moon if visible
+    if (sunAlpha > 0) drawSun(sunX, sunY, sunAlpha);
+    if (moonAlpha > 0) drawMoon(moonX, moonY, moonAlpha);
+
+    // Draw leaf, organic connection, and microscopic stomata view
+    drawRealisticLeaf();
+    drawOrganicConnection();
+    drawMagnifiedStomata();
+
+    // Emit and update water vapor particles
+    emitVapor();
+    h2oParticles = h2oParticles.filter(particle => {
+      particle.update();
+      particle.draw();
+      return particle.isAlive();
+    });
+
+    // Update UI with current simulation values
+    updateUI();
+  };
+};
+
+new p5(sketch);
+</script>
+</body>
+</html>

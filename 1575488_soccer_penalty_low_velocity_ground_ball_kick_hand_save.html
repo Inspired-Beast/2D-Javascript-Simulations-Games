@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Soccer Penalty: Realistic Physics Simulation</title>
+  <style>
+    /* Styling for layout */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #181818;
+      color: #fff;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #sidebar {
+      width: 350px;
+      background: #232323;
+      padding: 22px 18px 18px 18px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      border-right: 2px solid #333;
+      z-index: 2;
+      overflow-y: auto;
+    }
+    #sidebar h2 {
+      margin-top: 0;
+      font-size: 1.2em;
+      color: #ffd700;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+    .physics-panel {
+      background: #2a2a2a;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      border: 1px solid #444;
+    }
+    .physics-panel h3 {
+      margin-top: 0;
+      color: #00e6e6;
+      font-size: 1em;
+    }
+    .param {
+      display: flex;
+      justify-content: space-between;
+      margin: 8px 0;
+      font-size: 0.9em;
+    }
+    .param-value {
+      color: #ffd700;
+      font-weight: bold;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .btn {
+      flex: 1;
+      padding: 12px;
+      background: #ffd700;
+      color: #232323;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #ffb300;
+    }
+    .instructions {
+      margin-top: 18px;
+      font-size: 0.9em;
+      color: #aaa;
+      line-height: 1.5;
+    }
+    #sketch-holder {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #181818;
+      position: relative;
+    }
+    .trajectory-legend {
+      margin-top: 10px;
+      font-size: 0.9em;
+      color: #bbb;
+      text-align: center;
+    }
+    .trajectory-legend span {
+      display: inline-block;
+      width: 16px;
+      height: 6px;
+      border-radius: 3px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .legend-pred { background: #00e6e6; }
+    .legend-rebound { background: #ff5e5e; }
+    .legend-actual { background: #ffd700; }
+    .phase-indicator {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px 15px;
+      border-radius: 8px;
+      color: #ffd700;
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="sidebar">
+    <h2>Realistic Penalty Physics</h2>
+    <div class="physics-panel">
+      <h3>Ball Physics</h3>
+      <div class="param">
+        <span>Initial Velocity:</span>
+        <span class="param-value" id="velocity-val">12.0 m/s</span>
+      </div>
+      <div class="param">
+        <span>Shooting Angle:</span>
+        <span class="param-value" id="angle-val">0°</span>
+      </div>
+      <div class="param">
+        <span>Ground Friction (μ):</span>
+        <span class="param-value" id="friction-val">0.68</span>
+      </div>
+      <div class="param">
+        <span>Ball Mass:</span>
+        <span class="param-value">0.43 kg</span>
+      </div>
+    </div>
+    <div class="physics-panel">
+      <h3>Keeper Physics</h3>
+      <div class="param">
+        <span>Dive Speed:</span>
+        <span class="param-value" id="dive-speed">-</span>
+      </div>
+      <div class="param">
+        <span>Reaction Time:</span>
+        <span class="param-value" id="reaction-time">-</span>
+      </div>
+      <div class="param">
+        <span>Glove Restitution:</span>
+        <span class="param-value" id="restitution">-</span>
+      </div>
+      <div class="param">
+        <span>Dive Direction:</span>
+        <span class="param-value" id="dive-direction">-</span>
+      </div>
+      <div class="param">
+        <span>Contact Point:</span>
+        <span class="param-value" id="contact-point">-</span>
+      </div>
+    </div>
+    <div class="physics-panel">
+      <h3>Real-time Data</h3>
+      <div class="param">
+        <span>Ball Speed:</span>
+        <span class="param-value" id="current-speed">0.0 m/s</span>
+      </div>
+      <div class="param">
+        <span>Distance to Goal:</span>
+        <span class="param-value" id="distance">11.0 m</span>
+      </div>
+      <div class="param">
+        <span>Time Elapsed:</span>
+        <span class="param-value" id="time-elapsed">0.0s</span>
+      </div>
+      <div class="param">
+        <span>Friction Force:</span>
+        <span class="param-value" id="friction-force">0.0 N</span>
+      </div>
+    </div>
+    <div class="button-group">
+      <button class="btn" id="resetBtn">Reset Simulation</button>
+    </div>
+    <div class="trajectory-legend">
+      <span class="legend-pred"></span>Predicted Path<br>
+      <span class="legend-actual"></span>Actual Ball<br>
+      <span class="legend-rebound"></span>Rebound
+    </div>
+  </div>
+  <div id="sketch-holder">
+    <div class="phase-indicator" id="phase-indicator">Setup Phase</div>
+  </div>
+  <script type="module">
+    import p5 from "p5";
+
+    // === PHYSICS CONSTANTS ===
+    const PHYSICS = {
+      FIELD_W: 900,
+      FIELD_H: 600,
+      GOAL_W: 120,
+      GOAL_H: 40,
+      PENALTY_DISTANCE: 11.0,
+      BALL_MASS: 0.43,
+      BALL_RADIUS: 0.11,
+      INITIAL_VELOCITY: 12.0,
+      SHOOTING_ANGLE: 0,
+      GRASS_FRICTION_COEFF: 0.68,
+      GRAVITY: 9.81,
+      GROUND_RESTITUTION: 0.3,
+      WALL_RESTITUTION: 0.65,
+      KEEPER_DIVE_SPEED: 5.5,
+      KEEPER_REACTION_TIME: 0.15,
+      GLOVE_RESTITUTION: 0.65,
+      PIXELS_PER_METER: 40,
+      FPS: 60,
+      TIME_STEP: 1/60
+    };
+
+    // === FIELD AND UTILITY CONSTANTS ===
+    const toScreen = (meters) => meters * PHYSICS.PIXELS_PER_METER;
+    const toMeters = (pixels) => pixels / PHYSICS.PIXELS_PER_METER;
+
+    const FIELD = {
+      W: PHYSICS.FIELD_W,
+      H: PHYSICS.FIELD_H,
+      GOAL_X: PHYSICS.FIELD_W / 2,
+      GOAL_Y: 80,
+      GOAL_W: toScreen(7.32),
+      GOAL_H: toScreen(2.44),
+      PENALTY_X: PHYSICS.FIELD_W / 2,
+      PENALTY_Y: PHYSICS.FIELD_H - toScreen(PHYSICS.PENALTY_DISTANCE) - 80
+    };
+
+    // Target for the ball (left bottom corner of the goal)
+    const BALL_TARGET = {
+      X: FIELD.GOAL_X - FIELD.GOAL_W/2 + 25,
+      Y: FIELD.GOAL_Y + FIELD.GOAL_H - 8
+    };
+
+    // === SIMULATION STATE ===
+    let sim = {
+      phase: "setup",
+      time: 0,
+      phaseTime: 0,
+      ball: null,
+      keeper: null,
+      player: null,
+      predicted: [],
+      rebound: [],
+      result: "",
+      trajectoryAlpha: 0,
+      ballStartX: 0,
+      ballStartY: 0,
+      shootingAngle: 0,
+      showPhysicsData: false,
+      keeperPhysicsData: {
+        diveDirection: "-",
+        contactPoint: "-",
+        diveSpeed: 0,
+        reactionTime: 0
+      }
+    };
+
+    // === SOCCER PLAYER CLASS ===
+    class SoccerPlayer {
+      constructor() {
+        this.x = FIELD.PENALTY_X;
+        this.y = FIELD.PENALTY_Y + 300;
+        this.w = 25;
+        this.h = 35;
+        this.state = "ready";
+        this.aimAngle = PHYSICS.SHOOTING_ANGLE;
+        this.kickProgress = 0;
+        this.legAngle = 0;
+        sim.ballStartX = this.x;
+        sim.ballStartY = this.y - 20;
+      }
+      update() {
+        if (this.state === "aiming") {
+          this.legAngle = Math.sin(sim.phaseTime * 3) * 0.2;
+        } else if (this.state === "kicking") {
+          this.kickProgress += 0.15;
+          this.legAngle = Math.sin(this.kickProgress * Math.PI) * 1.2;
+          if (this.kickProgress >= 1) {
+            this.state = "done";
+          }
+        }
+      }
+      startAiming() {
+        this.state = "aiming";
+      }
+      kick() {
+        this.state = "kicking";
+        this.kickProgress = 0;
+      }
+      draw(p) {
+        // Draw player body, head, arms, and legs
+        p.push();
+        p.translate(this.x, this.y);
+        p.fill(0, 0, 0, 100);
+        p.ellipse(0, this.h/2 + 8, this.w*0.9, 12);
+        p.fill(255, 0, 0);
+        p.stroke(255);
+        p.strokeWeight(2);
+        p.rect(-this.w/2, 0, this.w, this.h*0.6, 5);
+        p.noStroke();
+        p.fill(255, 220, 180);
+        p.ellipse(0, -8, 16);
+        p.stroke(255, 220, 180);
+        p.strokeWeight(5);
+        p.line(-this.w/2 + 3, 8, -this.w/2 - 5, this.h/2);
+        p.line(this.w/2 - 3, 8, this.w/2 + 5, this.h/2);
+        p.stroke(0, 0, 255);
+        p.strokeWeight(6);
+        p.line(-5, this.h*0.6, -8, this.h);
+        p.push();
+        p.translate(5, this.h*0.6);
+        p.rotate(this.legAngle);
+        p.line(0, 0, 0, this.h*0.4);
+        p.pop();
+        p.noStroke();
+        p.fill(0);
+        p.ellipse(-8, this.h + 2, 8, 4);
+        p.ellipse(5 + Math.sin(this.legAngle) * 8, this.h + Math.cos(this.legAngle) * 8, 8, 4);
+        // Draw aiming line if aiming
+        if (this.state === "aiming") {
+          p.stroke(255, 255, 0, 150);
+          p.strokeWeight(2);
+          const aimLength = 80;
+          const dx = BALL_TARGET.X - sim.ballStartX;
+          const dy = BALL_TARGET.Y - sim.ballStartY;
+          const distance = Math.sqrt(dx*dx + dy*dy);
+          const normalizedX = (dx / distance) * aimLength;
+          const normalizedY = (dy / distance) * aimLength;
+          p.line(0, -20, normalizedX, normalizedY - 20);
+          p.noStroke();
+          p.fill(255, 255, 0, 200);
+          p.ellipse(normalizedX, normalizedY - 20, 8);
+        }
+        p.pop();
+      }
+    }
+
+    // === SOCCER BALL DRAWING FUNCTION ===
+    function drawSoccerBall(p, x, y, radius, spinX = 0, spinY = 0) {
+      // Draws a classic black and white soccer ball with some spin
+      p.noStroke();
+      p.fill(255);
+      p.ellipse(x, y, radius*2);
+      p.push();
+      p.translate(x, y);
+      p.rotate(spinX * 0.01);
+      p.fill(0);
+      p.noStroke();
+      p.beginShape();
+      for (let i = 0; i < 5; i++) {
+        const angle = (i * Math.PI * 2 / 5) + spinY * 0.01;
+        const px = Math.cos(angle) * radius * 0.3;
+        const py = Math.sin(angle) * radius * 0.3;
+        p.vertex(px, py);
+      }
+      p.endShape(p.CLOSE);
+      for (let j = 0; j < 5; j++) {
+        p.push();
+        const mainAngle = j * Math.PI * 2 / 5;
+        p.rotate(mainAngle);
+        p.translate(0, -radius * 0.5);
+        p.scale(0.6);
+        p.beginShape();
+        for (let i = 0; i < 5; i++) {
+          const angle = (i * Math.PI * 2 / 5) + spinY * 0.01;
+          const px = Math.cos(angle) * radius * 0.25;
+          const py = Math.sin(angle) * radius * 0.25;
+          p.vertex(px, py);
+        }
+        p.endShape(p.CLOSE);
+        p.pop();
+      }
+      p.stroke(0);
+      p.strokeWeight(1);
+      p.noFill();
+      for (let i = 0; i < 5; i++) {
+        const angle1 = (i * Math.PI * 2 / 5) + spinY * 0.01;
+        const angle2 = ((i + 1) * Math.PI * 2 / 5) + spinY * 0.01;
+        const x1 = Math.cos(angle1) * radius * 0.3;
+        const y1 = Math.sin(angle1) * radius * 0.3;
+        const x2 = Math.cos(angle2) * radius * 0.3;
+        const y2 = Math.sin(angle2) * radius * 0.3;
+        const outerX1 = Math.cos(angle1) * radius * 0.7;
+        const outerY1 = Math.sin(angle1) * radius * 0.7;
+        const outerX2 = Math.cos(angle2) * radius * 0.7;
+        const outerY2 = Math.sin(angle2) * radius * 0.7;
+        p.line(x1, y1, outerX1, outerY1);
+        p.line(x2, y2, outerX2, outerY2);
+      }
+      p.pop();
+    }
+
+    // === SOCCER BALL CLASS ===
+    class SoccerBall {
+      constructor() {
+        this.x = sim.ballStartX;
+        this.y = sim.ballStartY;
+        const dx = BALL_TARGET.X - this.x;
+        const dy = BALL_TARGET.Y - this.y;
+        const distance = Math.sqrt(dx*dx + dy*dy);
+        sim.shootingAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+        const vMagnitude = PHYSICS.INITIAL_VELOCITY * PHYSICS.PIXELS_PER_METER / PHYSICS.FPS;
+        this.vx = (dx / distance) * vMagnitude;
+        this.vy = (dy / distance) * vMagnitude;
+        this.radius = toScreen(PHYSICS.BALL_RADIUS);
+        this.trail = [];
+        this.stopped = false;
+        this.collided = false;
+        this.bounceCount = 0;
+        this.spinX = 0;
+        this.spinY = 0;
+        this.groundY = FIELD.H - 60;
+      }
+      update() {
+        if (this.stopped) return;
+        const currentSpeed = Math.sqrt(this.vx*this.vx + this.vy*this.vy) * PHYSICS.FPS / PHYSICS.PIXELS_PER_METER;
+        if (currentSpeed < 0.1) {
+          this.stopped = true;
+          return;
+        }
+        // Apply friction
+        const frictionForce = PHYSICS.GRASS_FRICTION_COEFF * PHYSICS.BALL_MASS * PHYSICS.GRAVITY;
+        const frictionAccel = frictionForce / PHYSICS.BALL_MASS;
+        const speed = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+        if (speed > 0) {
+          const frictionPixels = frictionAccel * PHYSICS.PIXELS_PER_METER / (PHYSICS.FPS * PHYSICS.FPS);
+          const frictionX = (this.vx / speed) * frictionPixels;
+          const frictionY = (this.vy / speed) * frictionPixels;
+          this.vx -= frictionX;
+          this.vy -= frictionY;
+        }
+        // Move ball
+        this.x += this.vx;
+        this.y += this.vy;
+        // Bounce on ground
+        if (this.y > this.groundY - this.radius) {
+          this.y = this.groundY - this.radius;
+          if (this.vy > 0) {
+            this.vy *= -PHYSICS.GROUND_RESTITUTION;
+            this.vx *= 0.85;
+            this.bounceCount++;
+            this.addBounceEffects();
+          }
+        }
+        // Trail for path visualization
+        this.trail.push({x: this.x, y: this.y});
+        this.spinX += this.vx * 0.1;
+        this.spinY += this.vy * 0.1;
+        if (this.trail.length > 100) {
+          this.trail.shift();
+        }
+        this.handleWallCollisions();
+        if (this.bounceCount > 4 || currentSpeed < 0.3) {
+          this.stopped = true;
+        }
+      }
+      handleWallCollisions() {
+        let bounced = false;
+        if (this.x < this.radius) {
+          this.x = this.radius;
+          this.vx *= -PHYSICS.WALL_RESTITUTION;
+          this.vy *= 0.8;
+          bounced = true;
+        }
+        if (this.x > FIELD.W - this.radius) {
+          this.x = FIELD.W - this.radius;
+          this.vx *= -PHYSICS.WALL_RESTITUTION;
+          this.vy *= 0.8;
+          bounced = true;
+        }
+        if (this.y < this.radius) {
+          this.y = this.radius;
+          this.vy *= -PHYSICS.WALL_RESTITUTION;
+          this.vx *= 0.8;
+          bounced = true;
+        }
+        if (this.y > FIELD.H - this.radius) {
+          this.y = FIELD.H - this.radius;
+          this.vy *= -PHYSICS.WALL_RESTITUTION;
+          this.vx *= 0.8;
+          bounced = true;
+        }
+        if (bounced) {
+          this.bounceCount++;
+          this.addBounceEffects();
+        }
+      }
+      addBounceEffects() {
+        this.vx += (Math.random() - 0.5) * 0.8;
+        this.vy += (Math.random() - 0.5) * 0.8;
+        this.spinX *= -0.7;
+        this.spinY *= -0.7;
+        const energyLoss = 0.05;
+        this.vx *= (1 - energyLoss);
+        this.vy *= (1 - energyLoss);
+      }
+      getCurrentSpeed() {
+        return Math.sqrt(this.vx*this.vx + this.vy*this.vy) * PHYSICS.FPS / PHYSICS.PIXELS_PER_METER;
+      }
+      getDistanceToGoal() {
+        const dx = this.x - FIELD.GOAL_X;
+        const dy = this.y - FIELD.GOAL_Y;
+        return Math.sqrt(dx*dx + dy*dy) / PHYSICS.PIXELS_PER_METER;
+      }
+      getFrictionForce() {
+        const currentSpeed = this.getCurrentSpeed();
+        if (currentSpeed < 0.1) return 0;
+        return PHYSICS.GRASS_FRICTION_COEFF * PHYSICS.BALL_MASS * PHYSICS.GRAVITY;
+      }
+      draw(p) {
+        // Draw trail
+        if (this.trail.length > 1) {
+          p.stroke(255, 215, 0, 180);
+          p.strokeWeight(3);
+          p.noFill();
+          p.beginShape();
+          for (let i = 0; i < this.trail.length; i++) {
+            const alpha = (i / this.trail.length) * 180;
+            p.stroke(255, 215, 0, alpha);
+            p.vertex(this.trail[i].x, this.trail[i].y);
+          }
+          p.endShape();
+        }
+        // Drawing ball
+        drawSoccerBall(p, this.x, this.y, this.radius, this.spinX, this.spinY);
+      }
+    }
+
+    // === GOALKEEPER CLASS ===
+    class Goalkeeper {
+      constructor() {
+        this.startX = FIELD.GOAL_X;
+        this.startY = FIELD.GOAL_Y + 35;
+        this.x = this.startX;
+        this.y = this.startY;
+        this.state = "waiting";
+        this.fallStartTime = 0;
+        this.reactionTime = PHYSICS.KEEPER_REACTION_TIME;
+        this.targetX = FIELD.GOAL_X - 80;
+        this.targetY = FIELD.GOAL_Y + FIELD.GOAL_H - 5;
+        this.w = 20; 
+        this.h = 25;      
+        this.armReach = 23;
+        this.fallAngle = 0;
+        this.bodyStretch = 0;
+        this.legSpread = 0;
+        this.updateHands();
+      }
+      update(ball) {
+        // Start dive after reaction time
+        if (this.state === "waiting" && ball && !ball.stopped) {
+          if (sim.time >= this.reactionTime) {
+            this.state = "falling";
+            this.fallStartTime = sim.time;
+            sim.keeperPhysicsData.diveDirection = "Left";
+            sim.keeperPhysicsData.diveSpeed = PHYSICS.KEEPER_DIVE_SPEED;
+            sim.keeperPhysicsData.reactionTime = PHYSICS.KEEPER_REACTION_TIME;
+            sim.showPhysicsData = true;
+          }
+        }
+        // Animate dive
+        if (this.state === "falling") {
+          const fallTime = sim.time - this.fallStartTime;
+          const fallDistance = Math.sqrt(
+            Math.pow(this.targetX - this.startX, 2) +
+            Math.pow(this.targetY - this.startY, 2)
+          ) / PHYSICS.PIXELS_PER_METER;
+          const totalFallTime = fallDistance / PHYSICS.KEEPER_DIVE_SPEED;
+          const progress = Math.min(fallTime / totalFallTime, 1);
+          const easeProgress = 1 - Math.pow(1 - progress, 2);
+          this.x = this.startX + (this.targetX - this.startX) * easeProgress;
+          this.y = this.startY + (this.targetY - this.startY) * easeProgress;
+          this.fallAngle = -easeProgress * Math.PI * 0.5;
+          this.bodyStretch = Math.sin(progress * Math.PI) * 0.4;
+          this.legSpread = progress * 30;
+        }
+        this.updateHands();
+      }
+      updateHands() {
+        // Shoulders move/rotate with the body, arms extend left from there
+        if (this.state === "falling" || this.state === "fallen") {
+          const armLength = this.armReach * (1 + this.bodyStretch);
+          const bodyAngle = this.fallAngle;
+          // Shoulders' positions (relative to body center)
+          const bodyWidth = this.w * (1 + this.bodyStretch);
+          const bodyHeight = this.h;
+          const angle = this.fallAngle;
+
+          // Shoulders are at the top left/right of the body rectangle after rotation
+          const shoulderYOffset = -bodyHeight / 2 + 12; // 12 is head offset
+          const leftShoulderLocal = { x: -bodyWidth / 2, y: shoulderYOffset };
+          const rightShoulderLocal = { x: bodyWidth / 2, y: shoulderYOffset };
+
+          // Rotate these points by body angle and translate to body center
+          const rotate = (pt, theta) => ({
+            x: pt.x * Math.cos(theta) - pt.y * Math.sin(theta),
+            y: pt.x * Math.sin(theta) + pt.y * Math.cos(theta)
+          });
+
+          const leftShoulder = {
+            x: this.x + rotate(leftShoulderLocal, angle).x,
+            y: this.y + rotate(leftShoulderLocal, angle).y
+          };
+          const rightShoulder = {
+            x: this.x + rotate(rightShoulderLocal, angle).x,
+            y: this.y + rotate(rightShoulderLocal, angle).y
+          };
+          // Both arms at -90° (left), with vertical offset, always parallel
+          const armAngle = -Math.PI / 2 + bodyAngle;
+          const offset = 18 * (1 + this.bodyStretch);
+          this.leftHand = {
+            x: leftShoulder.x + armLength * Math.cos(armAngle),
+            y: leftShoulder.y + armLength * Math.sin(armAngle) - offset
+          };
+          this.rightHand = {
+            x: rightShoulder.x + armLength * Math.cos(armAngle),
+            y: rightShoulder.y + armLength * Math.sin(armAngle) + offset
+          };
+          this.leftShoulder = leftShoulder;
+          this.rightShoulder = rightShoulder;
+        } else {
+          // Standing pose
+          this.leftShoulder = {
+            x: this.x - this.w/2,
+            y: this.y + 12
+          };
+          this.rightShoulder = {
+            x: this.x + this.w/2,
+            y: this.y + 12
+          };
+          this.leftHand = {
+            x: this.leftShoulder.x - 18,
+            y: this.leftShoulder.y + 18
+          };
+          this.rightHand = {
+            x: this.rightShoulder.x + 18,
+            y: this.rightShoulder.y + 18
+          };
+        }
+      }
+      checkCollision(ball) {
+        if (!ball || ball.stopped || ball.collided) return false;
+        const handRadius = 10;
+        const distLeft = Math.hypot(ball.x - this.leftHand.x, ball.y - this.leftHand.y);
+        const distRight = Math.hypot(ball.x - this.rightHand.x, ball.y - this.rightHand.y);
+        const distBody = Math.hypot(ball.x - this.x, ball.y - this.y);
+        if (ball.y <= FIELD.GOAL_Y + FIELD.GOAL_H + 20 &&
+            ball.x >= FIELD.GOAL_X - FIELD.GOAL_W/2 - 30 &&
+            ball.x <= FIELD.GOAL_X + FIELD.GOAL_W/2 + 30) {
+          return true;
+        }
+        return (this.state === "falling" || this.state === "fallen") &&
+               (distLeft < ball.radius + handRadius ||
+                distRight < ball.radius + handRadius ||
+                distBody < ball.radius + this.w/2);
+      }
+      deflectBall(ball) {
+        const distLeft = Math.hypot(ball.x - this.leftHand.x, ball.y - this.leftHand.y);
+        const distRight = Math.hypot(ball.x - this.rightHand.x, ball.y - this.rightHand.y);
+        let isLeftHandSave = distLeft < distRight;
+        sim.keeperPhysicsData.contactPoint = isLeftHandSave ? "Left Hand" : "Right Hand";
+        const originalSpeed = Math.sqrt(ball.vx*ball.vx + ball.vy*ball.vy);
+        const deflectionSpeed = originalSpeed * PHYSICS.GLOVE_RESTITUTION;
+        ball.vx = -Math.abs(deflectionSpeed * 0.8) + (Math.random() - 0.5) * 1.2;
+        ball.vy = Math.abs(deflectionSpeed * 0.6) + (Math.random() - 0.3) * 1.0;
+        ball.spinX += (Math.random() - 0.5) * 2;
+        ball.spinY += (Math.random() - 0.5) * 2;
+        ball.collided = true;
+        ball.stopped = false;
+        sim.result = "Save! Brilliant diving save (rebound)";
+        sim.showPhysicsData = true;
+        sim.rebound = [{x: ball.x, y: ball.y}];
+      }
+      draw(p) {
+        // Drawing body and head
+        p.push();
+        p.translate(this.x, this.y);
+        p.rotate(this.fallAngle);
+        p.fill(0, 0, 0, 100);
+        p.ellipse(0, this.h/2 + 8, this.w*0.9, 12);
+        p.fill(0, 150, 255);
+        p.stroke(255);
+        p.strokeWeight(2);
+        let bodyWidth = this.w * (1 + this.bodyStretch);
+        p.rect(-bodyWidth/2, 0, bodyWidth, this.h, 8); // body
+        p.noStroke();
+        p.fill(255, 220, 180);
+        p.ellipse(0, -8, 14); // head
+        // Draw legs
+        p.stroke(0, 150, 200);
+        p.strokeWeight(8);
+        const currentLegSpread = this.state === "falling" || this.state === "fallen" ? this.legSpread : 8;
+        if (this.state === "falling" || this.state === "fallen") {
+          p.line(-currentLegSpread/2, this.h, -currentLegSpread/2 - 15, this.h + 10);
+          p.line(currentLegSpread/2, this.h, currentLegSpread/2 + 10, this.h + 20);
+        } else {
+          p.line(-currentLegSpread/2, this.h, -currentLegSpread/2 + 5, this.h + 15);
+          p.line(currentLegSpread/2, this.h, currentLegSpread/2 - 5, this.h + 15);
+        }
+        p.noStroke();
+        p.fill(0);
+        if (this.state === "falling" || this.state === "fallen") {
+          p.ellipse(-currentLegSpread/2 - 15, this.h + 13, 10, 6);
+          p.ellipse(currentLegSpread/2 + 10, this.h + 23, 10, 6);
+        } else {
+          p.ellipse(-currentLegSpread/2 + 5, this.h + 18, 10, 6);
+          p.ellipse(currentLegSpread/2 - 5, this.h + 18, 10, 6);
+        }
+        p.pop();
+        // Draw arms (from shoulders to hands, always attached)
+        p.stroke(255, 220, 150);
+        p.strokeWeight(6);
+        p.line(this.leftShoulder.x, this.leftShoulder.y, this.leftHand.x, this.leftHand.y);
+        p.line(this.rightShoulder.x, this.rightShoulder.y, this.rightHand.x, this.rightHand.y);
+        // Draw gloves
+        p.noStroke();
+        p.fill(255, 255, 0);
+        p.ellipse(this.leftHand.x, this.leftHand.y, 18, 14);
+        p.ellipse(this.rightHand.x, this.rightHand.y, 16, 12);
+        p.stroke(200, 200, 0);
+        p.strokeWeight(1);
+        p.noFill();
+        p.ellipse(this.leftHand.x, this.leftHand.y, 14, 10);
+        p.ellipse(this.rightHand.x, this.rightHand.y, 12, 8);
+        if (this.state === "falling" || this.state === "fallen") {
+          p.stroke(255, 0, 0, 100);
+          p.strokeWeight(2);
+          p.noFill();
+          p.ellipse(this.leftHand.x, this.leftHand.y, 40, 40);
+          p.ellipse(this.rightHand.x, this.rightHand.y, 35, 35);
+        }
+      }
+    }
+
+    // === PHYSICS PREDICTION SYSTEM ===
+    function predictPath(startX, startY, vx, vy) {
+      let path = [{x: startX, y: startY}];
+      let px = startX, py = startY, pvx = vx, pvy = vy;
+      const groundY = FIELD.H - 60;
+      for (let i = 0; i < 300; i++) {
+        const speed = Math.sqrt(pvx*pvx + pvy*pvy);
+        if (speed * PHYSICS.FPS / PHYSICS.PIXELS_PER_METER < 0.1) break;
+        const frictionPixels = PHYSICS.GRASS_FRICTION_COEFF * PHYSICS.GRAVITY *
+                               PHYSICS.PIXELS_PER_METER / (PHYSICS.FPS * PHYSICS.FPS);
+        if (speed > 0) {
+          const frictionX = (pvx / speed) * frictionPixels;
+          const frictionY = (pvy / speed) * frictionPixels;
+          pvx -= frictionX;
+          pvy -= frictionY;
+        }
+        px += pvx;
+        py += pvy;
+        if (py > groundY - toScreen(PHYSICS.BALL_RADIUS)) {
+          py = groundY - toScreen(PHYSICS.BALL_RADIUS);
+          if (pvy > 0) {
+            pvy *= -PHYSICS.GROUND_RESTITUTION;
+            pvx *= 0.85;
+          }
+        }
+        path.push({x: px, y: py});
+        if (px < 0 || px > FIELD.W || py > FIELD.H) break;
+        if (py <= FIELD.GOAL_Y + FIELD.GOAL_H &&
+            px >= FIELD.GOAL_X - FIELD.GOAL_W/2 &&
+            px <= FIELD.GOAL_X + FIELD.GOAL_W/2) break;
+      }
+      return path;
+    }
+
+    // === FIELD RENDERING ===
+    function drawField(p) {
+      // Draws the soccer field, penalty area, goal, and grid
+      p.noStroke();
+      p.fill(34, 139, 34);
+      p.rect(0, 0, FIELD.W, FIELD.H);
+      p.stroke(255, 255, 255, 180);
+      p.strokeWeight(3);
+      p.noFill();
+      p.rect(20, 20, FIELD.W - 40, FIELD.H - 40);
+      const penaltyAreaW = toScreen(16.5) * 2;
+      const penaltyAreaH = toScreen(16.5);
+      const penaltyBoxY = FIELD.GOAL_Y + FIELD.GOAL_H;
+      p.rect(FIELD.GOAL_X - penaltyAreaW/2, penaltyBoxY, penaltyAreaW, penaltyAreaH);
+      const goalAreaW = toScreen(5.5) * 2;
+      const goalAreaH = toScreen(5.5);
+      p.rect(FIELD.GOAL_X - goalAreaW/2, FIELD.GOAL_Y + FIELD.GOAL_H, goalAreaW, goalAreaH);
+      p.strokeWeight(2);
+      const arcRadius = toScreen(9.15);
+      const arcCenterY = FIELD.PENALTY_Y;
+      const penaltyBoxBottom = penaltyBoxY + penaltyAreaH;
+      const distanceFromPenaltySpotToBox = penaltyBoxBottom - arcCenterY;
+      const startAngle = Math.acos(distanceFromPenaltySpotToBox / arcRadius);
+      p.arc(FIELD.PENALTY_X, arcCenterY, arcRadius * 2, arcRadius * 2, 
+            startAngle, Math.PI - startAngle);
+      p.stroke(255);
+      p.strokeWeight(4);
+      p.line(FIELD.GOAL_X - FIELD.GOAL_W/2, FIELD.GOAL_Y,
+             FIELD.GOAL_X + FIELD.GOAL_W/2, FIELD.GOAL_Y);
+      p.line(FIELD.GOAL_X - FIELD.GOAL_W/2, FIELD.GOAL_Y,
+             FIELD.GOAL_X - FIELD.GOAL_W/2, FIELD.GOAL_Y + FIELD.GOAL_H);
+      p.line(FIELD.GOAL_X + FIELD.GOAL_W/2, FIELD.GOAL_Y,
+             FIELD.GOAL_X + FIELD.GOAL_W/2, FIELD.GOAL_Y + FIELD.GOAL_H);
+      p.stroke(255, 255, 255, 80);
+      p.strokeWeight(1);
+      for (let i = 1; i < 8; i++) {
+        p.line(FIELD.GOAL_X - FIELD.GOAL_W/2 + i * FIELD.GOAL_W/8, FIELD.GOAL_Y,
+               FIELD.GOAL_X - FIELD.GOAL_W/2 + i * FIELD.GOAL_W/8, FIELD.GOAL_Y + FIELD.GOAL_H);
+      }
+      for (let i = 1; i < 5; i++) {
+        p.line(FIELD.GOAL_X - FIELD.GOAL_W/2, FIELD.GOAL_Y + i * FIELD.GOAL_H/5,
+               FIELD.GOAL_X + FIELD.GOAL_W/2, FIELD.GOAL_Y + i * FIELD.GOAL_H/5);
+      }
+      p.noStroke();
+      p.fill(255);
+      p.ellipse(FIELD.PENALTY_X, FIELD.PENALTY_Y, 8);
+      p.stroke(255, 0, 0, 150);
+      p.strokeWeight(2);
+      p.noFill();
+      p.ellipse(BALL_TARGET.X, BALL_TARGET.Y, 20);
+      p.stroke(28, 120, 28, 60);
+      p.strokeWeight(1);
+      for (let i = 0; i < FIELD.W; i += 40) {
+        p.line(i, 0, i, FIELD.H);
+      }
+    }
+
+    // === PATH DRAWING ===
+    function drawPath(p, path, color, weight = 2.5, alpha = 180) {
+      if (path.length < 2) return;
+      p.stroke(color[0], color[1], color[2], alpha);
+      p.strokeWeight(weight);
+      p.noFill();
+      p.beginShape();
+      for (let point of path) {
+        p.vertex(point.x, point.y);
+      }
+      p.endShape();
+    }
+
+    // === UI UPDATE ===
+    function updateUI() {
+      document.getElementById('velocity-val').textContent = `${PHYSICS.INITIAL_VELOCITY} m/s`;
+      document.getElementById('angle-val').textContent = `${sim.shootingAngle.toFixed(1)}°`;
+      document.getElementById('friction-val').textContent = `${PHYSICS.GRASS_FRICTION_COEFF}`;
+      if (sim.showPhysicsData) {
+        document.getElementById('dive-speed').textContent = `${sim.keeperPhysicsData.diveSpeed} m/s`;
+        document.getElementById('reaction-time').textContent = `${sim.keeperPhysicsData.reactionTime}s`;
+        document.getElementById('restitution').textContent = `${PHYSICS.GLOVE_RESTITUTION}`;
+        document.getElementById('dive-direction').textContent = sim.keeperPhysicsData.diveDirection;
+        document.getElementById('contact-point').textContent = sim.keeperPhysicsData.contactPoint;
+      }
+      if (sim.ball) {
+        document.getElementById('current-speed').textContent = `${sim.ball.getCurrentSpeed().toFixed(1)} m/s`;
+        document.getElementById('distance').textContent = `${sim.ball.getDistanceToGoal().toFixed(1)} m`;
+        document.getElementById('friction-force').textContent = `${sim.ball.getFrictionForce().toFixed(1)} N`;
+      }
+      document.getElementById('time-elapsed').textContent = `${sim.time.toFixed(1)}s`;
+    }
+
+    // === SIMULATION RESET ===
+    function resetSimulation() {
+      sim.phase = "setup";
+      sim.time = 0;
+      sim.phaseTime = 0;
+      sim.ball = null;
+      sim.keeper = new Goalkeeper();
+      sim.player = new SoccerPlayer();
+      sim.predicted = [];
+      sim.rebound = [];
+      sim.result = "";
+      sim.trajectoryAlpha = 0;
+      sim.showPhysicsData = false;
+      sim.keeperPhysicsData = {
+        diveDirection: "-",
+        contactPoint: "-",
+        diveSpeed: 0,
+        reactionTime: 0
+      };
+      document.getElementById('dive-speed').textContent = "-";
+      document.getElementById('reaction-time').textContent = "-";
+      document.getElementById('restitution').textContent = "-";
+      document.getElementById('dive-direction').textContent = "-";
+      document.getElementById('contact-point').textContent = "-";
+      document.getElementById('phase-indicator').textContent = "Setup Phase";
+    }
+
+    // === MAIN P5.JS SKETCH ===
+    const sketch = (p) => {
+      p.setup = () => {
+        const canvas = p.createCanvas(PHYSICS.FIELD_W, PHYSICS.FIELD_H);
+        canvas.parent('sketch-holder');
+        p.frameRate(PHYSICS.FPS);
+        resetSimulation();
+      };
+      p.draw = () => {
+        sim.time += PHYSICS.TIME_STEP;
+        sim.phaseTime += PHYSICS.TIME_STEP;
+        drawField(p);
+        if (sim.phase === "setup") {
+          document.getElementById('phase-indicator').textContent = "Setup Phase";
+          sim.player.draw(p);
+          sim.keeper.draw(p);
+          drawSoccerBall(p, sim.ballStartX, sim.ballStartY, toScreen(PHYSICS.BALL_RADIUS));
+          if (sim.phaseTime > 1.5) {
+            sim.phase = "aiming";
+            sim.phaseTime = 0;
+            sim.player.startAiming();
+          }
+        }
+        else if (sim.phase === "aiming") {
+          document.getElementById('phase-indicator').textContent = "Aiming Phase";
+          sim.player.update();
+          sim.player.draw(p);
+          sim.keeper.draw(p);
+          drawSoccerBall(p, sim.ballStartX, sim.ballStartY, toScreen(PHYSICS.BALL_RADIUS));
+          if (sim.phaseTime > 2.5) {
+            sim.phase = "shooting";
+            sim.phaseTime = 0;
+            sim.player.kick();
+            sim.ball = new SoccerBall();
+            sim.predicted = predictPath(sim.ball.x, sim.ball.y, sim.ball.vx, sim.ball.vy);
+            sim.trajectoryAlpha = 255;
+          }
+        }
+        else if (sim.phase === "shooting") {
+          document.getElementById('phase-indicator').textContent = "Ball in Motion";
+          sim.player.update();
+          sim.ball.update();
+          sim.keeper.update(sim.ball);
+          if (sim.keeper.checkCollision(sim.ball) && !sim.ball.collided) {
+            sim.keeper.deflectBall(sim.ball);
+            sim.rebound = [{x: sim.ball.x, y: sim.ball.y}];
+          }
+          if (sim.ball.collided && !sim.ball.stopped) {
+            sim.rebound.push({x: sim.ball.x, y: sim.ball.y});
+            drawPath(p, sim.rebound, [255, 94, 94], 3, 200);
+          }
+          if (sim.trajectoryAlpha > 0) {
+            drawPath(p, sim.predicted, [0, 230, 230], 2, sim.trajectoryAlpha);
+            sim.trajectoryAlpha = Math.max(0, sim.trajectoryAlpha - 3);
+          }
+          sim.player.draw(p);
+          sim.keeper.draw(p);
+          sim.ball.draw(p);
+          if (sim.ball.y <= FIELD.GOAL_Y + FIELD.GOAL_H &&
+              sim.ball.x >= FIELD.GOAL_X - FIELD.GOAL_W/2 &&
+              sim.ball.x <= FIELD.GOAL_X + FIELD.GOAL_W/2 &&
+              !sim.ball.collided) {
+            sim.result = "Goal! Perfect shot!";
+            sim.phase = "result";
+            sim.phaseTime = 0;
+          }
+          if (sim.ball.stopped) {
+            if (sim.ball.collided) {
+              sim.result = "Save! Keeper deflects the ball away!";
+            } else {
+              sim.result = "Ball stopped - No goal";
+            }
+            sim.phase = "result";
+            sim.phaseTime = 0;
+          }
+        }
+        else if (sim.phase === "result") {
+          document.getElementById('phase-indicator').textContent = sim.result;
+          sim.player.draw(p);
+          sim.keeper.draw(p);
+          if (sim.ball) sim.ball.draw(p);
+          if (sim.rebound && sim.rebound.length > 1) {
+            drawPath(p, sim.rebound, [255, 94, 94], 3, 200);
+          }
+          if (sim.phaseTime > 3) {
+            resetSimulation();
+          }
+        }
+        updateUI();
+      };
+      p.mousePressed = () => {
+        if (sim.phase === "aiming") {
+          sim.phase = "shooting";
+          sim.phaseTime = 0;
+          sim.player.kick();
+          sim.ball = new SoccerBall();
+          sim.predicted = predictPath(sim.ball.x, sim.ball.y, sim.ball.vx, sim.ball.vy);
+          sim.trajectoryAlpha = 255;
+        }
+      };
+    };
+
+    new p5(sketch);
+    document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+  </script>
+</body>
+</html>
