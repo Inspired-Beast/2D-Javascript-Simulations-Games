@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pirate Ship Lantern Simulation</title>
+    <script type="importmap">
+        {
+          "imports": {
+            "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm",
+            "matter-js": "https://cdn.jsdelivr.net/npm/matter-js@0.19.0/+esm"
+          }
+        }
+    </script>
+    <style>
+        /* Styling for the page and UI controls */
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            color: #d4af37;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            margin-bottom: 10px;
+        }
+        .controls {
+            display: flex;
+            gap: 30px;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(20, 20, 20, 0.8);
+            border-radius: 10px;
+            border: 2px solid #8B4513;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        .control-group label {
+            color: #d4af37;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+        .slider {
+            width: 150px;
+            height: 8px;
+            background: #333;
+            border-radius: 5px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #d4af37;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #d4af37;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+        .value-display {
+            color: #fff;
+            font-size: 14px;
+            min-width: 60px;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            background: #8B4513;
+            color: #d4af37;
+            border: 2px solid #d4af37;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #d4af37;
+            color: #8B4513;
+        }
+        .info {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(20, 20, 20, 0.6);
+            border-radius: 5px;
+            text-align: center;
+            max-width: 800px;
+        }
+        .puzzle-status {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0, 100, 0, 0.3);
+            border-radius: 5px;
+            border: 1px solid #00ff00;
+        }
+        .found-items {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 100;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #8B4513;
+            color: #FFD700;
+            max-width: 200px;
+        }
+        .items-to-find {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 100;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #8B4513;
+            color: #FFD700;
+            max-width: 200px;
+        }
+        #canvas-container {
+            border: 3px solid #8B4513;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <h1>⚓ Pirate Ship Interior Lantern Simulation ⚓</h1>
+    <!-- Controls for wind, speed, waves, tilt, and reset -->
+    <div class="controls">
+        <div class="control-group">
+            <label>Varying Wind</label>
+            <input type="range" id="windSlider" class="slider" min="0" max="100" value="0">
+            <div class="value-display" id="windValue">0%</div>
+        </div>
+        <div class="control-group">
+            <label>Ship Speed</label>
+            <input type="range" id="speedSlider" class="slider" min="0" max="100" value="0">
+            <div class="value-display" id="speedValue">0%</div>
+        </div>
+        <div class="control-group">
+            <label>High Waves</label>
+            <input type="range" id="wavesSlider" class="slider" min="-30" max="30" value="0">
+            <div class="value-display" id="wavesValue">0°</div>
+        </div>
+        <div class="control-group">
+            <label>Tilt (Manual)</label>
+            <input type="range" id="tiltSlider" class="slider" min="-8" max="8" value="0">
+            <div class="value-display" id="tiltValue">0°</div>
+        </div>
+        <div class="control-group">
+            <button id="resetBtn">Reset Simulation</button>
+        </div>
+    </div>
+    <!-- Container for the canvas and found/items-to-find lists -->
+    <div id="canvas-container">
+        <div class="found-items">
+            <h4 style="color: #90EE90;">✓ Found Items:</h4>
+            <div id="foundList"></div>
+        </div>
+        <div class="items-to-find">
+            <h4 style="color: #FFD700;">🔍 Items to Find:</h4>
+            <div id="itemsToFindList"></div>
+        </div>
+    </div>
+    <div class="puzzle-status" id="puzzleStatus">
+        Navigate the ship's cabin! Use wind and movement to illuminate hidden treasures in the darkness.
+    </div>
+    <div class="info">
+        <strong>Instructions:</strong> Control the wind from the window, ship speed, wave effects, and tilt to swing the lantern. 
+        The lantern tilts with the rope and casts smooth horizontal light - illuminate objects on walls to solve puzzles!
+    </div>
+    <script type="module">
+        // Import p5.js and Matter.js for rendering and physics
+        import p5 from "p5";
+        import Matter from "matter-js";
+        const { Engine, World, Bodies, Body, Constraint, Vector } = Matter;
+
+        // --- Simulation state variables ---
+        let engine, world, lantern, rope, anchor, ceiling;
+        let windForce = 0, shipSpeed = 0, waveIntensity = 0, manualTilt = 0;
+        let time = 0, previousSpeed = 0, speedChangeTime = 0;
+        let wallObjects = [];
+        let roundRoom, windowObj;
+        let foundItems = new Set();
+        let currentPuzzle = 0, puzzleSolved = false;
+
+        // --- Constants for layout and physics ---
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 600;
+        const LANTERN_SIZE = 25;
+        const ROPE_LENGTH = 180;
+        const LIGHT_RADIUS = 250;
+        const CABIN_FLOOR_Y = 500;
+        const WINDOW_X = 0, WINDOW_Y = 150, WINDOW_WIDTH = 80, WINDOW_HEIGHT = 120;
+
+        let autoTilt = 0;
+
+        // --- Helper: Oscillating wind for perpetual swaying ---
+        function getOscillatingWind(base, t) {
+            // Oscillate wind with a sine wave and add a little random gust
+            // Sine: main oscillation, Random: gusts
+            const osc = Math.sin(t * 1.7) * 0.7 + Math.sin(t * 2.3 + 1.5) * 0.3;
+            const gust = (Math.random() - 0.5) * 0.2;
+            return base * (osc + gust);
+        }
+
+        // --- Main p5.js sketch ---
+        new p5((sk) => {
+            let lightBuffer;
+
+            // --- p5.js setup: initialize canvas, physics, objects, UI ---
+            sk.setup = () => {
+                sk.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT).parent('canvas-container');
+                engine = Engine.create();
+                world = engine.world;
+                engine.world.gravity.y = 0.8;
+                setupPhysics();
+                setupWallObjects();
+                setupSpecialObjects();
+                setupControls();
+                updateItemsToFind();
+                lightBuffer = sk.createGraphics(CANVAS_WIDTH, CANVAS_HEIGHT);
+            };
+
+            // --- p5.js draw: main simulation loop ---
+            sk.draw = () => {
+                time += 0.02; // Advance simulation time
+                Engine.update(engine); // Step physics engine
+
+                // Calculate automatic tilt from waves and ship speed
+                autoTilt = 0;
+                if (Math.abs(waveIntensity) > 0.01 || shipSpeed > 0.01) {
+                    autoTilt = Math.sin(time * 1.2 + Math.cos(time * 0.7)) * (waveIntensity * 0.18 + shipSpeed * 0.025);
+                }
+                let totalTilt = autoTilt + manualTilt;
+
+                // Move anchor point and ceiling according to tilt
+                let anchorX = CANVAS_WIDTH / 2 + Math.sin(totalTilt) * 60;
+                let anchorY = 80 + Math.sin(totalTilt) * 10;
+                anchor.position.x = anchorX;
+                anchor.position.y = anchorY;
+                engine.world.gravity.x = Math.sin(totalTilt) * 0.8;
+                engine.world.gravity.y = Math.cos(totalTilt) * 0.8;
+                Body.setPosition(ceiling, { x: CANVAS_WIDTH/2 + Math.sin(totalTilt) * 60, y: 32 + Math.sin(totalTilt) * 10 });
+
+                // Apply wind, ship, and wave forces to lantern
+                applyEnvironmentalForces();
+
+                // Draw background
+                sk.background(15, 10, 5);
+
+                // Draw everything in a rotated frame for tilt
+                sk.push();
+                sk.translate(CANVAS_WIDTH/2, CANVAS_HEIGHT/2);
+                sk.rotate(totalTilt);
+                sk.translate(-CANVAS_WIDTH/2, -CANVAS_HEIGHT/2);
+
+                // Draw ship, objects, rope, light, and lantern
+                drawShipInterior(sk);
+                drawWallObjects(sk);
+                drawSpecialObjects(sk);
+                drawRope(sk, anchorX, anchorY);
+                drawSmoothHorizontalLightMasked(sk, lightBuffer, totalTilt, anchorX, anchorY);
+                drawTiltedLantern(sk, anchorX, anchorY);
+
+                sk.pop();
+
+                // Update puzzle status and show debug info
+                updatePuzzleStatus();
+                drawPhysicsInfo(sk, totalTilt);
+            };
+
+            // --- Setup physics world and main bodies ---
+            function setupPhysics() {
+                anchor = Bodies.rectangle(CANVAS_WIDTH / 2, 80, 10, 10, { isStatic: true });
+                lantern = Bodies.rectangle(CANVAS_WIDTH / 2, 80 + ROPE_LENGTH, LANTERN_SIZE, LANTERN_SIZE, {
+                    density: 0.02,
+                    frictionAir: 0.008
+                });
+                rope = Constraint.create({
+                    bodyA: anchor,
+                    bodyB: lantern,
+                    length: ROPE_LENGTH,
+                    stiffness: 0.92,
+                    damping: 0.01
+                });
+                ceiling = Bodies.rectangle(CANVAS_WIDTH/2, 32, CANVAS_WIDTH-40, 10, {
+                    isStatic: true,
+                    restitution: 0.2,
+                    friction: 0.1,
+                    render: { visible: false }
+                });
+                World.add(world, [anchor, lantern, rope, ceiling]);
+            }
+
+            // --- Setup special objects: window and round room (door) ---
+            function setupSpecialObjects() {
+                windowObj = {
+                    x: WINDOW_X, y: WINDOW_Y, width: WINDOW_WIDTH, height: WINDOW_HEIGHT,
+                    type: 'window', name: 'Ship Window', found: false, illuminated: false, required: true
+                };
+                roundRoom = {
+                    x: 600, y: 320, width: 120, height: 180,
+                    type: 'round_room', name: 'Captain\'s Room (t)', found: false, illuminated: false, required: true
+                };
+            }
+
+            // --- Setup wall objects (maps, charts, flag, certificate) ---
+            function setupWallObjects() {
+                wallObjects = [
+                    { x: 120, y: 250, width: 90, height: 60, type: 'wall_map', name: 'Navigation Map', found: false, illuminated: false, required: true },
+                    { x: 340, y: 250, width: 80, height: 60, type: 'wall_chart', name: 'Star Chart', found: false, illuminated: false, required: true },
+                    { x: 540, y: 260, width: 70, height: 50, type: 'wall_certificate', name: 'Ship Certificate', found: false, illuminated: false, required: false },
+                    { x: 700, y: 180, width: 60, height: 40, type: 'wall_flag', name: 'Ship\'s Flag', found: false, illuminated: false, required: false }
+                ];
+            }
+
+            // --- Setup UI controls and event listeners ---
+            function setupControls() {
+                const windSlider = document.getElementById('windSlider');
+                const speedSlider = document.getElementById('speedSlider');
+                const wavesSlider = document.getElementById('wavesSlider');
+                const tiltSlider = document.getElementById('tiltSlider');
+                const resetBtn = document.getElementById('resetBtn');
+                const windValue = document.getElementById('windValue');
+                const speedValue = document.getElementById('speedValue');
+                const wavesValue = document.getElementById('wavesValue');
+                const tiltValue = document.getElementById('tiltValue');
+
+                // Wind slider: controls wind force
+                windSlider.addEventListener('input', (e) => {
+                    windForce = parseFloat(e.target.value) / 2500;
+                    windValue.textContent = e.target.value + '%';
+                });
+                // Ship speed slider: controls ship speed and applies impulse on change
+                speedSlider.addEventListener('input', (e) => {
+                    const newSpeed = parseFloat(e.target.value) / 20;
+                    if (Math.abs(newSpeed - previousSpeed) > 0.8) {
+                        speedChangeTime = time;
+                        const impulse = (newSpeed - previousSpeed) * 0.004;
+                        Body.applyForce(lantern, lantern.position, { x: impulse, y: 0 });
+                    }
+                    previousSpeed = shipSpeed;
+                    shipSpeed = newSpeed;
+                    speedValue.textContent = e.target.value + '%';
+                });
+                // Waves slider: controls wave intensity
+                wavesSlider.addEventListener('input', (e) => {
+                    waveIntensity = parseFloat(e.target.value) * Math.PI / 45;
+                    wavesValue.textContent = e.target.value + '°';
+                });
+                // Manual tilt slider
+                tiltSlider.addEventListener('input', (e) => {
+                    manualTilt = parseFloat(e.target.value) * Math.PI / 180;
+                    tiltValue.textContent = e.target.value + '°';
+                });
+                // Reset button
+                resetBtn.addEventListener('click', resetSimulation);
+            }
+
+            // --- Update found items list in UI ---
+            function updateFoundItems() {
+                const foundList = document.getElementById('foundList');
+                foundList.innerHTML = '';
+                foundItems.forEach(item => {
+                    const div = document.createElement('div');
+                    div.textContent = `✓ ${item.replace('_', ' ')}`;
+                    div.style.color = '#90EE90';
+                    div.style.fontSize = '12px';
+                    div.style.marginBottom = '3px';
+                    foundList.appendChild(div);
+                });
+            }
+
+            // --- Update items-to-find list in UI ---
+            function updateItemsToFind() {
+                const itemsToFindList = document.getElementById('itemsToFindList');
+                itemsToFindList.innerHTML = '';
+                const allObjects = [windowObj, roundRoom, ...wallObjects];
+                const requiredObjects = allObjects.filter(obj => obj.required);
+                requiredObjects.forEach(obj => {
+                    const div = document.createElement('div');
+                    div.textContent = `${obj.found ? '✓' : '○'} ${obj.name}`;
+                    div.style.color = obj.found ? '#90EE90' : '#FFD700';
+                    div.style.fontSize = '12px';
+                    div.style.marginBottom = '3px';
+                    itemsToFindList.appendChild(div);
+                });
+            }
+
+            // --- Apply wind, ship, and wave forces to the lantern body ---
+            function applyEnvironmentalForces() {
+                // Wind: always oscillating for perpetual swaying
+                if (windForce > 0) {
+                    Body.applyForce(lantern, lantern.position, { x: getOscillatingWind(windForce, time), y: 0 });
+                }
+                // Ship speed: periodic sway and pitch
+                if (shipSpeed > 0) {
+                    const shipSway = Math.sin(time * shipSpeed * 1.8) * shipSpeed * 0.0015;
+                    const shipPitch = Math.cos(time * shipSpeed * 1.2) * shipSpeed * 0.001;
+                    Body.applyForce(lantern, lantern.position, { x: shipSway, y: shipPitch });
+                }
+                // Waves: periodic force
+                if (waveIntensity !== 0) {
+                    const waveEffect = Math.sin(time * 1.8) * waveIntensity;
+                    const waveForceX = Math.sin(time * 2.2) * waveIntensity * 0.001;
+                    const waveForceY = Math.cos(time * 1.6) * waveIntensity * 0.0005;
+                    Body.applyForce(lantern, lantern.position, { x: waveForceX, y: waveForceY });
+                }
+                // Ship speed change: add a momentum impulse
+                const timeSinceSpeedChange = time - speedChangeTime;
+                if (timeSinceSpeedChange < 3.0 && timeSinceSpeedChange > 0) {
+                    const momentum = Math.exp(-timeSinceSpeedChange * 0.8) * 0.0008;
+                    const swingDirection = lantern.position.x > anchor.position.x ? -momentum : momentum;
+                    Body.applyForce(lantern, lantern.position, { x: swingDirection, y: 0 });
+                }
+            }
+
+            // --- Draw the ship's interior (walls, floor, beams, etc) ---
+            function drawShipInterior(sk) {
+                // Walls and ceiling
+                sk.fill(40, 25, 15);
+                sk.stroke(60, 40, 25);
+                sk.strokeWeight(3);
+                sk.rect(0, 0, 20, CANVAS_HEIGHT);
+                sk.rect(CANVAS_WIDTH - 20, 0, 20, CANVAS_HEIGHT);
+                sk.rect(0, 0, CANVAS_WIDTH, 20);
+                // Floor
+                sk.fill(50, 35, 20);
+                sk.stroke(70, 50, 30);
+                sk.strokeWeight(2);
+                sk.rect(0, CABIN_FLOOR_Y, CANVAS_WIDTH, CANVAS_HEIGHT - CABIN_FLOOR_Y);
+                // Floor planks
+                for (let i = 0; i < CANVAS_WIDTH; i += 60) {
+                    sk.line(i, CABIN_FLOOR_Y, i, CANVAS_HEIGHT);
+                }
+                // Ceiling beam
+                sk.fill(60, 40, 25);
+                sk.rect(CANVAS_WIDTH/2 - 100, 60, 200, 20);
+                // Extra details (barrels, wheel, etc)
+                drawCabinDetails(sk);
+            }
+
+            // --- Draw the window with grills and wind effect ---
+            function drawWindow(sk) {
+                // Window highlight if found/illuminated
+                sk.stroke(windowObj.found ? '#90EE90' : (windowObj.illuminated ? '#FFD700' : '#8B4513'));
+                sk.strokeWeight(windowObj.illuminated ? 18 : 20);
+                sk.line(WINDOW_X, WINDOW_Y, WINDOW_X, WINDOW_Y + WINDOW_HEIGHT);
+                sk.push();
+                sk.strokeWeight(4);
+                sk.stroke('#8B4513');
+                sk.fill(120, 180, 220, 180);
+                sk.rect(WINDOW_X, WINDOW_Y, WINDOW_WIDTH, WINDOW_HEIGHT, 8);
+                // Window grills
+                sk.stroke(80, 80, 100, 180);
+                sk.strokeWeight(3);
+                for (let i = 1; i < 4; i++) {
+                    sk.line(WINDOW_X + (WINDOW_WIDTH/4)*i, WINDOW_Y, WINDOW_X + (WINDOW_WIDTH/4)*i, WINDOW_Y + WINDOW_HEIGHT);
+                }
+                sk.line(WINDOW_X, WINDOW_Y + WINDOW_HEIGHT/2, WINDOW_X + WINDOW_WIDTH, WINDOW_Y + WINDOW_HEIGHT/2);
+                sk.pop();
+                // Wind effect (blue glow)
+                if (windForce > 0) {
+                    sk.fill(200, 220, 255, windForce * 4000);
+                    sk.noStroke();
+                    sk.beginShape();
+                    sk.vertex(WINDOW_X + WINDOW_WIDTH, WINDOW_Y + WINDOW_HEIGHT/2);
+                    sk.vertex(WINDOW_X + 150, WINDOW_Y + WINDOW_HEIGHT/2 - 40);
+                    sk.vertex(WINDOW_X + 150, WINDOW_Y + WINDOW_HEIGHT/2 + 40);
+                    sk.endShape(sk.CLOSE);
+                }
+                // Label if illuminated
+                if (windowObj.illuminated && !windowObj.found) {
+                    sk.fill(255, 255, 200);
+                    sk.textAlign(sk.CENTER);
+                    sk.textSize(11);
+                    sk.text(windowObj.name, windowObj.x + windowObj.width/2, windowObj.y - 12);
+                }
+            }
+
+            // --- Draw the door (roundRoom) with arch, planks, handle, and shadow ---
+            function drawRoundRoom(sk) {
+                const x = roundRoom.x, y = roundRoom.y, w = roundRoom.width, h = roundRoom.height;
+                // Shadow
+                sk.noStroke();
+                sk.fill(30, 20, 10, 100);
+                sk.rect(x + 8, y + 20, w - 16, h - 10, 18);
+                // Door body
+                sk.stroke(90, 60, 30);
+                sk.strokeWeight(4);
+                sk.fill(120, 80, 40);
+                sk.rect(x, y + 20, w, h - 20, 18);
+                // Arch
+                sk.noStroke();
+                sk.fill(120, 80, 40);
+                sk.arc(x + w/2, y + 20, w, 60, Math.PI, 0);
+                // Planks
+                sk.stroke(100, 70, 40);
+                sk.strokeWeight(2);
+                for (let i = 1; i < 4; i++) {
+                    sk.line(x + (w/4)*i, y + 20, x + (w/4)*i, y + h);
+                }
+                sk.line(x, y + 60, x + w, y + 60);
+                // Handle
+                sk.noStroke();
+                sk.fill(220, 180, 60);
+                sk.ellipse(x + w - 20, y + h/2 + 20, 14, 14);
+                sk.fill(180, 120, 40);
+                sk.ellipse(x + w - 20, y + h/2 + 20, 6, 6);
+                // Highlight
+                sk.noFill();
+                sk.stroke(roundRoom.found ? '#90EE90' : (roundRoom.illuminated ? '#FFD700' : '#8B4513'));
+                sk.strokeWeight(roundRoom.illuminated ? 8 : 6);
+                sk.rect(x, y + 20, w, h - 20, 18);
+                sk.arc(x + w/2, y + 20, w, 60, Math.PI, 0);
+                // "T" label
+                sk.fill(roundRoom.found ? '#90EE90' : (roundRoom.illuminated ? '#FFD700' : '#8B4513'));
+                sk.textAlign(sk.CENTER);
+                sk.textSize(32);
+                sk.text('T', x + w/2, y + 10);
+                // Label if illuminated
+                if (roundRoom.illuminated && !roundRoom.found) {
+                    sk.fill(255, 255, 200);
+                    sk.textAlign(sk.CENTER);
+                    sk.textSize(11);
+                    sk.text(roundRoom.name, x + w/2, y);
+                }
+            }
+
+            // --- Draw both window and door ---
+            function drawSpecialObjects(sk) {
+                drawWindow(sk);
+                drawRoundRoom(sk);
+            }
+
+            // --- Draw the rope from anchor to lantern ---
+            function drawRope(sk, anchorX, anchorY) {
+                sk.stroke(139, 69, 19);
+                sk.strokeWeight(4);
+                sk.line(anchorX, anchorY, lantern.position.x, lantern.position.y);
+                sk.stroke(160, 90, 40);
+                sk.strokeWeight(1);
+                const segments = 8;
+                for (let i = 0; i < segments; i++) {
+                    const t = i / segments;
+                    const x = sk.lerp(anchorX, lantern.position.x, t);
+                    const y = sk.lerp(anchorY, lantern.position.y, t);
+                    sk.point(x + sk.sin(t * 20) * 2, y);
+                }
+            }
+
+            // --- Draw the lantern at the end of the rope ---
+            function drawTiltedLantern(sk, anchorX, anchorY) {
+                sk.push();
+                sk.translate(lantern.position.x, lantern.position.y);
+                const ropeAngle = Math.atan2(lantern.position.y - anchorY, lantern.position.x - anchorX);
+                sk.rotate(ropeAngle + sk.PI/2);
+                // Lantern body
+                sk.fill(212, 175, 55);
+                sk.stroke(184, 134, 11);
+                sk.strokeWeight(2);
+                sk.rect(-LANTERN_SIZE/2, -LANTERN_SIZE/2, LANTERN_SIZE, LANTERN_SIZE, 5);
+                // Lantern glass
+                sk.fill(255, 200, 100, 150);
+                sk.rect(-LANTERN_SIZE/2 + 3, -LANTERN_SIZE/2 + 3, LANTERN_SIZE - 6, LANTERN_SIZE - 6, 3);
+                // Top triangle
+                sk.fill(160, 120, 40);
+                sk.triangle(-LANTERN_SIZE/2 - 2, -LANTERN_SIZE/2, LANTERN_SIZE/2 + 2, -LANTERN_SIZE/2, 0, -LANTERN_SIZE/2 - 8);
+                // Handle arc
+                sk.noFill();
+                sk.stroke(160, 120, 40);
+                sk.strokeWeight(3);
+                sk.arc(0, -LANTERN_SIZE/2 - 5, 15, 10, sk.PI, sk.TWO_PI);
+                // Light glow
+                sk.fill(255, 200, 0, 200);
+                sk.noStroke();
+                sk.circle(0, -3, 12);
+                sk.fill(255, 150, 0, 150);
+                sk.circle(0, -6, 8);
+                sk.fill(255, 100, 0, 100);
+                sk.circle(0, -8, 4);
+                sk.pop();
+            }
+
+            // --- Draw the lantern's light beam and check for illumination, but mask above ceiling ---
+            function drawSmoothHorizontalLightMasked(sk, buffer, totalTilt, anchorX, anchorY) {
+                buffer.clear();
+                const lightCenterX = lantern.position.x;
+                const lightCenterY = lantern.position.y;
+                const ropeAngle = Math.atan2(lantern.position.y - anchorY, lantern.position.x - anchorX);
+
+                // Draw light ellipses and beams
+                buffer.push();
+                buffer.translate(lightCenterX, lightCenterY);
+                buffer.rotate(ropeAngle + sk.PI/2);
+                for (let r = LIGHT_RADIUS; r > 0; r -= 15) {
+                    let alpha = sk.map(r, 0, LIGHT_RADIUS, 60, 0);
+                    buffer.fill(255, 220, 150, alpha);
+                    buffer.noStroke();
+                    buffer.ellipse(0, 0, r * 2.5, r * 0.8);
+                }
+                for (let angle = -45; angle <= 45; angle += 15) {
+                    let alpha = sk.map(Math.abs(angle), 0, 45, 40, 10);
+                    buffer.fill(255, 200, 120, alpha);
+                    buffer.noStroke();
+                    let radAngle = sk.radians(angle);
+                    let beamLength = LIGHT_RADIUS * 0.8;
+                    let endX = sk.cos(radAngle) * beamLength;
+                    let endY = sk.sin(radAngle) * beamLength * 0.6;
+                    buffer.beginShape();
+                    buffer.vertex(0, 0);
+                    buffer.vertex(endX - 15, endY - 10);
+                    buffer.vertex(endX + 15, endY + 10);
+                    buffer.endShape(buffer.CLOSE);
+                }
+                buffer.pop();
+
+                // Mask above the ceiling
+                buffer.erase();
+                buffer.rect(0, 0, CANVAS_WIDTH, 20);
+                buffer.noErase();
+
+                // Draw buffer to main canvas
+                sk.image(buffer, 0, 0);
+
+                // Check which objects are illuminated
+                checkTiltedHorizontalIllumination(lightCenterX, lightCenterY, ropeAngle + totalTilt);
+            }
+
+            // --- Check if any objects are illuminated by the lantern's light ---
+            function checkTiltedHorizontalIllumination(lightX, lightY, tiltAngleParam) {
+                // Window
+                const windowCenterX = windowObj.x + windowObj.width / 2;
+                const windowCenterY = windowObj.y + windowObj.height / 2;
+                const windowDistance = Math.sqrt((lightX - windowCenterX) ** 2 + (lightY - windowCenterY) ** 2);
+                let windowAngle = Math.atan2(windowCenterY - lightY, windowCenterX - lightX) - (tiltAngleParam + Math.PI/2);
+                windowAngle = Math.abs(windowAngle * 180 / Math.PI);
+                if (windowAngle > 180) windowAngle = 360 - windowAngle;
+                windowObj.illuminated = windowDistance < LIGHT_RADIUS && windowAngle < 50;
+                // Round room (door)
+                const roundCenterX = roundRoom.x + roundRoom.width/2;
+                const roundCenterY = roundRoom.y + roundRoom.height/2;
+                const roundDistance = Math.sqrt((lightX - roundCenterX) ** 2 + (lightY - roundCenterY) ** 2);
+                let roundAngle = Math.atan2(roundCenterY - lightY, roundCenterX - lightX) - (tiltAngleParam + Math.PI/2);
+                roundAngle = Math.abs(roundAngle * 180 / Math.PI);
+                if (roundAngle > 180) roundAngle = 360 - roundAngle;
+                roundRoom.illuminated = roundDistance < (LIGHT_RADIUS + 40) && roundAngle < 65;
+                // Wall objects
+                wallObjects.forEach(obj => {
+                    const dx = obj.x + obj.width/2 - lightX;
+                    const dy = obj.y + obj.height/2 - lightY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    let angle = Math.atan2(dy, dx) - (tiltAngleParam + Math.PI/2);
+                    angle = Math.abs(angle * 180 / Math.PI);
+                    if (angle > 180) angle = 360 - angle;
+                    obj.illuminated = distance < LIGHT_RADIUS && angle < 50;
+                });
+                checkForFoundItems();
+            }
+
+            // --- Mark objects as found if illuminated for the first time ---
+            function checkForFoundItems() {
+                if (windowObj.illuminated && !windowObj.found) {
+                    windowObj.found = true;
+                    foundItems.add(windowObj.name);
+                    updateFoundItems();
+                    updateItemsToFind();
+                    showFoundMessage(windowObj.name);
+                }
+                if (roundRoom.illuminated && !roundRoom.found) {
+                    roundRoom.found = true;
+                    foundItems.add(roundRoom.name);
+                    updateFoundItems();
+                    updateItemsToFind();
+                    showFoundMessage(roundRoom.name);
+                }
+                wallObjects.forEach(obj => {
+                    if (obj.illuminated && !obj.found) {
+                        obj.found = true;
+                        foundItems.add(obj.name);
+                        updateFoundItems();
+                        updateItemsToFind();
+                        showFoundMessage(obj.name);
+                    }
+                });
+            }
+
+            // --- Show a message when an item is found ---
+            function showFoundMessage(itemName) {
+                const statusElement = document.getElementById('puzzleStatus');
+                const currentText = statusElement.innerHTML;
+                statusElement.innerHTML = `🎉 Found: ${itemName}! 🎉`;
+                statusElement.style.background = 'rgba(0, 200, 0, 0.5)';
+                setTimeout(() => {
+                    statusElement.innerHTML = currentText;
+                    statusElement.style.background = 'rgba(0, 100, 0, 0.3)';
+                }, 2000);
+            }
+
+            // --- Draw all wall objects (pictures, flag, certificate, etc) ---
+            function drawWallObjects(sk) {
+                wallObjects.forEach(obj => {
+                    if (obj.illuminated || obj.found) {
+                        sk.push();
+                        if (obj.illuminated && !obj.found) {
+                            sk.fill(255, 255, 150, 80);
+                            sk.noStroke();
+                            sk.rect(obj.x - 8, obj.y - 8, obj.width + 16, obj.height + 16, 6);
+                        }
+                        switch(obj.type) {
+                            case 'wall_map': drawWallMap(sk, obj.x, obj.y, obj.width, obj.height, obj.found); break;
+                            case 'wall_chart': drawStarChart(sk, obj.x, obj.y, obj.width, obj.height, obj.found); break;
+                            case 'wall_flag': drawFlag(sk, obj.x, obj.y, obj.width, obj.height, obj.found); break;
+                            case 'wall_certificate': drawCertificate(sk, obj.x, obj.y, obj.width, obj.height, obj.found); break;
+                        }
+                        if (obj.illuminated && !obj.found) {
+                            sk.fill(255, 255, 200);
+                            sk.textAlign(sk.CENTER);
+                            sk.textSize(11);
+                            sk.text(obj.name, obj.x + obj.width/2, obj.y - 12);
+                        }
+                        sk.pop();
+                    } else {
+                        sk.stroke(60, 60, 60);
+                        sk.strokeWeight(1);
+                        sk.noFill();
+                        sk.rect(obj.x, obj.y, obj.width, obj.height, 6);
+                    }
+                });
+            }
+
+            // --- Draw the navigation map ---
+            function drawWallMap(sk, x, y, w, h, found) {
+                sk.push();
+                sk.stroke(found ? '#90EE90' : '#8B4513');
+                sk.strokeWeight(3);
+                sk.fill(found ? 200 : 245, found ? 200 : 222, found ? 200 : 179);
+                sk.rect(x, y, w, h, 8);
+                sk.fill(120, 80, 40);
+                sk.ellipse(x, y + h/2, 12, h*0.7);
+                sk.ellipse(x + w, y + h/2, 12, h*0.7);
+                sk.stroke(found ? '#006400' : '#8B4513');
+                sk.strokeWeight(1.5);
+                sk.line(x + 10, y + 10, x + w - 10, y + h - 10);
+                sk.line(x + 10, y + h - 10, x + w - 10, y + 10);
+                sk.line(x + w/2, y + 8, x + w/2, y + h - 8);
+                sk.noFill();
+                sk.stroke(found ? '#006400' : '#8B4513');
+                sk.ellipse(x + w/2, y + h/2, 18, 18);
+                sk.line(x + w/2, y + h/2 - 8, x + w/2, y + h/2 + 8);
+                sk.line(x + w/2 - 8, y + h/2, x + w/2 + 8, y + h/2);
+                sk.pop();
+            }
+
+            // --- Draw the star chart ---
+            function drawStarChart(sk, x, y, w, h, found) {
+                sk.push();
+                sk.stroke(found ? '#90EE90' : '#8B4513');
+                sk.strokeWeight(3);
+                sk.fill(found ? 40 : 20, found ? 40 : 20, found ? 60 : 40);
+                sk.rect(x, y, w, h, 6);
+                sk.stroke(120, 80, 40);
+                sk.strokeWeight(5);
+                sk.noFill();
+                sk.rect(x-3, y-3, w+6, h+6, 8);
+                sk.noStroke();
+                sk.fill(found ? '#90EE90' : '#FFD700');
+                let starCoords = [
+                    [x+12, y+10], [x+30, y+18], [x+50, y+12], [x+20, y+35], [x+45, y+38], [x+55, y+25]
+                ];
+                for (let [sx, sy] of starCoords) {
+                    sk.circle(sx, sy, 4);
+                }
+                sk.stroke(found ? '#90EE90' : '#FFD700');
+                sk.strokeWeight(1.2);
+                sk.line(x+12, y+10, x+30, y+18);
+                sk.line(x+30, y+18, x+50, y+12);
+                sk.line(x+30, y+18, x+20, y+35);
+                sk.line(x+30, y+18, x+45, y+38);
+                sk.line(x+45, y+38, x+55, y+25);
+                sk.pop();
+            }
+
+            // --- Draw the ship's flag ---
+            function drawFlag(sk, x, y, w, h, found) {
+                sk.push();
+                sk.stroke(found ? '#90EE90' : '#8B4513');
+                sk.strokeWeight(3);
+                sk.fill(found ? 180 : 30, found ? 180 : 30, found ? 180 : 30);
+                sk.rect(x, y, w, h, 6);
+                sk.stroke(120, 80, 40);
+                sk.strokeWeight(5);
+                sk.line(x, y + h, x, y - 10);
+                sk.noStroke();
+                sk.fill(found ? '#90EE90' : '#222');
+                sk.beginShape();
+                sk.vertex(x, y + 5);
+                sk.bezierVertex(x + w/3, y + h/4, x + w/2, y + h/2, x + w, y + h/2);
+                sk.vertex(x + w, y + h - 5);
+                sk.bezierVertex(x + w/2, y + h, x + w/3, y + h*0.75, x, y + h - 5);
+                sk.endShape(sk.CLOSE);
+                sk.fill(255);
+                sk.ellipse(x + w*0.7, y + h*0.6, 14, 12);
+                sk.ellipse(x + w*0.7 - 5, y + h*0.6 + 5, 5, 5);
+                sk.ellipse(x + w*0.7 + 5, y + h*0.6 + 5, 5, 5);
+                sk.stroke(255);
+                sk.strokeWeight(2);
+                sk.line(x + w*0.7 - 7, y + h*0.6 + 10, x + w*0.7 + 7, y + h*0.6 - 10);
+                sk.line(x + w*0.7 - 7, y + h*0.6 - 10, x + w*0.7 + 7, y + h*0.6 + 10);
+                sk.pop();
+            }
+
+            // --- Draw the ship certificate ---
+            function drawCertificate(sk, x, y, w, h, found) {
+                sk.push();
+                sk.stroke(found ? '#90EE90' : '#8B4513');
+                sk.strokeWeight(2.5);
+                sk.fill(found ? 200 : 250, found ? 200 : 240, found ? 200 : 220);
+                sk.rect(x, y, w, h, 5);
+                sk.stroke(120, 80, 40);
+                sk.strokeWeight(4);
+                sk.noFill();
+                sk.rect(x-2, y-2, w+4, h+4, 7);
+                sk.stroke(found ? '#006400' : '#000');
+                sk.strokeWeight(1.2);
+                for (let i = 0; i < 3; i++) {
+                    sk.line(x + 10, y + 12 + i * 10, x + w - 10, y + 12 + i * 10);
+                }
+                sk.fill(found ? '#006400' : '#8B4513');
+                sk.circle(x + w - 14, y + h - 14, 10);
+                sk.pop();
+            }
+
+            // --- Draw extra cabin details (barrels, wheel, etc) ---
+            function drawCabinDetails(sk) {
+                sk.fill(60, 40, 25);
+                sk.stroke(80, 60, 40);
+                sk.strokeWeight(2);
+                sk.rect(60, CABIN_FLOOR_Y - 50, 100, 18, 5);
+                sk.rect(70, CABIN_FLOOR_Y - 32, 8, 32, 3);
+                sk.rect(152, CABIN_FLOOR_Y - 32, 8, 32, 3);
+                sk.fill(80, 50, 30);
+                sk.ellipse(700, CABIN_FLOOR_Y - 40, 40, 60);
+                sk.rect(680, CABIN_FLOOR_Y - 70, 40, 40, 10);
+                // Ship's wheel
+                sk.push();
+                sk.translate(400, 300);
+                sk.fill(100, 70, 40);
+                sk.stroke(120, 90, 60);
+                sk.strokeWeight(3);
+                sk.ellipse(0, 0, 60, 60);
+                for (let i = 0; i < 8; i++) {
+                    sk.rotate(sk.PI/4);
+                    sk.line(0, -30, 0, -40);
+                }
+                sk.pop();
+            }
+
+            // --- Update puzzle status and progress ---
+            function updatePuzzleStatus() {
+                const allObjects = [windowObj, roundRoom, ...wallObjects];
+                const requiredObjects = allObjects.filter(obj => obj.required);
+                const foundRequired = requiredObjects.filter(obj => obj.found);
+                const statusElement = document.getElementById('puzzleStatus');
+                if (foundRequired.length === requiredObjects.length && !puzzleSolved) {
+                    puzzleSolved = true;
+                    statusElement.innerHTML = '🎉 Navigation Complete! You\'ve found all essential items! 🎉';
+                    statusElement.style.background = 'rgba(0, 150, 0, 0.3)';
+                    statusElement.style.borderColor = '#00ff00';
+                    setTimeout(() => { generateNewPuzzle(); }, 3000);
+                } else {
+                    const progress = `${foundRequired.length}/${requiredObjects.length}`;
+                    statusElement.innerHTML = `Find the essential navigation items! Progress: ${progress} (Required Items)`;
+                }
+            }
+
+            // --- Generate a new puzzle (reset found state) ---
+            function generateNewPuzzle() {
+                puzzleSolved = false;
+                currentPuzzle++;
+                windowObj.found = false;
+                roundRoom.found = false;
+                foundItems.clear();
+                updateFoundItems();
+                wallObjects.forEach(obj => {
+                    obj.found = false;
+                    obj.illuminated = false;
+                });
+                updateItemsToFind();
+                const statusElement = document.getElementById('puzzleStatus');
+                statusElement.innerHTML = `Cabin Search ${currentPuzzle + 1}: Find all the items again!`;
+                statusElement.style.background = 'rgba(0, 100, 0, 0.3)';
+                statusElement.style.borderColor = '#00ff00';
+            }
+
+            // --- Draw physics info for debugging ---
+            function drawPhysicsInfo(sk, totalTilt) {
+                sk.fill(255, 255, 255, 180);
+                sk.textAlign(sk.LEFT);
+                sk.textSize(11);
+                const velocity = Math.sqrt(lantern.velocity.x ** 2 + lantern.velocity.y ** 2);
+                const angle = Math.atan2(lantern.position.y - anchor.position.y, lantern.position.x - anchor.position.x) * 180 / Math.PI;
+                sk.text(`Lantern Velocity: ${velocity.toFixed(2)}`, 10, CANVAS_HEIGHT - 100);
+                sk.text(`Swing Angle: ${angle.toFixed(1)}°`, 10, CANVAS_HEIGHT - 85);
+                sk.text(`Wind Strength: ${(windForce * 2500).toFixed(1)}%`, 10, CANVAS_HEIGHT - 70);
+                sk.text(`Ship Speed: ${(shipSpeed * 20).toFixed(1)}%`, 10, CANVAS_HEIGHT - 55);
+                sk.text(`Wave Intensity: ${(waveIntensity * 45 / Math.PI).toFixed(1)}°`, 10, CANVAS_HEIGHT - 40);
+                sk.text(`Auto Tilt: ${(autoTilt * 180 / Math.PI).toFixed(1)}°`, 10, CANVAS_HEIGHT - 25);
+            }
+
+            // --- Reset the simulation to initial state ---
+            function resetSimulation() {
+                World.clear(world);
+                Engine.clear(engine);
+                document.getElementById('windSlider').value = 0;
+                document.getElementById('speedSlider').value = 0;
+                document.getElementById('wavesSlider').value = 0;
+                document.getElementById('tiltSlider').value = 0;
+                document.getElementById('windValue').textContent = '0%';
+                document.getElementById('speedValue').textContent = '0%';
+                document.getElementById('wavesValue').textContent = '0°';
+                document.getElementById('tiltValue').textContent = '0°';
+                windForce = 0;
+                shipSpeed = 0;
+                waveIntensity = 0;
+                manualTilt = 0;
+                previousSpeed = 0;
+                speedChangeTime = 0;
+                puzzleSolved = false;
+                currentPuzzle = 0;
+                time = 0;
+                foundItems.clear();
+                setupPhysics();
+                setupWallObjects();
+                setupSpecialObjects();
+                updateFoundItems();
+                updateItemsToFind();
+                const statusElement = document.getElementById('puzzleStatus');
+                statusElement.innerHTML = 'Navigate the ship\'s cabin! Use wind and movement to illuminate hidden treasures in the darkness.';
+                statusElement.style.background = 'rgba(0, 100, 0, 0.3)';
+                statusElement.style.borderColor = '#00ff00';
+            }
+        });
+    </script>
+</body>
+</html>

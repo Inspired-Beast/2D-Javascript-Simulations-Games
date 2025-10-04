@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rope-Swinging Adventure Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            color: white;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            background: linear-gradient(45deg, #ff6b6b, #feca57);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            color: #a8a8a8;
+        }
+        #canvas-container {
+            border: 3px solid #444;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin: 20px 0;
+            background: #000;
+        }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 25px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .reset-btn {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a6f);
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        }
+        .reset-btn:hover {
+            background: linear-gradient(45deg, #ee5a6f, #ff6b6b);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+        }
+        .info-panel {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .stat-item {
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #feca57;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            color: #ccc;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #feca57;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧗‍♂️ Canyon Rope Adventure</h1>
+        <p class="subtitle">Physics-Based Rope Swinging Simulation - Pulley Platform Edition</p>
+        <div id="canvas-container"></div>
+        <div class="controls">
+            <button class="reset-btn" onclick="resetSimulation()">🔄 Reset Simulation</button>
+        </div>
+        <div class="info-panel">
+            <h3>🎯 Real-Time Physics Data</h3>
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">Rope Tension</div>
+                    <div class="stat-value" id="tension">0 N</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Speed</div>
+                    <div class="stat-value" id="speed">0 m/s</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Angle</div>
+                    <div class="stat-value" id="angle">0°</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Height</div>
+                    <div class="stat-value" id="height">0 m</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Energy</div>
+                    <div class="stat-value" id="energy">0 J</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Status</div>
+                    <div class="stat-value" id="status">Ready</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Time</div>
+                    <div class="stat-value" id="time">0.0 s</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Swing Count</div>
+                    <div class="stat-value" id="swings">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Import map for ES modules -->
+    <script type="importmap">
+      {
+        "imports": {
+          "p5": "https://esm.sh/p5@1.4.0"
+        }
+      }
+    </script>
+    
+    <!-- Main simulation script -->
+    <script type="module">
+        // Import p5.js library
+        import p5 from 'p5';
+        
+        // Global variables for simulation components
+        let canvas;
+        let adventurer;
+        let rope;
+        let canyon;
+        let particles = [];
+        let clouds = [];
+        let birds = [];
+        let startTime;
+        let simulationRunning = false;
+        let swingCount = 0;
+        let lastAngleDirection = 0;
+
+        // Physics constants - tuned for realistic energy loss and consistent speed
+        const GRAVITY = 25.0; // Maintained for consistent speed
+        const AIR_RESISTANCE = 0.008; // Increased for more realistic energy loss
+        const ROPE_FRICTION = 0.002; // Added rope friction for energy loss
+        const ROPE_BREAK_TENSION = 15000; // Higher threshold to prevent dropping
+        const PIXELS_PER_METER = 20; // Conversion factor for display
+        const ENERGY_LOSS_FACTOR = 0.992; // More significant energy loss per swing
+        const MASS_DAMPING = 0.15; // Additional damping due to player mass
+        const TIME_SCALE = 2.5; // Speed multiplier for all physics
+
+        /**
+         * Canyon class - Enhanced design with increased height, pulley system, and platform
+         */
+        class Canyon {
+            constructor() {
+                this.leftCliff = [];
+                this.rightCliff = [];
+                this.canyonWidth = 600;
+                this.flatTopHeight = 40; // Further reduced for more dramatic canyon
+                this.transparentHeight = 50; // Minimal transparent height
+                this.pulleyHeight = 30; // Height of pulley system above canyon
+                this.platformWidth = 80; // Width of starting platform
+                this.platformDepth = 25; // Depth of platform extending outward
+                this.middlePlatformWidth = 120; // Middle platform width
+                this.middlePlatformHeight = 20; // Middle platform height
+                this.generateCliffs();
+                this.generateEnvironment();
+            }
+            
+            /**
+             * Generates more realistic cliff geometry with dramatically increased height
+             */
+            generateCliffs() {
+                this.leftCliff = [];
+                this.rightCliff = [];
+                let leftCliffEdge = 200; // Adjusted for new canyon width
+                
+                // Generate left cliff with more natural erosion pattern and dramatically increased height
+                for (let i = this.transparentHeight; i <= height + 200; i += 4) { // Much taller cliffs
+                    let x = leftCliffEdge;
+                    if (i > this.flatTopHeight + this.transparentHeight) {
+                        // More dramatic cliff face with realistic erosion
+                        let erosion = Math.sin(i * 0.015) * 35 + Math.sin(i * 0.04) * 25 + Math.sin(i * 0.08) * 15;
+                        let steepness = map(i, this.flatTopHeight + this.transparentHeight, height + 200, 0, 80); // Increased steepness
+                        x = leftCliffEdge - erosion - steepness;
+                    }
+                    this.leftCliff.push({x: x, y: i});
+                }
+                
+                // Generate right cliff with matching erosion pattern and dramatically increased height
+                let rightCliffEdge = leftCliffEdge + this.canyonWidth;
+                for (let i = this.transparentHeight; i <= height + 200; i += 4) { // Much taller cliffs
+                    let x = rightCliffEdge;
+                    if (i > this.flatTopHeight + this.transparentHeight) {
+                        let erosion = Math.sin(i * 0.015 + 100) * 35 + Math.sin(i * 0.04 + 50) * 25 + Math.sin(i * 0.08 + 25) * 15;
+                        let steepness = map(i, this.flatTopHeight + this.transparentHeight, height + 200, 0, 80); // Increased steepness
+                        x = rightCliffEdge + erosion + steepness;
+                    }
+                    this.rightCliff.push({x: x, y: i});
+                }
+            }
+            /**
+ * Draws the platform on the right canyon wall
+ */
+drawMiddlePlatform() {
+    let rightCliffEdge = 200 + this.canyonWidth;
+    let platformY = height / 2 - 80; // Higher up on the right wall for better swing angle
+    let platformX = rightCliffEdge - 15; // Attached to the right cliff face
+    
+    // Main platform structure with sandstone appearance
+    fill(194, 154, 108);
+    stroke(139, 119, 101);
+    strokeWeight(4);
+    rect(platformX, platformY, this.middlePlatformWidth, this.middlePlatformHeight, 8);
+    
+    // Sandstone layering effect
+    fill(180, 140, 100);
+    noStroke();
+    rect(platformX + 5, platformY + 3, this.middlePlatformWidth - 10, 3);
+    rect(platformX + 8, platformY + 8, this.middlePlatformWidth - 16, 3);
+    rect(platformX + 3, platformY + 13, this.middlePlatformWidth - 6, 3);
+    
+    // Platform support brackets attached to cliff
+    fill(160, 130, 95);
+    stroke(120, 100, 75);
+    strokeWeight(3);
+    let bracketWidth = 8;
+    let bracketHeight = 25;
+    
+    // Support brackets extending from cliff
+    rect(rightCliffEdge - 5, platformY + 5, bracketWidth, bracketHeight);
+    rect(rightCliffEdge - 5, platformY + this.middlePlatformHeight - 15, bracketWidth, bracketHeight);
+    
+    // Horizontal support beams
+    rect(platformX, platformY + this.middlePlatformHeight, this.middlePlatformWidth, 8);
+    
+    // Platform edge details
+    fill(220, 180, 140);
+    noStroke();
+    rect(platformX, platformY - 2, this.middlePlatformWidth, 4, 4);
+    
+    // Safety railings on platform
+    stroke(139, 119, 101);
+    strokeWeight(3);
+    line(platformX, platformY - 2, platformX, platformY - 15);
+    line(platformX + this.middlePlatformWidth, platformY - 2, platformX + this.middlePlatformWidth, platformY - 15);
+    line(platformX, platformY - 15, platformX + this.middlePlatformWidth, platformY - 15);
+    
+    // Decorative elements
+    fill(160, 130, 95);
+    noStroke();
+    ellipse(platformX + 20, platformY + 10, 8, 8);
+    ellipse(platformX + this.middlePlatformWidth - 20, platformY + 10, 8, 8);
+}
+            /**
+             * Creates environmental elements
+             */
+            generateEnvironment() {
+                clouds = [];
+                birds = [];
+                
+                // Generate clouds with varied sizes
+                for (let i = 0; i < 10; i++) {
+                    clouds.push({
+                        x: random(width),
+                        y: random(40, 180),
+                        size: random(25, 70),
+                        speed: random(0.15, 0.6),
+                        opacity: random(70, 140)
+                    });
+                }
+                
+                // Generate birds with varied behavior
+                for (let i = 0; i < 8; i++) {
+                    birds.push({
+                        x: random(width),
+                        y: random(40, 150),
+                        speed: random(0.8, 2.2),
+                        wingPhase: random(TWO_PI),
+                        amplitude: random(12, 30)
+                    });
+                }
+            }
+            /**
+         * Returns middle platform position for alternative start
+         */
+        getMiddlePlatformPosition() {
+            let centerX = 200 + this.canyonWidth / 2;
+            let platformY = height / 2 + 50;
+            return {
+                x: centerX,
+                y: platformY - 15
+            };
+        }
+            /**
+             * Enhanced canyon drawing with pulley system and platform
+             */
+            draw() {
+                // Enhanced sky gradient with more realistic colors
+                for (let i = 0; i <= height; i++) {
+                    let inter = map(i, 0, height, 0, 1);
+                    let skyColor = lerpColor(
+                        color(255, 180, 50), // Warmer orange sunrise
+                        color(255, 120, 70), // Deeper orange-red
+                        inter * 0.7
+                    );
+                    stroke(skyColor);
+                    line(0, i, width, i);
+                }
+                
+                // Draw enhanced clouds with depth
+                for (let cloud of clouds) {
+                    fill(255, 255, 255, cloud.opacity);
+                    noStroke();
+                    this.drawEnhancedCloud(cloud.x, cloud.y, cloud.size);
+                    cloud.x += cloud.speed;
+                    if (cloud.x > width + cloud.size) {
+                        cloud.x = -cloud.size;
+                        cloud.y = random(40, 180);
+                    }
+                }
+                
+                // Draw enhanced birds with realistic flight patterns
+                stroke(40);
+                strokeWeight(2);
+                for (let bird of birds) {
+                    let yOffset = sin(bird.x * 0.008) * bird.amplitude;
+                    this.drawEnhancedBird(bird.x, bird.y + yOffset, bird.wingPhase);
+                    bird.x += bird.speed;
+                    bird.wingPhase += 0.25;
+                    if (bird.x > width + 30) {
+                        bird.x = -30;
+                        bird.y = random(40, 150);
+                    }
+                }
+                
+                // Draw pulley system at the top
+                this.drawPulleySystem();
+                
+                // Draw starting platform
+                this.drawStartingPlatform();
+                // Draw middle platform
+                this.drawMiddlePlatform();
+                // Draw enhanced cliff faces with realistic coloring
+                this.drawCliffFace(this.leftCliff, true);
+                this.drawCliffFace(this.rightCliff, false);
+                
+                // Add atmospheric depth and details
+                this.drawAtmosphericEffects();
+                this.drawRockFormations();
+                this.drawVegetation();
+            }
+            /**
+ * Returns right canyon platform position for starting
+ */
+getMiddlePlatformPosition() {
+    let rightCliffEdge = 200 + this.canyonWidth;
+    let platformY = height / 2 - 80; // Higher up for better swing
+    let platformX = rightCliffEdge - 15 + (this.middlePlatformWidth / 2); // Center of platform
+    return {
+        x: platformX,
+        y: platformY - 15
+    };
+}
+            /**
+             * Draws the pulley system at the top of the canyon
+             */
+            drawPulleySystem() {
+                let centerX = 200 + this.canyonWidth / 2;
+                let pulleyY = this.transparentHeight + this.pulleyHeight;
+                
+                // Draw main support beam across canyon
+                stroke(101, 67, 33);
+                strokeWeight(12);
+                line(200 - 20, pulleyY, 200 + this.canyonWidth + 20, pulleyY);
+                
+                // Draw vertical support posts
+                strokeWeight(8);
+                stroke(139, 69, 19);
+                line(200 - 20, pulleyY - 40, 200 - 20, pulleyY + 8);
+                line(200 + this.canyonWidth + 20, pulleyY - 40, 200 + this.canyonWidth + 20, pulleyY + 8);
+                
+                // Draw pulley wheel at center
+                fill(80, 80, 80);
+                stroke(60, 60, 60);
+                strokeWeight(3);
+                ellipse(centerX, pulleyY, 25, 25);
+                
+                // Pulley wheel details
+                fill(100, 100, 100);
+                noStroke();
+                ellipse(centerX, pulleyY, 15, 15);
+                fill(40, 40, 40);
+                ellipse(centerX, pulleyY, 6, 6);
+                
+                // Draw pulley mounting bracket
+                fill(120, 120, 120);
+                stroke(80, 80, 80);
+                strokeWeight(2);
+                rect(centerX - 8, pulleyY - 15, 16, 12, 3);
+                
+                // Support cables
+                stroke(160, 160, 160);
+                strokeWeight(2);
+                line(centerX - 10, pulleyY - 8, 200 - 15, pulleyY);
+                line(centerX + 10, pulleyY - 8, 200 + this.canyonWidth + 15, pulleyY);
+            }
+            
+            /**
+             * Draws the starting platform extending from right cliff
+             */
+            drawStartingPlatform() {
+                let rightCliffEdge = 200 + this.canyonWidth;
+                let platformY = this.transparentHeight + this.flatTopHeight;
+                let platformX = rightCliffEdge + 10;
+                
+                // Platform base
+                fill(139, 69, 19);
+                stroke(101, 67, 33);
+                strokeWeight(3);
+                rect(platformX, platformY - 8, this.platformWidth, 15, 5);
+                
+                // Platform support beams
+                strokeWeight(6);
+                stroke(101, 67, 33);
+                line(platformX + 10, platformY + 7, platformX + 10, platformY + 25);
+                line(platformX + this.platformWidth - 10, platformY + 7, platformX + this.platformWidth - 10, platformY + 25);
+                line(platformX + this.platformWidth/2, platformY + 7, platformX + this.platformWidth/2, platformY + 25);
+                
+                // Platform railings
+                strokeWeight(4);
+                stroke(160, 82, 45);
+                line(platformX, platformY - 8, platformX, platformY - 25);
+                line(platformX + this.platformWidth, platformY - 8, platformX + this.platformWidth, platformY - 25);
+                line(platformX, platformY - 25, platformX + this.platformWidth, platformY - 25);
+                
+                // Decorative platform details
+                fill(160, 82, 45);
+                noStroke();
+                for (let i = 0; i < 5; i++) {
+                    let nailX = platformX + 15 + i * 12;
+                    ellipse(nailX, platformY - 2, 4, 4);
+                }
+                
+                // Platform ladder/steps
+                stroke(101, 67, 33);
+                strokeWeight(3);
+                for (let i = 0; i < 3; i++) {
+                    let stepY = platformY + 10 + i * 8;
+                    line(rightCliffEdge - 5, stepY, rightCliffEdge + 8, stepY);
+                }
+            }
+            
+            /**
+             * Draws individual cliff face with realistic shading
+             */
+            drawCliffFace(cliffPoints, isLeft) {
+                if (cliffPoints.length === 0) return;
+                
+                // Base cliff color with gradient
+                let baseColor = color(180, 100, 80);
+                let shadowColor = color(140, 80, 60);
+                
+                // Draw main cliff body
+                fill(baseColor);
+                stroke(100, 60, 40);
+                strokeWeight(2);
+                beginShape();
+                if (isLeft) {
+                    vertex(0, this.transparentHeight);
+                    vertex(0, height);
+                } else {
+                    vertex(width, this.transparentHeight);
+                    vertex(width, height);
+                }
+                for (let i = cliffPoints.length - 1; i >= 0; i--) {
+                    if (cliffPoints[i].y <= height) {
+                        vertex(cliffPoints[i].x, cliffPoints[i].y);
+                    }
+                }
+                if (cliffPoints.length > 0) {
+                    if (isLeft) {
+                        vertex(cliffPoints[0].x, this.transparentHeight);
+                    } else {
+                        vertex(cliffPoints[0].x, this.transparentHeight);
+                    }
+                }
+                endShape(CLOSE);
+                
+                // Add shadow effects for depth
+                fill(shadowColor);
+                noStroke();
+                for (let i = 0; i < cliffPoints.length - 1; i++) {
+                    if (cliffPoints[i].y > this.flatTopHeight + this.transparentHeight && cliffPoints[i].y <= height) {
+                        let shadowWidth = 18;
+                        if (isLeft) {
+                            quad(
+                                cliffPoints[i].x, cliffPoints[i].y,
+                                cliffPoints[i].x - shadowWidth, cliffPoints[i].y,
+                                cliffPoints[i+1].x - shadowWidth, cliffPoints[i+1].y,
+                                cliffPoints[i+1].x, cliffPoints[i+1].y
+                            );
+                        } else {
+                            quad(
+                                cliffPoints[i].x, cliffPoints[i].y,
+                                cliffPoints[i].x + shadowWidth, cliffPoints[i].y,
+                                cliffPoints[i+1].x + shadowWidth, cliffPoints[i+1].y,
+                                cliffPoints[i+1].x, cliffPoints[i+1].y
+                            );
+                        }
+                    }
+                }
+            }
+            
+            /**
+             * Enhanced cloud drawing
+             */
+            drawEnhancedCloud(x, y, size) {
+                // Main cloud body with more realistic shape
+                ellipse(x, y, size, size * 0.6);
+                ellipse(x + size * 0.35, y, size * 0.75, size * 0.5);
+                ellipse(x - size * 0.25, y, size * 0.55, size * 0.4);
+                ellipse(x + size * 0.1, y - size * 0.2, size * 0.65, size * 0.4);
+                ellipse(x - size * 0.15, y + size * 0.12, size * 0.45, size * 0.3);
+            }
+            
+            /**
+             * Enhanced bird drawing
+             */
+            drawEnhancedBird(x, y, phase) {
+                let wingSpan = sin(phase) * 6;
+                strokeWeight(2);
+                stroke(30, 30, 30);
+                // Body
+                line(x - 4, y, x + 4, y);
+                // Wings
+                line(x - 6, y + wingSpan, x + 6, y - wingSpan);
+                line(x - 6, y - wingSpan, x + 6, y + wingSpan);
+            }
+            
+            /**
+             * Adds atmospheric effects for depth
+             */
+            drawAtmosphericEffects() {
+                // Heat shimmer effect
+                fill(255, 255, 255, 15);
+                noStroke();
+                for (let i = 0; i < 6; i++) {
+                    let shimmerY = height - 180 + sin(frameCount * 0.08 + i * 40) * 25;
+                    ellipse(width/2, shimmerY, 350, 35);
+                }
+                
+                // Dust particles in air
+                fill(255, 200, 150, 80);
+                for (let i = 0; i < 20; i++) {
+                    let dustX = (frameCount * 0.4 + i * 40) % width;
+                    let dustY = 180 + sin(frameCount * 0.015 + i) * 80;
+                    ellipse(dustX, dustY, 2, 2);
+                }
+            }
+            
+            /**
+             * Draws rock formations and geological details
+             */
+            drawRockFormations() {
+                // Rock layers with realistic geological stratification
+                stroke(120, 70, 50);
+                strokeWeight(1.5);
+                for (let y = this.transparentHeight + 60; y < height; y += 35) {
+                    // Left cliff layers
+                    for (let i = 0; i < this.leftCliff.length - 1; i++) {
+                        if (this.leftCliff[i].y >= y && this.leftCliff[i].y <= y + 6 && this.leftCliff[i].y <= height) {
+                            line(0, y, this.leftCliff[i].x, y);
+                        }
+                    }
+                    // Right cliff layers
+                    for (let i = 0; i < this.rightCliff.length - 1; i++) {
+                        if (this.rightCliff[i].y >= y && this.rightCliff[i].y <= y + 6 && this.rightCliff[i].y <= height) {
+                            line(this.rightCliff[i].x, y, width, y);
+                        }
+                    }
+                }
+                
+                // Add mineral veins
+                stroke(255, 215, 0, 120);
+                strokeWeight(1);
+                for (let i = 0; i < 10; i++) {
+                    let veinY = this.transparentHeight + 80 + i * 35;
+                    if (veinY >= height) break;
+                    
+                    let leftCliffIndex = Math.floor((veinY - this.transparentHeight) / 4);
+                    let rightCliffIndex = Math.floor((veinY - this.transparentHeight) / 4);
+                    let leftX = this.leftCliff[leftCliffIndex]?.x || 200;
+                    let rightX = this.rightCliff[rightCliffIndex]?.x || 605;
+                    
+                    // Jagged mineral veins
+                    for (let x = 40; x < leftX; x += 18) {
+                        line(x, veinY + sin(x * 0.08) * 4, x + 12, veinY + sin((x+12) * 0.08) * 4);
+                    }
+                    for (let x = rightX; x < width - 40; x += 18) {
+                        line(x, veinY + sin(x * 0.08) * 4, x + 12, veinY + sin((x+12) * 0.08) * 4);
+                    }
+                }
+            }
+            
+            /**
+             * Adds sparse desert vegetation
+             */
+            drawVegetation() {
+                // Small desert plants on cliff tops
+                fill(100, 150, 50);
+                noStroke();
+                
+                // Left cliff vegetation
+                for (let i = 0; i < 8; i++) {
+                    let plantX = 40 + i * 20;
+                    let plantY = this.transparentHeight + this.flatTopHeight - 5;
+                    if (plantY < height) {
+                        ellipse(plantX, plantY, 6, 10);
+                        ellipse(plantX + 2, plantY - 4, 4, 6);
+                    }
+                }
+                
+                // Right cliff vegetation (not on platform)
+                for (let i = 0; i < 6; i++) {
+                    let plantX = width - 180 + i * 20;
+                    let plantY = this.transparentHeight + this.flatTopHeight - 5;
+                    if (plantY < height) {
+                        ellipse(plantX, plantY, 6, 10);
+                        ellipse(plantX - 2, plantY - 4, 4, 6);
+                    }
+                }
+            }
+            
+            /**
+             * Returns pulley anchor position for rope
+             */
+            getPulleyAnchorPosition() {
+                return {
+                    x: 200 + this.canyonWidth / 2,
+                    y: this.transparentHeight + this.pulleyHeight
+                };
+            }
+            
+            /**
+             * Returns starting position for adventurer on platform
+             */
+            getStartPosition() {
+                let rightCliffEdge = 200 + this.canyonWidth;
+                return {
+                    x: rightCliffEdge + 50, // Center of platform
+                    y: this.transparentHeight + this.flatTopHeight - 15
+                };
+            }
+            
+            /**
+             * Returns landing zones
+             */
+            getLeftLandingZone() {
+                return 200 - 60;
+            }
+            
+            getRightLandingZone() {
+                return 200 + this.canyonWidth + 60;
+            }
+        }
+
+        /**
+         * Enhanced Rope class with pulley system
+         */
+        class Rope {
+            constructor(anchorX, anchorY, length) {
+                this.anchorX = anchorX;
+                this.anchorY = anchorY;
+                this.length = length;
+                this.segments = [];
+                this.numSegments = 35; // More segments for smoother rope
+                this.tension = 0;
+                this.broken = false;
+                
+                // Initialize rope segments
+                for (let i = 0; i < this.numSegments; i++) {
+                    this.segments.push({
+                        x: anchorX,
+                        y: anchorY + (i * length / this.numSegments),
+                        oldX: anchorX,
+                        oldY: anchorY + (i * length / this.numSegments)
+                    });
+                }
+            }
+            
+            /**
+             * Enhanced rope physics with pulley system
+             */
+            update(adventurerX, adventurerY, tension) {
+                this.tension = tension;
+                
+                if (tension > ROPE_BREAK_TENSION && !this.broken) {
+                    this.broken = true;
+                    // Rope break effect
+                    for (let i = 0; i < 25; i++) {
+                        particles.push(new Particle(
+                            this.segments[this.numSegments - 1].x,
+                            this.segments[this.numSegments - 1].y,
+                            random(-10, 10),
+                            random(-8, 4),
+                            color(139, 69, 19)
+                        ));
+                    }
+                }
+                
+                if (!this.broken) {
+                    // Verlet integration with improved stability
+                    for (let i = 1; i < this.numSegments; i++) {
+                        let segment = this.segments[i];
+                        let velX = segment.x - segment.oldX;
+                        let velY = segment.y - segment.oldY;
+                        segment.oldX = segment.x;
+                        segment.oldY = segment.y;
+                        segment.x += velX * 0.997;
+                        segment.y += velY * 0.997 + 0.12; // Gravity
+                    }
+                    
+                    // Multiple constraint iterations for stability
+                    for (let iter = 0; iter < 70; iter++) {
+                        // Pulley anchor constraint
+                        this.segments[0].x = this.anchorX;
+                        this.segments[0].y = this.anchorY;
+                        
+                        // Adventurer constraint
+                        if (adventurer && !adventurer.inFreefall) {
+                            this.segments[this.numSegments - 1].x = adventurerX;
+                            this.segments[this.numSegments - 1].y = adventurerY;
+                        }
+                        
+                        // Distance constraints
+                        for (let i = 0; i < this.numSegments - 1; i++) {
+                            let seg1 = this.segments[i];
+                            let seg2 = this.segments[i + 1];
+                            let dx = seg2.x - seg1.x;
+                            let dy = seg2.y - seg1.y;
+                            let distance = Math.sqrt(dx * dx + dy * dy);
+                            let targetDistance = this.length / this.numSegments;
+                            
+                            if (distance > 0) {
+                                let difference = targetDistance - distance;
+                                let percent = difference / distance / 2;
+                                let offsetX = dx * percent;
+                                let offsetY = dy * percent;
+                                
+                                if (i > 0) {
+                                    seg1.x -= offsetX;
+                                    seg1.y -= offsetY;
+                                }
+                                if (i < this.numSegments - 2 || adventurer.inFreefall) {
+                                    seg2.x += offsetX;
+                                    seg2.y += offsetY;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            /**
+             * Enhanced rope rendering with pulley system
+             */
+            draw() {
+                if (!this.broken) {
+                    // Draw rope through pulley
+                    for (let i = 0; i < this.numSegments - 1; i++) {
+                        let seg1 = this.segments[i];
+                        let seg2 = this.segments[i + 1];
+                        
+                        // Rope thickness varies with tension
+                        let thickness = map(this.tension, 0, ROPE_BREAK_TENSION, 5, 8);
+                        strokeWeight(thickness);
+                        
+                        // Color based on tension
+                        let tensionRatio = this.tension / ROPE_BREAK_TENSION;
+                        let ropeColor = lerpColor(color(101, 67, 33), color(255, 120, 120), tensionRatio);
+                        stroke(ropeColor);
+                        
+                        line(seg1.x, seg1.y, seg2.x, seg2.y);
+                    }
+                    
+                    // Rope texture highlights
+                    strokeWeight(1.5);
+                    stroke(160, 120, 80);
+                    for (let i = 0; i < this.numSegments - 1; i++) {
+                        let seg1 = this.segments[i];
+                        let seg2 = this.segments[i + 1];
+                        let offset = sin(frameCount * 0.04 + i * 0.4) * 1.5;
+                        line(seg1.x + offset, seg1.y, seg2.x + offset, seg2.y);
+                    }
+                    
+                    // Draw pulley wheel rotation effect
+                    push();
+                    translate(this.anchorX, this.anchorY);
+                    rotate(frameCount * 0.02);
+                    stroke(40, 40, 40);
+                    strokeWeight(2);
+                    for (let i = 0; i < 8; i++) {
+                        let angle = (TWO_PI / 8) * i;
+                        let x1 = cos(angle) * 8;
+                        let y1 = sin(angle) * 8;
+                        let x2 = cos(angle) * 12;
+                        let y2 = sin(angle) * 12;
+                        line(x1, y1, x2, y2);
+                    }
+                    pop();
+                } else {
+                    // Broken rope rendering
+                    stroke(101, 67, 33);
+                    strokeWeight(5);
+                    let danglingSegments = Math.floor(this.numSegments * 0.3);
+                    for (let i = 0; i < danglingSegments - 1; i++) {
+                        let seg1 = this.segments[i];
+                        let seg2 = this.segments[i + 1];
+                        line(seg1.x, seg1.y, seg2.x, seg2.y);
+                    }
+                }
+            }
+            
+            getEndPosition() {
+                if (this.broken || this.segments.length === 0) {
+                    return { x: this.anchorX, y: this.anchorY + this.length };
+                }
+                let lastSegment = this.segments[this.numSegments - 1];
+                return { x: lastSegment.x, y: lastSegment.y };
+            }
+        }
+
+        /**
+         * Enhanced Adventurer class - starts from platform
+         */
+        class Adventurer {
+            constructor(x, y, ropeLength, anchorX, anchorY) {
+                this.startX = x;
+                this.startY = y;
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.mass = 75; // kg
+                this.ropeLength = ropeLength;
+                this.anchorX = anchorX;
+                this.anchorY = anchorY;
+                
+                // Calculate initial angle based on starting position
+                let dx = this.x - this.anchorX;
+                let dy = this.y - this.anchorY;
+                this.angle = Math.atan2(dx, dy);
+                this.angularVelocity = 0;
+                
+                this.inFreefall = false;
+                this.onGround = false;
+                this.tension = 0;
+                this.hasLanded = false;
+                this.landingSide = null;
+                this.totalEnergy = 0;
+                this.maxAngle = Math.abs(this.angle);
+                this.initialEnergy = 0;
+                
+                // Animation properties
+                this.armAngle = 0;
+                this.legAngle = 0;
+                this.bodyTilt = 0;
+                
+                // Calculate initial energy
+                let initialHeight = this.ropeLength * (1 - Math.cos(Math.abs(this.angle)));
+                this.initialEnergy = this.mass * GRAVITY * initialHeight;
+            }
+            
+            /**
+             * Enhanced physics with realistic energy loss
+             */
+            update() {
+                if (this.onGround) return;
+                
+                if (!this.inFreefall && !rope.broken) {
+                    // Realistic pendulum physics
+                    let gravity = GRAVITY * 2.5;
+                    
+                    // Calculate angular acceleration
+                    let angularAcceleration = -(gravity / this.ropeLength) * Math.sin(this.angle);
+                    
+                    // Enhanced air resistance
+                    let speed = Math.abs(this.angularVelocity * this.ropeLength);
+                    let airResistance = AIR_RESISTANCE * speed * speed * Math.sign(this.angularVelocity);
+                    angularAcceleration -= airResistance / (this.mass * this.ropeLength);
+                    
+                    // Additional friction and damping
+                    let ropeFriction = ROPE_FRICTION * this.angularVelocity;
+                    let massDamping = MASS_DAMPING * this.angularVelocity * Math.abs(this.angularVelocity);
+                    angularAcceleration -= (ropeFriction + massDamping) / (this.mass * this.ropeLength);
+                    
+                    // Update angular motion
+                    this.angularVelocity += angularAcceleration * (TIME_SCALE/60);
+                    this.angularVelocity *= ENERGY_LOSS_FACTOR;
+                    this.angle += this.angularVelocity * (TIME_SCALE/60);
+                    
+                    // Track swing count
+                    let currentDirection = Math.sign(this.angularVelocity);
+                    if (currentDirection !== lastAngleDirection && currentDirection !== 0) {
+                        if (lastAngleDirection !== 0) {
+                            swingCount++;
+                            this.angularVelocity *= 0.95;
+                        }
+                        lastAngleDirection = currentDirection;
+                        
+                        let currentMaxAngle = Math.abs(this.angle);
+                        if (currentMaxAngle < this.maxAngle) {
+                            this.maxAngle = currentMaxAngle;
+                        }
+                    }
+                    
+                    // Convert to cartesian coordinates
+                    this.x = this.anchorX + this.ropeLength * Math.sin(this.angle);
+                    this.y = this.anchorY + this.ropeLength * Math.cos(this.angle);
+                    
+                    // Calculate tension
+                    let centripitalAcceleration = this.angularVelocity * this.angularVelocity * this.ropeLength;
+                    let radialComponent = this.mass * GRAVITY * Math.cos(this.angle);
+                    this.tension = this.mass * centripitalAcceleration + Math.max(0, radialComponent);
+                    this.tension = Math.min(this.tension, ROPE_BREAK_TENSION * 0.8);
+                    
+                    // Calculate total energy
+                    let height = this.ropeLength * (1 - Math.cos(Math.abs(this.angle)));
+                    let potentialEnergy = this.mass * GRAVITY * height;
+                    let kineticEnergy = 0.5 * this.mass * Math.pow(this.angularVelocity * this.ropeLength, 2);
+                    this.totalEnergy = potentialEnergy + kineticEnergy;
+                    
+                    // Auto-release logic for crossing to left side
+                    let releaseAngle = Math.PI / 6;
+                    let minSpeed = 6.0;
+                    let currentSpeed = Math.abs(this.angularVelocity * this.ropeLength / PIXELS_PER_METER);
+                    
+                    let energyRatio = this.totalEnergy / this.initialEnergy;
+                    if (this.angle >= releaseAngle && this.angularVelocity > 0 && 
+                        currentSpeed > minSpeed && energyRatio > 0.3) {
+                        this.release();
+                    }
+                } else {
+                    // Freefall physics
+                    this.vy += GRAVITY * (TIME_SCALE/60);
+                    
+                    // Air resistance in freefall
+                    let speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    let dragX = AIR_RESISTANCE * 2 * speed * this.vx;
+                    let dragY = AIR_RESISTANCE * 2 * speed * this.vy;
+                    this.vx -= dragX;
+                    this.vy -= dragY;
+                    
+                    // Update position
+                    this.x += this.vx * PIXELS_PER_METER * (TIME_SCALE/60);
+                    this.y += this.vy * PIXELS_PER_METER * (TIME_SCALE/60);
+                    this.tension = 0;
+                }
+                
+                // Ground collision detection
+                let groundLevel = height - 80;
+                if (this.y > groundLevel && !this.hasLanded) {
+                    this.y = groundLevel;
+                    this.vy = 0;
+                    this.vx *= 0.3;
+                    this.onGround = true;
+                    this.hasLanded = true;
+                    
+                    // Determine landing location
+                    if (this.x < canyon.getLeftLandingZone()) {
+                        this.landingSide = 'left';
+                    } else if (this.x > canyon.getRightLandingZone()) {
+                        this.landingSide = 'right';
+                    } else {
+                        this.landingSide = 'canyon';
+                        this.y = height - 20;
+                    }
+                    
+                    // Landing particle effect
+                    for (let i = 0; i < 20; i++) {
+                        particles.push(new Particle(
+                            this.x,
+                            this.y,
+                            random(-8, 8),
+                            random(-6, 0),
+                            color(205, 92, 92)
+                        ));
+                    }
+                }
+                
+                this.updateAnimation();
+            }
+            
+            /**
+             * Enhanced animation system
+             */
+            updateAnimation() {
+                if (!this.inFreefall) {
+                    // Swinging animation
+                    this.armAngle = this.angle * 0.3 + sin(frameCount * 0.2) * 0.1;
+                    this.legAngle = sin(frameCount * 0.25) * 0.2;
+                    this.bodyTilt = this.angle * 0.2;
+                } else {
+                    // Freefall animation
+                    this.armAngle = sin(frameCount * 0.4) * 0.4;
+                    this.legAngle = cos(frameCount * 0.4) * 0.3;
+                    this.bodyTilt = atan2(this.vx, this.vy) * 0.15;
+                }
+            }
+            
+            /**
+             * Release from rope
+             */
+            release() {
+                if (!this.inFreefall) {
+                    this.inFreefall = true;
+                    let velocityReduction = 0.85;
+                    this.vx = this.angularVelocity * this.ropeLength * Math.cos(this.angle) / PIXELS_PER_METER * velocityReduction;
+                    this.vy = -this.angularVelocity * this.ropeLength * Math.sin(this.angle) / PIXELS_PER_METER * velocityReduction;
+                    
+                    // Release effect
+                    for (let i = 0; i < 15; i++) {
+                        particles.push(new Particle(
+                            this.x,
+                            this.y,
+                            random(-8, 8),
+                            random(-6, 4),
+                            color(255, 215, 0)
+                        ));
+                    }
+                }
+            }
+            
+            /**
+             * Enhanced character drawing
+             */
+            draw() {
+                push();
+                translate(this.x, this.y);
+                rotate(this.bodyTilt);
+                
+                // Head
+                fill(222, 184, 135);
+                stroke(0);
+                strokeWeight(2);
+                ellipse(0, -25, 22, 22);
+                
+                // Eyes
+                fill(0);
+                noStroke();
+                ellipse(-4, -27, 3, 3);
+                ellipse(4, -27, 3, 3);
+                
+                // Body
+                fill(0, 100, 200);
+                stroke(0);
+                strokeWeight(2);
+                rect(-10, -15, 20, 28, 5);
+                
+                // Arms
+                fill(222, 184, 135);
+                push();
+                translate(-8, -5);
+                rotate(this.armAngle);
+                rect(-3, 0, 6, 22);
+                ellipse(0, 24, 10, 10);
+                pop();
+                
+                push();
+                translate(8, -5);
+                rotate(-this.armAngle);
+                rect(-3, 0, 6, 22);
+                ellipse(0, 24, 10, 10);
+                pop();
+                
+                // Legs
+                fill(139, 69, 19);
+                push();
+                translate(-5, 13);
+                rotate(this.legAngle);
+                rect(-4, 0, 8, 24);
+                fill(0);
+                ellipse(0, 26, 12, 6);
+                pop();
+                
+                push();
+                translate(5, 13);
+                rotate(-this.legAngle);
+                rect(-4, 0, 8, 24);
+                fill(0);
+                ellipse(0, 26, 12, 6);
+                pop();
+                
+                // Hat
+                fill(160, 82, 45);
+                ellipse(0, -32, 26, 14);
+                
+                // Motion blur for high speeds
+                if (this.inFreefall || Math.abs(this.angularVelocity) > 1.0) {
+                    let speed = this.inFreefall ? 
+                        sqrt(this.vx * this.vx + this.vy * this.vy) : 
+                        Math.abs(this.angularVelocity * this.ropeLength / PIXELS_PER_METER);
+                    
+                    if (speed > 1.5) {
+                        fill(255, 255, 255, 25);
+                        noStroke();
+                        for (let i = 1; i <= 6; i++) {
+                            let prevX = this.inFreefall ? -this.vx * i * 3 : -Math.sin(this.angle) * i * 5;
+                            let prevY = this.inFreefall ? -this.vy * i * 3 : -Math.cos(this.angle) * i * 5;
+                            ellipse(prevX, prevY - 25, 22 - i * 2, 22 - i * 2);
+                        }
+                    }
+                }
+                
+                pop();
+            }
+            
+            /**
+             * Reset to initial state
+             */
+            reset() {
+                this.x = this.startX;
+                this.y = this.startY;
+                this.vx = 0;
+                this.vy = 0;
+                
+                let dx = this.x - this.anchorX;
+                let dy = this.y - this.anchorY;
+                this.angle = Math.atan2(dx, dy);
+                this.angularVelocity = 0;
+                
+                this.inFreefall = false;
+                this.onGround = false;
+                this.hasLanded = false;
+                this.landingSide = null;
+                this.tension = 0;
+                this.totalEnergy = 0;
+                this.maxAngle = Math.abs(this.angle);
+                this.armAngle = 0;
+                this.legAngle = 0;
+                this.bodyTilt = 0;
+                swingCount = 0;
+                lastAngleDirection = 0;
+                
+                let initialHeight = this.ropeLength * (1 - Math.cos(Math.abs(this.angle)));
+                this.initialEnergy = this.mass * GRAVITY * initialHeight;
+            }
+            
+            /**
+             * Get current status
+             */
+            getStatus() {
+                if (this.hasLanded && this.landingSide === 'left') return "Success! Crossed Canyon";
+                if (this.hasLanded && this.landingSide === 'right') return "Landed on Start Side";
+                if (this.hasLanded && this.landingSide === 'canyon') return "Fell into Canyon";
+                if (this.onGround) return "Landed";
+                if (this.inFreefall) return "Free Fall";
+                if (rope.broken) return "Rope Broken";
+                if (Math.abs(this.angularVelocity) < 0.1) return "Low Energy";
+                return "Swinging";
+            }
+        }
+
+        /**
+         * Enhanced Particle class
+         */
+        class Particle {
+            constructor(x, y, vx, vy, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.color = color;
+                this.life = 120;
+                this.maxLife = 120;
+                this.size = random(2, 6);
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.1; // Gravity
+                this.vx *= 0.98; // Air resistance
+                this.vy *= 0.98;
+                this.life--;
+            }
+            
+            draw() {
+                if (this.life > 0) {
+                    let alpha = map(this.life, 0, this.maxLife, 0, 255);
+                    fill(red(this.color), green(this.color), blue(this.color), alpha);
+                    noStroke();
+                    ellipse(this.x, this.y, this.size * (this.life / this.maxLife), this.size * (this.life / this.maxLife));
+                }
+            }
+            
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        /**
+         * P5.js setup function
+         */
+        function setup() {
+            canvas = createCanvas(1000, 600);
+            canvas.parent('canvas-container');
+            
+            // Initialize components
+            canyon = new Canyon();
+            
+            let ropeLength = 320; // Longer rope for higher pulley
+            let pulleyPos = canyon.getPulleyAnchorPosition();
+            rope = new Rope(pulleyPos.x, pulleyPos.y, ropeLength);
+            
+            // Start adventurer from platform
+            let startPos = canyon.getMiddlePlatformPosition();
+            adventurer = new Adventurer(
+                startPos.x,
+                startPos.y,
+                ropeLength,
+                pulleyPos.x,
+                pulleyPos.y
+            );
+            
+            startTime = millis();
+            simulationRunning = true;
+            swingCount = 0;
+            lastAngleDirection = 0;
+        }
+
+        /**
+         * P5.js main draw loop
+         */
+        function draw() {
+            background(220);
+            
+            // Draw environment
+            canyon.draw();
+            
+            // Update and draw particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].isDead()) particles.splice(i, 1);
+            }
+            
+            // Update physics
+            if (simulationRunning) {
+                adventurer.update();
+                rope.update(adventurer.x, adventurer.y, adventurer.tension);
+            }
+            
+            // Draw rope and adventurer
+            rope.draw();
+            adventurer.draw();
+            
+            // Update statistics
+            updateStats();
+        }
+
+        /**
+         * Enhanced statistics display
+         */
+        function updateStats() {
+            if (!adventurer) return;
+            
+            let currentTime = (millis() - startTime) / 1000;
+            let speed = 0;
+            
+            if (adventurer.inFreefall) {
+                speed = Math.sqrt(adventurer.vx * adventurer.vx + adventurer.vy * adventurer.vy);
+            } else {
+                speed = Math.abs(adventurer.angularVelocity * adventurer.ropeLength / PIXELS_PER_METER);
+            }
+            
+            let heightVal = Math.max(0, (height - 100 - adventurer.y) / PIXELS_PER_METER);
+            
+            // Update HTML elements
+            document.getElementById('tension').textContent = Math.round(adventurer.tension) + ' N';
+            document.getElementById('speed').textContent = speed.toFixed(1) + ' m/s';
+            document.getElementById('angle').textContent = Math.round(adventurer.angle * 180 / Math.PI) + '°';
+            document.getElementById('height').textContent = heightVal.toFixed(1) + ' m';
+            document.getElementById('energy').textContent = Math.round(adventurer.totalEnergy) + ' J';
+            document.getElementById('status').textContent = adventurer.getStatus();
+            document.getElementById('time').textContent = currentTime.toFixed(1) + ' s';
+            document.getElementById('swings').textContent = swingCount;
+        }
+
+        /**
+         * Reset simulation
+         */
+        window.resetSimulation = function() {
+            adventurer.reset();
+            rope.broken = false;
+            rope.tension = 0;
+            
+            // Reset rope segments
+            for (let i = 0; i < rope.numSegments; i++) {
+                rope.segments[i].x = rope.anchorX;
+                rope.segments[i].y = rope.anchorY + (i * rope.length / rope.numSegments);
+                rope.segments[i].oldX = rope.anchorX;
+                rope.segments[i].oldY = rope.anchorY + (i * rope.length / rope.numSegments);
+            }
+            
+            particles = [];
+            startTime = millis();
+            simulationRunning = true;
+            swingCount = 0;
+            lastAngleDirection = 0;
+        }
+
+        /**
+         * Keyboard controls
+         */
+        function keyPressed() {
+            if (key === ' ' || key === 'Enter') {
+                resetSimulation();
+            }
+            if (key === 'r' || key === 'R') {
+                if (adventurer && !adventurer.inFreefall && !adventurer.onGround) {
+                    adventurer.release();
+                }
+            }
+        }
+
+        /**
+         * Mouse interaction
+         */
+        function mousePressed() {
+            if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+                for (let i = 0; i < 10; i++) {
+                    particles.push(new Particle(
+                        mouseX,
+                        mouseY,
+                        random(-5, 5),
+                        random(-5, 5),
+                        color(255, 140, 0)
+                    ));
+                }
+            }
+        }
+
+        // Make functions global
+        window.setup = setup;
+        window.draw = draw;
+        window.keyPressed = keyPressed;
+        window.mousePressed = mousePressed;
+        
+        // Initialize p5.js
+        new p5();
+    </script>
+</body>
+</html>

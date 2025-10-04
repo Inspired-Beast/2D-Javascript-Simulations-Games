@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Electromagnetic Conductive Wire loop Induction Simulation</title>
+    <!-- Styling -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0c1445 0%, #1e3c72 50%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: white;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 2.5rem;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.6);
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        #simulation-container {
+            background: rgba(255,255,255,0.08);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.1);
+            max-width: 1200px;
+            width: 100%;
+        }
+        
+        #canvas-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 25px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        
+        #controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .control-group {
+            background: rgba(255,255,255,0.12);
+            padding: 15px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.15);
+            transition: all 0.3s ease;
+        }
+        
+        .control-group:hover {
+            background: rgba(255,255,255,0.18);
+            transform: translateY(-2px);
+        }
+        
+        .control-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+            color: #E6F3FF;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.2);
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            cursor: pointer;
+            box-shadow: 0 3px 8px rgba(76, 175, 80, 0.4);
+            border: 2px solid white;
+            transition: all 0.3s ease;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.6);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 3px 8px rgba(76, 175, 80, 0.4);
+        }
+        
+        .value-display {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #FFD700;
+            font-size: 0.9rem;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            grid-column: span 2;
+            margin-top: 10px;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.95rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        button:hover::before {
+            left: 100%;
+        }
+        
+        .reset-btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+        }
+        
+        .reset-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
+        }
+        
+        .toggle-btn {
+            background: linear-gradient(45deg, #FF6B6B, #EE5A52);
+            color: white;
+        }
+        
+        .toggle-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+        }
+        
+        .pause-btn {
+            background: linear-gradient(45deg, #FFA726, #FF9800);
+            color: white;
+        }
+        
+        .pause-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(255, 167, 38, 0.4);
+        }
+        
+        #physics-display {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .physics-box {
+            background: rgba(0,0,0,0.4);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .physics-box:hover {
+            background: rgba(0,0,0,0.6);
+            border-color: rgba(255,255,255,0.4);
+        }
+        
+        .physics-box .label {
+            font-size: 0.8rem;
+            color: #B0C4DE;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .physics-box .value {
+            font-family: 'Courier New', monospace;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #FFD700;
+        }
+        
+        .physics-box .unit {
+            font-size: 0.9rem;
+            color: #87CEEB;
+        }
+        
+        @media (max-width: 768px) {
+            #controls {
+                grid-template-columns: 1fr;
+            }
+            
+            .button-group {
+                grid-column: span 1;
+                flex-direction: column;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Electromagnetic Induction Physics Simulation</h1>
+    <div id="simulation-container">
+        <div id="canvas-container"></div>
+        
+        <div id="controls">
+            <div class="control-group">
+                <label for="expansionRate">Loop Expansion Rate</label>
+                <input type="range" id="expansionRate" min="0" max="10" step="0.2" value="2">
+                <div class="value-display"><span id="rateValue">2.0</span> units/s</div>
+            </div>
+            
+            <div class="control-group">
+                <label for="magneticField">Magnetic Field Strength</label>
+                <input type="range" id="magneticField" min="0.1" max="2" step="0.1" value="0.8">
+                <div class="value-display"><span id="fieldValue">0.8</span> T</div>
+            </div>
+            
+            <div class="control-group">
+                <label for="resistance">Circuit Resistance</label>
+                <input type="range" id="resistance" min="1" max="50" step="1" value="15">
+                <div class="value-display"><span id="resistanceValue">15</span> Ω</div>
+            </div>
+            
+            <div class="control-group">
+                <label for="oscillationMode">Oscillation Control</label>
+                <input type="range" id="oscillationMode" min="0" max="3" step="1" value="1">
+                <div class="value-display"><span id="modeValue">Auto Cycle</span></div>
+            </div>
+            
+            <div class="button-group">
+                <button id="resetBtn" class="reset-btn">Reset Simulation</button>
+                <button id="toggleFieldBtn" class="toggle-btn">Toggle B-Field Direction</button>
+                <button id="pauseBtn" class="pause-btn">Pause/Resume</button>
+            </div>
+        </div>
+        
+        <div id="physics-display">
+            <div class="physics-box">
+                <div class="label">Loop Radius</div>
+                <div class="value"><span id="radiusValue">80.00</span><span class="unit"> px</span></div>
+            </div>
+            <div class="physics-box">
+                <div class="label">Magnetic Flux</div>
+                <div class="value"><span id="fluxValue">0.0000</span><span class="unit"> Wb</span></div>
+            </div>
+            <div class="physics-box">
+                <div class="label">Flux Change Rate</div>
+                <div class="value"><span id="fluxRateValue">0.0000</span><span class="unit"> Wb/s</span></div>
+            </div>
+            <div class="physics-box">
+                <div class="label">Induced EMF</div>
+                <div class="value"><span id="emfValue">0.0000</span><span class="unit"> V</span></div>
+            </div>
+            <div class="physics-box">
+                <div class="label">Induced Current</div>
+                <div class="value"><span id="currentValue">0.0000</span><span class="unit"> A</span></div>
+            </div>
+            <div class="physics-box">
+                <div class="label">Power Dissipated</div>
+                <div class="value"><span id="powerValue">0.0000</span><span class="unit"> W</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import map for p5.js library -->
+    <script type="importmap">
+        {
+            "imports": {
+                "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"
+            }
+        }
+        </script>
+        
+    <!-- Main Script -->
+    <script type="module">
+        // ==========================================
+        // PHYSICS CONSTANTS AND VARIABLES
+        // ==========================================
+        
+        import "p5";
+
+        let canvas;
+        
+        // Loop geometry parameters
+        let loopRadius = 80;                    // Current radius of the conducting loop
+        let initialRadius = 80;                 // Starting radius for reset
+        let maxRadius = 220;                    // Maximum expansion radius (increased)
+        let minRadius = 30;                     // Minimum contraction radius
+        let expansionRate = 2;                  // Rate of loop size change
+        
+        // Physics parameters
+        let magneticField = 0.8;                // Magnetic field strength in Tesla
+        let fieldDirection = 1;                 // 1 for upward arrows, -1 for downward arrows
+        let resistance = 15;                    // Circuit resistance in Ohms
+        let oscillationMode = 1;                // 0: expand only, 1: auto cycle, 2: contract only, 3: manual
+        
+        // Calculated physics values
+        let magneticFlux = 0;                   // Current magnetic flux through loop
+        let previousFlux = 0;                   // Previous flux for derivative calculation
+        let fluxChangeRate = 0;                 // Rate of flux change (dΦ/dt)
+        let inducedEMF = 0;                     // Induced EMF by Faraday's law
+        let current = 0;                        // Current flowing through circuit
+        let power = 0;                          // Power dissipated in resistor
+        
+        // Simulation timing
+        let time = 0;                           // Simulation time counter
+        let deltaTime = 1/60;                   // Time step (60 FPS)
+        
+        // Animation and visual state variables
+        let needleAngle = 0;                    // Galvanometer needle angle
+        let currentArrowPhase = 0;              // Phase for animated current arrows
+        let glowIntensity = 0;                  // Intensity of loop glow effect
+        let isExpanding = true;                 // Direction flag for manual mode
+        let isPaused = false;                   // Pause state
+        let velocityRadius = 0;                 // Current velocity of radius change
+        
+        // Visual effects
+        let fieldLineAlpha = 150;               // Opacity of magnetic field lines
+        let currentFlowSpeed = 0;               // Speed of current flow animation
+        let particleEffects = [];               // Array for particle effects
+        
+        // Circuit layout constants (adjusted for larger loop)
+        const CIRCUIT_MARGIN = 280;             // Distance from center to circuit components
+        const COMPONENT_SPACING = 120;          // Vertical spacing between components
+        
+        // ==========================================
+        // MAIN P5.JS SETUP AND DRAW FUNCTIONS
+        // ==========================================
+        
+        /**
+         * Initial setup function called once when the program starts
+         * Initializes canvas, physics, controls, and particle systems
+         */
+        function setup() {
+            // Create canvas with larger dimensions to accommodate expanded circuit
+            canvas = createCanvas(1100, 800);
+            canvas.parent('canvas-container');
+            
+            // Initialize physics calculations
+            updatePhysics();
+            
+            // Setup UI event listeners for controls
+            setupControls();
+            
+            // Initialize particle effect system
+            initializeParticles();
+        }
+        
+        /**
+         * Main draw loop called 60 times per second
+         * Handles all rendering and animation updates
+         */
+        function draw() {
+            // Create dynamic gradient background
+            drawGradientBackground();
+            
+            // Update simulation only if not paused
+            if (!isPaused) {
+                time += deltaTime;              // Increment simulation time
+                updateLoopDynamics();           // Update loop size based on mode
+                updatePhysics();                // Calculate all physics values
+                updateVisualEffects();          // Update animations and particles
+            }
+            
+            // Render all simulation components in order
+            drawMagneticField();                // Background magnetic field arrows
+            drawCompleteCircuit();              // Circuit wiring
+            drawLoop();                         // Conducting loop with glow
+            drawGalvanometer();                 // EMF meter
+            drawResistor();                     // Circuit resistor
+            drawCurrentFlow();                  // Animated current arrows
+            drawFluxVisualization();            // Flux value display
+            drawParticleEffects();              // Current flow particles
+            drawInfoPanel();                    // Physics equations panel
+            
+            // Update all numerical displays in UI
+            updateDisplayValues();
+        }
+        
+        // ==========================================
+        // BACKGROUND AND FIELD RENDERING
+        // ==========================================
+        
+        /**
+         * Creates a smooth gradient background for visual appeal
+         */
+        function drawGradientBackground() {
+            for (let y = 0; y < height; y++) {
+                let inter = map(y, 0, height, 0, 1);
+                let c = lerpColor(color(15, 25, 45), color(25, 40, 70), inter);
+                stroke(c);
+                line(0, y, width, y);
+            }
+        }
+        
+        /**
+         * Renders vertical magnetic field arrows across the background
+         * Shows field direction (up/down) and strength with dashed arrows
+         */
+        function drawMagneticField() {
+            // Adjust field line opacity based on field strength
+            fieldLineAlpha = map(magneticField, 0.1, 2, 80, 180);
+            
+            // Draw vertical dashed arrow field lines in a grid pattern
+            let spacingX = 50;  // Horizontal spacing between arrows
+            let spacingY = 60;  // Vertical spacing between arrows
+            
+            for (let x = spacingX; x < width - spacingX; x += spacingX) {
+                for (let y = spacingY; y < height - 150; y += spacingY) {
+                    drawVerticalMagneticArrow(x, y, fieldDirection, magneticField);
+                }
+            }
+            
+            // Display field information in top-left corner
+            fill(255, 255, 255, 200);
+            textAlign(LEFT);
+            textSize(16);
+            let directionText = fieldDirection > 0 ? 'Upward ↑' : 'Downward ↓';
+            text(`B-Field: ${magneticField.toFixed(1)}T ${directionText}`, 20, 30);
+        }
+        
+        /**
+         * Draws a single vertical magnetic field arrow (dashed style)
+         * @param {number} x - X position
+         * @param {number} y - Y position  
+         * @param {number} direction - Field direction (1 for up, -1 for down)
+         * @param {number} strength - Field strength for sizing and opacity
+         */
+        function drawVerticalMagneticArrow(x, y, direction, strength) {
+            push();
+            translate(x, y);
+            
+            // Scale arrow size based on field strength
+            let arrowLength = map(strength, 0.1, 2, 25, 45);
+            let arrowWidth = map(strength, 0.1, 2, 6, 12);
+            
+            // Set color based on direction (blue for up, red for down)
+            let arrowColor = direction > 0 ? color(100, 150, 255, fieldLineAlpha) : color(255, 120, 120, fieldLineAlpha);
+            stroke(arrowColor);
+            strokeWeight(2);
+            
+            // Draw dashed arrow shaft (vertical line with gaps)
+            let dashLength = 4;
+            let gapLength = 3;
+            let totalLength = arrowLength - 8;  // Leave space for arrowhead
+            
+            for (let i = 0; i < totalLength; i += dashLength + gapLength) {
+                let startY = direction > 0 ? (arrowLength/2 - i) : (-arrowLength/2 + i);
+                let endY = direction > 0 ? 
+                    max(startY - dashLength, -arrowLength/2 + 8) : 
+                    min(startY + dashLength, arrowLength/2 - 8);
+                
+                if ((direction > 0 && startY > -arrowLength/2 + 8) || 
+                    (direction < 0 && startY < arrowLength/2 - 8)) {
+                    line(0, startY, 0, endY);
+                }
+            }
+            
+            // Draw arrowhead
+            strokeWeight(3);
+            if (direction > 0) {
+                // Upward arrowhead
+                line(0, -arrowLength/2, -arrowWidth/2, -arrowLength/2 + arrowWidth);
+                line(0, -arrowLength/2, arrowWidth/2, -arrowLength/2 + arrowWidth);
+            } else {
+                // Downward arrowhead
+                line(0, arrowLength/2, -arrowWidth/2, arrowLength/2 - arrowWidth);
+                line(0, arrowLength/2, arrowWidth/2, arrowLength/2 - arrowWidth);
+            }
+            
+            // Add subtle glow effect around each arrow
+            stroke(arrowColor);
+            strokeWeight(1);
+            noFill();
+            ellipse(0, 0, arrowLength * 0.6, arrowLength * 1.2);
+            
+            pop();
+        }
+        
+        // ==========================================
+        // LOOP DYNAMICS AND PHYSICS CALCULATIONS
+        // ==========================================
+        
+        /**
+         * Updates the loop radius based on the selected oscillation mode
+         * Handles different expansion behaviors: expand only, auto cycle, contract only, manual
+         */
+        function updateLoopDynamics() {
+            let previousRadius = loopRadius;
+            
+            switch (oscillationMode) {
+                case 0: // Expand only mode
+                    loopRadius += expansionRate * 0.8;
+                    if (loopRadius >= maxRadius) {
+                        loopRadius = maxRadius;    // Clamp to maximum
+                    }
+                    break;
+                    
+                case 1: // Auto cycle mode (smooth sinusoidal oscillation)
+                    let oscillationSpeed = expansionRate * 0.02;
+                    let radiusRange = (maxRadius - minRadius) / 2;
+                    let centerRadius = (maxRadius + minRadius) / 2;
+                    loopRadius = centerRadius + radiusRange * sin(time * oscillationSpeed);
+                    break;
+                    
+                case 2: // Contract only mode
+                    loopRadius -= expansionRate * 0.8;
+                    if (loopRadius <= minRadius) {
+                        loopRadius = minRadius;    // Clamp to minimum
+                    }
+                    break;
+                    
+                case 3: // Manual control (traditional expand/contract with reversals)
+                    if (isExpanding) {
+                        loopRadius += expansionRate * 0.6;
+                        if (loopRadius >= maxRadius) {
+                            isExpanding = false;
+                        }
+                    } else {
+                        loopRadius -= expansionRate * 0.6;
+                        if (loopRadius <= minRadius) {
+                            isExpanding = true;
+                        }
+                    }
+                    break;
+            }
+            
+            // Calculate radius velocity for more accurate EMF calculations
+            velocityRadius = (loopRadius - previousRadius) / deltaTime;
+        }
+        
+        /**
+         * Calculates all physics values using electromagnetic induction principles
+         * Implements Faraday's law, Ohm's law, and power calculations
+         */
+        function updatePhysics() {
+            // Store previous flux for derivative calculation
+            previousFlux = magneticFlux;
+            
+            // Calculate magnetic flux: Φ = B × A × cos(θ)
+            // Convert pixels to meters (1 pixel = 0.001 m for realistic values)
+            let radiusInMeters = loopRadius * 0.001;
+            let area = Math.PI * radiusInMeters * radiusInMeters;
+            magneticFlux = magneticField * area * fieldDirection;
+            
+            // Calculate flux change rate (dΦ/dt) using finite differences
+            fluxChangeRate = (magneticFlux - previousFlux) / deltaTime;
+            
+            // Apply Faraday's law: EMF = -dΦ/dt
+            inducedEMF = -fluxChangeRate;
+            
+            // Apply Ohm's law: I = V/R
+            current = inducedEMF / resistance;
+            
+            // Calculate power dissipated: P = I²R
+            power = current * current * resistance;
+            
+            // Update visual feedback parameters
+            needleAngle = map(inducedEMF, -0.002, 0.002, -PI/2.5, PI/2.5);
+            needleAngle = constrain(needleAngle, -PI/2.5, PI/2.5);
+            
+            // Map current to glow intensity
+            glowIntensity = map(abs(current), 0, 0.0001, 0, 255);
+            glowIntensity = constrain(glowIntensity, 0, 255);
+            
+            // Map current to animation speed
+            currentFlowSpeed = map(abs(current), 0, 0.0001, 0, 5);
+        }
+        
+        /**
+         * Updates visual effects including particle systems and animations
+         */
+        function updateVisualEffects() {
+            // Update current flow animation phase
+            currentArrowPhase += currentFlowSpeed * 0.1;
+            
+            // Update existing particles
+            for (let i = particleEffects.length - 1; i >= 0; i--) {
+                let particle = particleEffects[i];
+                particle.update();
+                if (particle.isDead()) {
+                    particleEffects.splice(i, 1);
+                }
+            }
+            
+            // Add new particles when current is flowing
+            if (abs(current) > 0.00001 && random() < 0.3) {
+                addCurrentParticle();
+            }
+        }
+        
+        // ==========================================
+        // LOOP AND CIRCUIT COMPONENT RENDERING
+        // ==========================================
+        
+        /**
+         * Draws the main conducting loop with glow effects
+         * Includes connection terminals and radius indicator
+         */
+        function drawLoop() {
+            push();
+            translate(width/2, height/2 - 80);
+            
+            // Multi-layer glow effect for visual appeal
+            for (let i = 0; i < 8; i++) {
+                let alpha = glowIntensity * (1 - i * 0.15);
+                stroke(255, 215 + i * 5, 0, alpha);
+                strokeWeight(10 - i);
+                noFill();
+                circle(0, 0, loopRadius * 2);
+            }
+            
+            // Main conductor loop
+            stroke(255, 215, 0);
+            strokeWeight(5);
+            noFill();
+            circle(0, 0, loopRadius * 2);
+            
+            // Connection terminals at right and left sides
+            fill(255, 215, 0);
+            noStroke();
+            circle(loopRadius, 0, 12);          // Right terminal
+            circle(-loopRadius, 0, 12);         // Left terminal
+            
+            // Radius indicator line
+            stroke(255, 255, 255, 150);
+            strokeWeight(1);
+            line(0, 0, loopRadius, 0);
+            
+            // Radius value label
+            fill(255);
+            textAlign(CENTER);
+            textSize(12);
+            text(`r = ${loopRadius.toFixed(1)}px`, loopRadius/2, -8);
+            
+            pop();
+        }
+        
+        /**
+         * Draws the complete circuit with proper spacing to accommodate maximum loop size
+         * Creates a rectangular path connecting loop, resistor, and galvanometer
+         */
+        function drawCompleteCircuit() {
+            stroke(255, 255, 255);
+            strokeWeight(4);
+            
+            // Define circuit layout with sufficient margins
+            let centerX = width/2;
+            let centerY = height/2 - 80;
+            let galvX = centerX - CIRCUIT_MARGIN;      // Left side component
+            let galvY = centerY + COMPONENT_SPACING * 2;
+            let resistorX = centerX + CIRCUIT_MARGIN;   // Right side component  
+            let resistorY = centerY + COMPONENT_SPACING * 2;
+            
+            // Complete circuit path (forms closed rectangular loop)
+            // 1. Right side: loop to resistor (top right vertical)
+            line(centerX + loopRadius, centerY, resistorX, centerY);
+            line(resistorX, centerY, resistorX, resistorY - 30);
+            
+            // 2. After resistor: continue downward
+            line(resistorX, resistorY + 30, resistorX, resistorY + 80);
+            
+            // 3. Bottom horizontal: right to left
+            line(resistorX, resistorY + 80, galvX, resistorY + 80);
+            
+            // 4. Left side: up to galvanometer
+            line(galvX, resistorY + 80, galvX, galvY + 60);
+            
+            // 5. After galvanometer: back to loop
+            line(galvX, galvY - 60, galvX, centerY);
+            line(galvX, centerY, centerX - loopRadius, centerY);
+            
+            // Draw connection points for clarity
+            fill(255);
+            noStroke();
+            circle(centerX + loopRadius, centerY, 8);   // Right loop connection
+            circle(centerX - loopRadius, centerY, 8);   // Left loop connection
+            circle(resistorX, resistorY + 80, 8);       // Bottom right corner
+            circle(galvX, resistorY + 80, 8);           // Bottom left corner
+        }
+        
+        /**
+         * Draws the circuit resistor with zigzag pattern and labels
+         * Positioned on the right side of the circuit
+         */
+        function drawResistor() {
+            let resistorX = width/2 + CIRCUIT_MARGIN;
+            let resistorY = height/2 - 80 + COMPONENT_SPACING * 2;
+            
+            // Resistor housing background
+            fill(150, 100, 50);
+            stroke(100, 70, 30);
+            strokeWeight(2);
+            rect(resistorX - 30, resistorY - 12, 60, 24, 4);
+            
+            // Traditional zigzag resistor symbol
+            stroke(255);
+            strokeWeight(3);
+            noFill();
+            
+            let segments = 8;
+            let amplitude = 8;
+            
+            beginShape();
+            for (let i = 0; i <= segments; i++) {
+                let t = i / segments;
+                let x = lerp(resistorX - 25, resistorX + 25, t);
+                let y = resistorY + sin(i * PI) * amplitude;
+                vertex(x, y);
+            }
+            endShape();
+            
+            // Connection wires extending from resistor
+            stroke(255);
+            strokeWeight(4);
+            line(resistorX - 30, resistorY, resistorX - 40, resistorY);
+            line(resistorX + 30, resistorY, resistorX + 40, resistorY);
+            
+            // Resistor value and power labels
+            fill(255);
+            noStroke();
+            textAlign(CENTER);
+            textSize(12);
+            text(`R = ${resistance}Ω`, resistorX, resistorY - 30);
+            text(`P = ${power.toFixed(6)}W`, resistorX, resistorY + 45);
+        }
+        
+        /**
+         * Draws the galvanometer (EMF meter) with needle, scale, and connections
+         * Positioned on the left side of the circuit
+         */
+        function drawGalvanometer() {
+            let galvX = width/2 - CIRCUIT_MARGIN;
+            let galvY = height/2 - 80 + COMPONENT_SPACING * 2;
+            
+            // Galvanometer outer housing
+            fill(60, 60, 80);
+            stroke(200, 200, 200);
+            strokeWeight(3);
+            circle(galvX, galvY, 120);
+            
+            // Inner measurement area
+            fill(40, 40, 60);
+            stroke(150, 150, 150);
+            strokeWeight(1);
+            circle(galvX, galvY, 90);
+            
+            // Scale markings and numbers
+            stroke(200);
+            strokeWeight(1);
+            for (let i = -8; i <= 8; i++) {
+                let angle = map(i, -8, 8, -PI/2.2, PI/2.2);
+                let innerRadius = 40;
+                let outerRadius = i % 2 === 0 ? 47 : 43;
+                
+                let x1 = galvX + cos(angle - PI/2) * innerRadius;
+                let y1 = galvY + sin(angle - PI/2) * innerRadius;
+                let x2 = galvX + cos(angle - PI/2) * outerRadius;
+                let y2 = galvY + sin(angle - PI/2) * outerRadius;
+                
+                line(x1, y1, x2, y2);
+                
+                // Scale numbers at major divisions
+                if (i % 4 === 0) {
+                    fill(255);
+                    textAlign(CENTER);
+                    textSize(9);
+                    let textX = galvX + cos(angle - PI/2) * 52;
+                    let textY = galvY + sin(angle - PI/2) * 52;
+                    text(i.toString(), textX, textY + 3);
+                }
+            }
+            
+            // Needle indicating EMF magnitude and direction
+            stroke(255, 50, 50);
+            strokeWeight(4);
+            let needleLength = 35;
+            let needleX = galvX + cos(needleAngle - PI/2) * needleLength;
+            let needleY = galvY + sin(needleAngle - PI/2) * needleLength;
+            line(galvX, galvY, needleX, needleY);
+            
+            // Needle pivot point
+            fill(255, 50, 50);
+            noStroke();
+            circle(galvX, galvY, 10);
+            
+            // Connection terminals
+            fill(255);
+            noStroke();
+            circle(galvX, galvY - 60, 10);          // Top terminal
+            circle(galvX, galvY + 60, 10);          // Bottom terminal
+            
+            // Device label
+            fill(255);
+            textAlign(CENTER);
+            textSize(14);
+            text('EMF Meter', galvX, galvY + 90);
+        }
+        
+        // ==========================================
+        // CURRENT FLOW VISUALIZATION
+        // ==========================================
+        
+        /**
+         * Renders animated current flow arrows throughout the circuit
+         * Direction follows Lenz's law and shows proper current direction
+         */
+        function drawCurrentFlow() {
+            if (abs(current) < 0.000001) return;   // Don't draw if no current
+            
+            // Determine current direction based on flux change (Lenz's law)
+            let isClockwise = (current * fieldDirection) > 0;
+            let currentColor = isClockwise ? color(255, 100, 100) : color(100, 255, 100);
+            
+            stroke(currentColor);
+            strokeWeight(3);
+            
+            // Circuit layout coordinates
+            let centerX = width/2;
+            let centerY = height/2 - 80;
+            let galvX = centerX - CIRCUIT_MARGIN;
+            let galvY = centerY + COMPONENT_SPACING * 2;
+            let resistorX = centerX + CIRCUIT_MARGIN;
+            let resistorY = centerY + COMPONENT_SPACING * 2;
+            
+            let arrowSpacing = 35;
+            let phase = currentArrowPhase;
+            
+            if (isClockwise) {
+                // Clockwise current flow pattern
+                // 1. Right side up (loop to resistor)
+                drawCurrentArrows(centerX + loopRadius, centerY, resistorX, centerY, 0, phase, currentColor);
+                drawCurrentArrows(resistorX, centerY, resistorX, resistorY - 30, PI/2, phase, currentColor);
+                
+                // 2. Through resistor
+                drawCurrentArrows(resistorX, resistorY + 30, resistorX, resistorY + 80, PI/2, phase, currentColor);
+                
+                // 3. Bottom horizontal (right to left)
+                drawCurrentArrows(resistorX, resistorY + 80, galvX, resistorY + 80, PI, phase, currentColor);
+                
+                // 4. Left side up (to galvanometer)
+                drawCurrentArrows(galvX, resistorY + 80, galvX, galvY + 60, -PI/2, phase, currentColor);
+                
+                // 5. Through galvanometer and back to loop
+                drawCurrentArrows(galvX, galvY - 60, galvX, centerY, -PI/2, phase, currentColor);
+                drawCurrentArrows(galvX, centerY, centerX - loopRadius, centerY, 0, phase, currentColor);
+            } else {
+                // Counter-clockwise current flow (all directions reversed)
+                // 1. Left side down (loop to galvanometer)
+                drawCurrentArrows(centerX - loopRadius, centerY, galvX, centerY, PI, phase, currentColor);
+                drawCurrentArrows(galvX, centerY, galvX, galvY - 60, PI/2, phase, currentColor);
+                
+                // 2. Through galvanometer
+                drawCurrentArrows(galvX, galvY + 60, galvX, resistorY + 80, PI/2, phase, currentColor);
+                
+                // 3. Bottom horizontal (left to right)
+                drawCurrentArrows(galvX, resistorY + 80, resistorX, resistorY + 80, 0, phase, currentColor);
+                
+                // 4. Right side up (to resistor)
+                drawCurrentArrows(resistorX, resistorY + 80, resistorX, resistorY + 30, -PI/2, phase, currentColor);
+                
+                // 5. Through resistor and back to loop
+                drawCurrentArrows(resistorX, resistorY - 30, resistorX, centerY, -PI/2, phase, currentColor);
+                drawCurrentArrows(resistorX, centerY, centerX + loopRadius, centerY, PI, phase, currentColor);
+            }
+        }
+        
+        /**
+         * Draws a series of animated arrows along a line segment
+         * @param {number} x1, y1 - Start coordinates
+         * @param {number} x2, y2 - End coordinates  
+         * @param {number} baseRotation - Base rotation angle
+         * @param {number} phase - Animation phase
+         * @param {color} currentColor - Arrow color
+         */
+        function drawCurrentArrows(x1, y1, x2, y2, baseRotation, phase, currentColor) {
+            let distance = dist(x1, y1, x2, y2);
+            let arrowSpacing = 30;
+            let numArrows = floor(distance / arrowSpacing);
+            
+            for (let i = 0; i < numArrows; i++) {
+                let offset = (phase + i * arrowSpacing) % distance;
+                let t = offset / distance;
+                
+                if (t >= 0 && t <= 1) {
+                    let x = lerp(x1, x2, t);
+                    let y = lerp(y1, y2, t);
+                    
+                    // Calculate rotation angle based on line direction
+                    let rotation = baseRotation;
+                    if (baseRotation === 0) {
+                        rotation = atan2(y2 - y1, x2 - x1);
+                    }
+                    
+                    drawCurrentArrow(x, y, rotation, currentColor);
+                }
+            }
+        }
+        
+        /**
+         * Draws a single current arrow at specified position and rotation
+         * @param {number} x, y - Position coordinates
+         * @param {number} rotation - Rotation angle
+         * @param {color} currentColor - Arrow color
+         */
+        function drawCurrentArrow(x, y, rotation, currentColor) {
+            push();
+            translate(x, y);
+            rotate(rotation);
+            
+            stroke(currentColor);
+            strokeWeight(2);
+            
+            // Arrow body and head
+            line(0, 0, 15, 0);              // Arrow shaft
+            line(15, 0, 10, -5);            // Arrow head top
+            line(15, 0, 10, 5);             // Arrow head bottom
+            
+            pop();
+        }
+        
+        // ==========================================
+        // FLUX VISUALIZATION AND INFO DISPLAY
+        // ==========================================
+        
+        /**
+         * Displays magnetic flux value and rate of change above the loop
+         */
+        function drawFluxVisualization() {
+            // Main flux value
+            fill(255, 255, 100);
+            noStroke();
+            textAlign(CENTER);
+            textSize(20);
+            text(`Φ = ${magneticFlux.toFixed(6)} Wb`, width/2, height/2 - 200);
+            
+            // Flux change rate with color coding
+            fill(abs(fluxChangeRate) > 0.000001 ? color(255, 150, 150) : color(200, 200, 200));
+            textSize(16);
+            text(`dΦ/dt = ${fluxChangeRate.toFixed(6)} Wb/s`, width/2, height/2 - 175);
+        }
+        
+        /**
+         * Draws the information panel with physics equations and explanations
+         */
+        function drawInfoPanel() {
+            // Semi-transparent background panel
+            fill(0, 0, 0, 160);
+            stroke(255, 255, 255, 120);
+            strokeWeight(1);
+            rect(20, height - 200, 400, 180, 10);
+            
+            // Panel content
+            fill(255);
+            textAlign(LEFT);
+            textSize(13);
+            
+            text("Physics Equations:", 30, height - 175);
+            text("Φ = B × A = B × π × r²", 30, height - 155);
+            text("EMF = -dΦ/dt (Faraday's Law)", 30, height - 135);
+            text("I = EMF / R (Ohm's Law)", 30, height - 115);
+            text("P = I² × R (Power Dissipation)", 30, height - 95);
+            text("Current Direction (Lenz's Law):", 30, height - 75);
+            text("• Clockwise: Opposes flux decrease", 35, height - 55);
+            text("• Counter-clockwise: Opposes flux increase", 35, height - 35);
+        }
+        
+        // ==========================================
+        // PARTICLE EFFECTS SYSTEM
+        // ==========================================
+        
+        /**
+         * Initializes the particle effects system
+         */
+        function initializeParticles() {
+            particleEffects = [];
+        }
+        
+        /**
+         * Adds a new current particle at a random circuit location
+         */
+        function addCurrentParticle() {
+            let centerX = width/2;
+            let centerY = height/2 - 80;
+            
+            // Possible particle spawn locations along the circuit
+            let positions = [
+                {x: centerX + loopRadius + 60, y: centerY},
+                {x: centerX + CIRCUIT_MARGIN, y: centerY + 80},
+                {x: centerX - 60, y: centerY + COMPONENT_SPACING * 2 + 80},
+                {x: centerX - CIRCUIT_MARGIN, y: centerY + 80}
+            ];
+            
+            let pos = random(positions);
+            particleEffects.push(new CurrentParticle(pos.x, pos.y));
+        }
+        
+        /**
+         * Renders all active particle effects
+         */
+        function drawParticleEffects() {
+            for (let particle of particleEffects) {
+                particle.draw();
+            }
+        }
+        
+        /**
+         * Current particle class for visual effects
+         */
+        class CurrentParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.life = 60;                                             // Particle lifetime
+                this.maxLife = 60;
+                this.size = random(2, 6);                                   // Particle size
+                this.color = current > 0 ? color(255, 100, 100) : color(100, 255, 100);
+            }
+            
+            update() {
+                this.life--;                                                // Decrease lifetime
+                this.size *= 0.98;                                          // Shrink over time
+            }
+            
+            draw() {
+                let alpha = map(this.life, 0, this.maxLife, 0, 255);        // Fade out
+                fill(red(this.color), green(this.color), blue(this.color), alpha);
+                noStroke();
+                circle(this.x, this.y, this.size);
+            }
+            
+            isDead() {
+                return this.life <= 0;                                      // Check if particle should be removed
+            }
+        }
+        
+        // ==========================================
+        // USER INTERFACE AND CONTROLS
+        // ==========================================
+        
+        /**
+         * Updates all numerical displays in the user interface
+         */
+        function updateDisplayValues() {
+            document.getElementById('radiusValue').textContent = loopRadius.toFixed(2);
+            document.getElementById('fluxValue').textContent = magneticFlux.toFixed(6);
+            document.getElementById('fluxRateValue').textContent = fluxChangeRate.toFixed(6);
+            document.getElementById('emfValue').textContent = inducedEMF.toFixed(6);
+            document.getElementById('currentValue').textContent = current.toFixed(6);
+            document.getElementById('powerValue').textContent = power.toFixed(8);
+        }
+        
+        /**
+         * Sets up all UI control event listeners
+         */
+        function setupControls() {
+            // Expansion rate slider control
+            const expansionSlider = document.getElementById('expansionRate');
+            const rateDisplay = document.getElementById('rateValue');
+            
+            expansionSlider.addEventListener('input', (e) => {
+                expansionRate = parseFloat(e.target.value);
+                rateDisplay.textContent = expansionRate.toFixed(1);
+            });
+            
+            // Magnetic field strength control
+            const fieldSlider = document.getElementById('magneticField');
+            const fieldDisplay = document.getElementById('fieldValue');
+            
+            fieldSlider.addEventListener('input', (e) => {
+                magneticField = parseFloat(e.target.value);
+                fieldDisplay.textContent = magneticField.toFixed(1);
+            });
+            
+            // Circuit resistance control
+            const resistanceSlider = document.getElementById('resistance');
+            const resistanceDisplay = document.getElementById('resistanceValue');
+            
+            resistanceSlider.addEventListener('input', (e) => {
+                resistance = parseFloat(e.target.value);
+                resistanceDisplay.textContent = resistance.toString();
+            });
+            
+            // Oscillation mode control
+            const modeSlider = document.getElementById('oscillationMode');
+            const modeDisplay = document.getElementById('modeValue');
+            const modeNames = ['Expand Only', 'Auto Cycle', 'Contract Only', 'Manual Control'];
+            
+            modeSlider.addEventListener('input', (e) => {
+                oscillationMode = parseInt(e.target.value);
+                modeDisplay.textContent = modeNames[oscillationMode];
+                
+                // Reset loop size for certain modes
+                if (oscillationMode === 0) {
+                    loopRadius = minRadius;
+                } else if (oscillationMode === 2) {
+                    loopRadius = maxRadius;
+                }
+            });
+            
+            // Reset simulation button
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                loopRadius = initialRadius;
+                isExpanding = true;
+                time = 0;
+                magneticFlux = 0;
+                previousFlux = 0;
+                inducedEMF = 0;
+                current = 0;
+                power = 0;
+                needleAngle = 0;
+                currentArrowPhase = 0;
+                particleEffects = [];
+                updatePhysics();
+            });
+            
+            // Toggle magnetic field direction button
+            document.getElementById('toggleFieldBtn').addEventListener('click', () => {
+                fieldDirection *= -1;
+                updatePhysics();
+            });
+            
+            // Pause/Resume simulation button
+            document.getElementById('pauseBtn').addEventListener('click', () => {
+                isPaused = !isPaused;
+                document.getElementById('pauseBtn').textContent = isPaused ? 'Resume' : 'Pause';
+            });
+        }
+        
+        // ==========================================
+        // P5.JS REQUIRED GLOBAL FUNCTIONS
+        // ==========================================
+        
+        // Make functions available to p5.js
+        window.setup = setup;
+        window.draw = draw;
+    </script>
+</body>
+</html>

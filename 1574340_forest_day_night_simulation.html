@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Enhanced Forest Ecosystem Simulation</title>
+        <style>
+            html, body { margin: 0; padding: 0; background: #1a1a1a; width: 100vw; height: 100vh; overflow: hidden; }
+            #simulation-container { position: relative; width: 100vw; height: 100vh; border: 2px solid #333; border-radius: 8px; overflow: hidden; }
+            #ui-overlay { position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); color: white; padding: 10px; border-radius: 5px; font-size: 13px; z-index: 10; min-width: 120px; }
+            #controls { position: absolute; top: 10px; right: 10px; z-index: 10; }
+            button { background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+            button:hover { background: #45a049; }
+        </style>
+    </head>
+<body>
+    <div id="simulation-container">
+        <div id="ui-overlay">
+            <div>Time: <span id="time-display">06:00</span></div>
+            <div>Day: <span id="day-display">1</span></div>
+            <div>Light Level: <span id="light-display">0.0</span></div>
+            <div>Temperature: <span id="temp-display">15°C</span></div>
+            <div>Humidity: <span id="humidity-display">65%</span></div>
+        </div>
+        <div id="controls">
+            <button id="reset-btn">Reset</button>
+        </div>
+    </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"
+        }
+    }
+    </script>
+    <script type="module">
+        import 'p5';
+
+        function clamp(val, min, max) {
+            return Math.max(min, Math.min(max, val));
+        }
+
+        // --- Star, Cloud, Firefly helpers ---
+        class Star {
+            constructor(p, w, h) {
+                this.x = p.random(w);
+                this.y = p.random(h * 0.6);
+                this.b = p.random(180, 255);
+                this.twinkle = p.random(0, Math.PI * 2);
+            }
+            display(p, t, nightStrength) {
+                let alpha = (180 + Math.sin(t + this.twinkle) * 60) * nightStrength;
+                p.noStroke();
+                p.fill(this.b, this.b, this.b, alpha);
+                p.ellipse(this.x, this.y, 2.5 + Math.sin(t + this.twinkle) * 1.2, 2.5 + Math.sin(t + this.twinkle) * 1.2);
+            }
+        }
+        class Cloud {
+            constructor(p, w, h) {
+                this.x = p.random(w);
+                this.y = p.random(h * 0.35);
+                this.size = p.random(80, 180);
+                this.speed = p.random(0.08, 0.18);
+                this.opacity = p.random(120, 200);
+                this.offset = p.random(0, 1000);
+            }
+            update(p) {
+                this.x += this.speed;
+                if (this.x - this.size > p.width) this.x = -this.size;
+            }
+            display(p, skyBrightness) {
+                p.push();
+                p.translate(this.x, this.y);
+                p.noStroke();
+                p.fill(255, 255, 255, this.opacity * skyBrightness);
+                p.ellipse(0, 0, this.size, this.size * 0.5);
+                p.ellipse(-this.size * 0.3, 10, this.size * 0.5, this.size * 0.3);
+                p.ellipse(this.size * 0.3, 8, this.size * 0.4, this.size * 0.25);
+                p.pop();
+            }
+        }
+        class Firefly {
+            constructor(p, flowerList) {
+                this.flowerList = flowerList;
+                this.currentFlower = Math.floor(p.random(flowerList.length));
+                this.targetFlower = this.currentFlower;
+                this.x = flowerList[this.currentFlower].x + p.random(-10, 10);
+                this.y = flowerList[this.currentFlower].y - 20 + p.random(-5, 5);
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.phase = p.random(0, Math.PI * 2);
+                this.size = p.random(5, 8);
+                this.t = 0;
+            }
+            update(p, t, isNight) {
+                this.t += 0.01;
+                if (isNight) {
+                    // Move from flower to flower
+                    if ((Math.abs(this.x - this.flowerList[this.targetFlower].x) < 8 &&
+                         Math.abs(this.y - (this.flowerList[this.targetFlower].y - 20)) < 8) ||
+                        Math.random() < 0.01) {
+                        // Pick a new flower
+                        let next;
+                        do {
+                            next = Math.floor(p.random(this.flowerList.length));
+                        } while (next === this.targetFlower);
+                        this.targetFlower = next;
+                    }
+                    // Move toward target flower
+                    let tx = this.flowerList[this.targetFlower].x + p.random(-10, 10);
+                    let ty = this.flowerList[this.targetFlower].y - 20 + p.random(-5, 5);
+                    this.x += (tx - this.x) * 0.03 + Math.sin(this.t * 2 + this.phase) * 0.5;
+                    this.y += (ty - this.y) * 0.03 + Math.cos(this.t * 2 + this.phase) * 0.5;
+                } else {
+                    // Hide in the grass during the day
+                    this.x += Math.sin(this.t + this.phase) * 0.2;
+                    this.y += Math.cos(this.t + this.phase) * 0.2;
+                }
+            }
+            display(p, t, isNight) {
+                if (!isNight) return;
+                let glow = 180 + Math.sin(t * 2 + this.phase) * 75;
+                p.noStroke();
+                p.fill(255, 255, 120, glow);
+                p.ellipse(this.x, this.y, this.size * 2.2);
+                p.fill(255, 255, 180, 255);
+                p.ellipse(this.x, this.y, this.size);
+            }
+        }
+
+        // --- Environment ---
+        class Environment {
+            constructor() {
+                this.time = 360; // 6:00 AM start
+                this.totalTime = 0;
+                this.day = 1;
+                this.lightLevel = 0;
+                this.temperature = 15;
+                this.humidity = 65;
+                this.particles = [];
+            }
+            update() {
+                this.time += 0.5;
+                this.totalTime += 0.5;
+                if (this.time >= 1440) {
+                    this.time = 0;
+                    this.day++;
+                }
+                
+                // Day is 6:00-18:00 (360-1080), Night is 18:00-6:00 (1080-360)
+                if (this.time >= 360 && this.time < 1080) {
+                    // During day: smooth sine curve from 0 to 1 and back to 0
+                    let dayProgress = (this.time - 360) / 720; // 0 to 1 over 12 hours
+                    this.lightLevel = Math.pow(Math.sin(Math.PI * dayProgress), 1.2); // Smooth sunrise to sunset
+                    this.lightLevel = Math.max(0, this.lightLevel); // Ensure no negative values
+                } else {
+                    // During night: always 0
+                    this.lightLevel = 0;
+                }
+                
+                // Temperature: direct function of lightLevel, with inertia
+                if (!this._lastTemp) this._lastTemp = 15;
+                let targetTemp = 10 + this.lightLevel * 18;
+                this.temperature = this._lastTemp + (targetTemp - this._lastTemp) * 0.04;
+                this._lastTemp = this.temperature;
+                
+                // Humidity: inverse to temp, with some noise
+                // Humidity: peaks at dawn (~90%), lowest in afternoon (~50%), smooth sinusoidal, with some noise
+                let dayFrac = (this.time % 1440) / 1440; // 0 at midnight, 0.25 at 6am, 0.5 at noon, 0.75 at 6pm
+                let humidityBase = 70 + 20 * Math.cos(2 * Math.PI * (dayFrac - 0.25)); // max at dawn, min at afternoon
+                this.humidity = clamp(humidityBase + (Math.random() - 0.5) * 3, 50, 92);
+                                
+                // Particles
+                this.particles = this.particles.filter(p => p.life > 0);
+                this.particles.forEach(p => p.update());
+            }
+            addParticle(x, y, type = 'transpiration') {
+                this.particles.push(new Particle(x, y, type));
+            }
+            getSkyColor(p) {
+                // Improved: More reddish at dawn/dusk, blue at noon
+                let cNight = p.color(20, 24, 60);
+                let cDawn = p.color(255, 160, 80);   // More orange
+                let cNoon = p.color(120, 200, 255);  // Bright blue
+                let cDusk = p.color(255, 100, 80);   // More red
+
+                let sky;
+                if (this.lightLevel <= 0.05) {
+                    sky = cNight;
+                } else {
+                    // Calculate sun's arc position (0 at dawn, 1 at dusk)
+                    let sunArc = 0;
+                    if (this.time >= 360 && this.time < 1080) {
+                        sunArc = (this.time - 360) / 720;
+                    }
+                    // Dawn (0), Noon (0.5), Dusk (1)
+                    if (sunArc < 0.25) {
+                        // Dawn to morning
+                        sky = p.lerpColor(cDawn, cNoon, sunArc / 0.25);
+                    } else if (sunArc < 0.75) {
+                        // Morning to afternoon (blue)
+                        sky = cNoon;
+                    } else {
+                        // Afternoon to dusk
+                        sky = p.lerpColor(cNoon, cDusk, (sunArc - 0.75) / 0.25);
+                    }
+                }
+                return sky;
+            }
+            getSunMoonAlpha() {
+                let isDay = (this.time >= 360 && this.time < 1080);
+                let sunAlpha = 0, moonAlpha = 0;
+                
+                if (isDay) {
+                    // Sun visibility based on light level with minimum visibility
+                    sunAlpha = Math.max(0.3, this.lightLevel);
+                } else {
+                    // Moon is visible at night
+                    moonAlpha = 1;
+                }
+                
+                return { sunAlpha: clamp(sunAlpha, 0, 1), moonAlpha: clamp(moonAlpha, 0, 1) };
+            }
+            getSunMoonPosition(p) {
+                const w = p.width, h = p.height * 0.5;
+                let arcRadius = h * 0.8;
+                
+                // Sun position during day (6:00 to 18:00)
+                let sunFrac = 0;
+                if (this.time >= 360 && this.time < 1080) {
+                    sunFrac = (this.time - 360) / 720;
+                }
+                
+                // Moon position during night (18:00 to 6:00)
+                let moonFrac = 0;
+                if (this.time >= 1080) {
+                    moonFrac = (this.time - 1080) / 720;
+                } else if (this.time < 360) {
+                    moonFrac = (this.time + 360) / 720;
+                }
+                
+                let sunX = w * 0.1 + sunFrac * w * 0.8;
+                let sunY = h - Math.sin(Math.PI * sunFrac) * arcRadius;
+                
+                let moonX = w * 0.9 - moonFrac * w * 0.8;
+                let moonY = h - Math.sin(Math.PI * (1 - moonFrac)) * arcRadius;
+                
+                let isDay = (this.time >= 360 && this.time < 1080);
+                
+                return {
+                    sun: { x: sunX, y: sunY, visible: isDay },
+                    moon: { x: moonX, y: moonY, visible: !isDay }
+                };
+            }
+            getTimeString() {
+                const hours = Math.floor(this.time / 60);
+                const minutes = Math.floor(this.time % 60);
+                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, type) {
+                this.position = new p5.Vector(x, y);
+                this.velocity = new p5.Vector(Math.random() * 1.2 - 0.6, -Math.random() * 1.5 - 0.5);
+                this.life = 60;
+                this.maxLife = 60;
+                this.type = type;
+                this.size = Math.random() * 3 + 1;
+            }
+            update() {
+                this.position.add(this.velocity);
+                this.velocity.mult(0.98);
+                this.life--;
+            }
+            display(p) {
+                const alpha = (this.life / this.maxLife) * 255;
+                if (this.type === 'transpiration') {
+                    p.fill(200, 255, 200, alpha);
+                } else if (this.type === 'firefly') {
+                    p.fill(255, 255, 100, alpha);
+                } else if (this.type === 'fruit') {
+                    p.fill(255, 80, 80, alpha);
+                }
+                p.noStroke();
+                p.ellipse(this.position.x, this.position.y, this.size);
+            }
+        }
+
+        class BigTree {
+            constructor(x, y, scale, p) {
+                this.x = x;
+                this.y = y;
+                this.scale = scale * 1.1;
+                this.maxDepth = 4;
+                this.branchData = [];
+                this.branchPoints = [];
+                this.tipBranches = [];
+                this.elements = []; // {branchX, branchY, state: 'leaf'|'flower'|'fruit', morph: 0..1, morphingTo: null, morphStartDay: 0}
+                this.lastGrowthDay = 0;
+                this.lastGrowthTime = -1;
+                this.flowerHistory = [];
+                this._initTree(p);
+            }
+            _initTree(p) {
+                this.branchData = [];
+                this.branchPoints = [];
+                this.tipBranches = [];
+                this.elements = [];
+                this._growBranch(
+                    p,
+                    0, 0,
+                    -Math.PI/2,
+                    1,
+                    0,
+                    1
+                );
+                // Place initial leaves on random branch points (not just tips)
+                let used = new Set();
+                for (let i = 0; i < 8; i++) {
+                    let idx;
+                    do {
+                        idx = Math.floor(Math.random() * this.branchPoints.length);
+                    } while (used.has(idx));
+                    used.add(idx);
+                    let b = this.branchPoints[idx];
+                    this.elements.push({
+                        branchX: b.x,
+                        branchY: b.y,
+                        state: 'leaf',
+                        morph: 1,
+                        morphingTo: null,
+                        morphStartDay: 0
+                    });
+                }
+                this.tipBranches = this.branchData.filter(b => b.depth === this.maxDepth);
+                this.flowerHistory = [];
+            }
+            _growBranch(p, x, y, angle, thickness, depth, mainTrunk) {
+                let len = ((mainTrunk ? 1.0 : 0.5) * (1.0 - depth/this.maxDepth) * 154 + 42);
+                let endX = x + Math.cos(angle) * len;
+                let endY = y + Math.sin(angle) * len;
+                this.branchData.push({
+                    x1: x, y1: y, x2: endX, y2: endY,
+                    angle, thickness, depth, mainTrunk
+                });
+                if (depth > 0) this.branchPoints.push({x: endX, y: endY});
+                if (depth < this.maxDepth) {
+                    let n = mainTrunk ? 3 : 2;
+                    for (let i = 0; i < n; i++) {
+                        let a = angle + (mainTrunk ? (i-1)*0.25 : (i-0.5)*0.4);
+                        let t = thickness * (mainTrunk ? 0.7 : 0.6) * 0.9;
+                        this._growBranch(p, endX, endY, a, t, depth+1, 0);
+                    }
+                }
+            }
+            update(env, p) {
+                if (env.time >= 360 && env.time < 1080) { // Only grow during daylight
+                    this.scale *= 1 + 0.00003; // ~0.18% per hour, smooth and subtle
+                }
+                // Only grow after sunrise (6:00 AM, time >= 360), and only once per day
+                if (env.time >= 720 && (env.day !== this.lastGrowthDay || this.lastGrowthTime > env.time)) {
+                    // 1. Grow 4-5 new leaves on random vacant branch points (not just tips)
+                    let vacant = this.branchPoints.filter(b => {
+                        return !this.elements.some(e => Math.abs(e.branchX - b.x) < 2 && Math.abs(e.branchY - b.y) < 2);
+                    });
+                    for (let i = 0; i < Math.min(5, vacant.length); i++) {
+                        let idx = Math.floor(Math.random() * vacant.length);
+                        let b = vacant[idx];
+                        vacant.splice(idx, 1);
+                        this.elements.push({
+                            branchX: b.x,
+                            branchY: b.y,
+                            state: 'leaf',
+                            morph: 1,
+                            morphingTo: null,
+                            morphStartDay: 0
+                        });
+                    }
+                    // 2. Convert previous day's flowers to fruits (2-3 only, morph)
+                    let prevDay = env.day - 1;
+                    let prevFlowers = this.flowerHistory.find(fh => fh.day === prevDay);
+                    if (prevFlowers && prevFlowers.flowers.length > 0) {
+                        let toFruit = prevFlowers.flowers.slice(0, 3);
+                        for (let f of toFruit) {
+                            let elem = this.elements.find(e => Math.abs(e.branchX - f.branchX) < 2 && Math.abs(e.branchY - f.branchY) < 2 && e.state === 'flower');
+                            if (elem && !elem.morphingTo) {
+                                elem.morphingTo = 'fruit';
+                                elem.morph = 0;
+                                elem.morphStartDay = env.day;
+                            }
+                        }
+                    }
+                    // 3. Pick 2-3 random tips for today's flowers (morph leaf→flower)
+                    let eligibleTips = this.tipBranches.filter(b => {
+                        let elem = this.elements.find(e => Math.abs(e.branchX - b.x2) < 2 && Math.abs(e.branchY - b.y2) < 2);
+                        return elem && elem.state === 'leaf' && !elem.morphingTo;
+                    });
+                    let nFlowers = 2 + Math.floor(Math.random() * 2); // 2-3
+                    let newFlowers = [];
+                    for (let i = 0; i < Math.min(nFlowers, eligibleTips.length); i++) {
+                        let idx = Math.floor(Math.random() * eligibleTips.length);
+                        let b = eligibleTips[idx];
+                        eligibleTips.splice(idx, 1);
+                        let elem = this.elements.find(e => Math.abs(e.branchX - b.x2) < 2 && Math.abs(e.branchY - b.y2) < 2 && e.state === 'leaf');
+                        if (elem && !elem.morphingTo) {
+                            elem.morphingTo = 'flower';
+                            elem.morph = 0;
+                            elem.morphStartDay = env.day;
+                            newFlowers.push({branchX: b.x2, branchY: b.y2});
+                        }
+                    }
+                    this.flowerHistory.push({day: env.day, flowers: newFlowers});
+                    // Remove old flowerHistory
+                    this.flowerHistory = this.flowerHistory.filter(fh => fh.day >= env.day - 1);
+                    this.lastGrowthDay = env.day;
+                    // Gradually increase tree size each day (minute but visible)
+                    if (env.day !== this.lastGrowthDay) {
+                        this.scale *= 1.002; // ~0.2% growth per day
+                    }
+                    this.lastGrowthTime = env.time;
+                }
+                // Animate morphs
+                for (let e of this.elements) {
+                    if (e.morphingTo) {
+                        e.morph += 1/60 * 1.5; // morph over ~0.7s
+                        if (e.morph >= 1) {
+                            e.state = e.morphingTo;
+                            e.morphingTo = null;
+                            e.morph = 1;
+                        }
+                    }
+                }
+            }
+            display(p) {
+                p.push();
+                p.translate(this.x, this.y);
+                p.scale(this.scale);
+                // Draw trunk and branches first
+                for (let b of this.branchData) {
+                    let t = b.thickness * 1;
+                    p.stroke(101, 67, 33);
+                    p.strokeWeight(24 * t * (1 - b.depth/this.maxDepth) + 6);
+                    p.noFill();
+                    if (b.depth === 0) {
+                        p.bezier(
+                            b.x1, b.y1,
+                            b.x1 + 20, b.y1 - 80,
+                            b.x2 - 20, b.y2 + 80,
+                            b.x2, b.y2
+                        );
+                    } else {
+                        p.line(b.x1, b.y1, b.x2, b.y2);
+                    }
+                }
+                // Draw all elements (morphing)
+                for (let e of this.elements) {
+                    p.push();
+                    p.translate(e.branchX, e.branchY);
+                    p.rotate(((e.branchX + e.branchY) % 360) * 0.01);
+                    // Morphing logic
+                    let state = e.state;
+                    let morph = e.morphingTo ? e.morph : 1;
+                    let from = e.state;
+                    let to = e.morphingTo;
+                    if (to === 'flower') {
+                        // Morph leaf→flower
+                        this.drawMorphLeafToFlower(p, morph);
+                    } else if (to === 'fruit') {
+                        // Morph flower→fruit
+                        this.drawMorphFlowerToFruit(p, morph);
+                    } else if (state === 'leaf') {
+                        this.drawLeaf(p, 1);
+                    } else if (state === 'flower') {
+                        this.drawFlower(p, 1);
+                    } else if (state === 'fruit') {
+                        this.drawFruit(p, 1);
+                    }
+                    p.pop();
+                }
+                // Draw nest on a branch (unchanged)
+                let nestBranch = this.branchData.find(b => b.depth === 2 && b.x2 > 0);
+                if (nestBranch) {
+                    p.push();
+                    p.translate(nestBranch.x2, nestBranch.y2);
+                    p.fill(160, 120, 50);
+                    p.ellipse(0, 0, 60, 36);
+                    p.fill(140, 100, 40);
+                    p.ellipse(0, 5, 48, 24);
+                    p.fill(120, 80, 30);
+                    p.ellipse(0, 8, 38, 16);
+                    p.stroke(100, 70, 30);
+                    p.strokeWeight(2);
+                    for (let i = 0; i < 6; i++) {
+                        let angle = (i / 6) * Math.PI * 2;
+                        p.line(0, 0, Math.cos(angle) * 28, Math.sin(angle) * 16);
+                    }
+                    p.noStroke();
+                    p.pop();
+                }
+                p.pop();
+            }
+            drawLeaf(p, amt) {
+                p.noStroke();
+                p.fill(34, 180, 34, 255);
+                p.ellipse(0, 0, 28, 16);
+            }
+            drawFlower(p, amt) {
+                p.noStroke();
+                let petalColor = p.color(255, 180, 240, 210);
+                let centerColor = p.color(255, 220, 120, 240);
+                for (let i = 0; i < 6; i++) {
+                    p.fill(petalColor);
+                    p.ellipse(0, 10, 10, 24);
+                    p.rotate(Math.PI / 3);
+                }
+                p.fill(centerColor);
+                p.ellipse(0, 0, 12, 12);
+                p.fill(255, 255, 255, 120);
+                p.ellipse(2, -2, 4, 4);
+            }
+            drawFruit(p, amt) {
+                p.noStroke();
+                p.fill(255, 120, 120, 240);
+                p.ellipse(0, 0, 18, 18);
+                p.fill(255, 200, 200, 120);
+                p.ellipse(-3, -3, 7, 7);
+                p.fill(200, 80, 80, 80);
+                p.ellipse(3, 3, 7, 5);
+                p.fill(80, 180, 80, 200);
+                p.ellipse(0, -8, 7, 10);
+            }
+            drawMorphLeafToFlower(p, t) {
+                // t: 0 (leaf) → 1 (flower)
+                // Morph shape and color
+                // Draw leaf shrinking, flower petals growing
+                let leafAmt = 1 - t;
+                let flowerAmt = t;
+                // Leaf
+                if (leafAmt > 0) {
+                    p.push();
+                    p.scale(leafAmt, leafAmt);
+                    p.noStroke();
+                    p.fill(34, 180, 34, 255 * leafAmt);
+                    p.ellipse(0, 0, 28, 16);
+                    p.pop();
+                }
+                // Flower
+                if (flowerAmt > 0) {
+                    p.push();
+                    p.scale(flowerAmt, flowerAmt);
+                    let petalColor = p.color(255, 180, 240, 210 * flowerAmt);
+                    let centerColor = p.color(255, 220, 120, 240 * flowerAmt);
+                    for (let i = 0; i < 6; i++) {
+                        p.fill(petalColor);
+                        p.ellipse(0, 10, 10, 24);
+                        p.rotate(Math.PI / 3);
+                    }
+                    p.fill(centerColor);
+                    p.ellipse(0, 0, 12, 12);
+                    p.fill(255, 255, 255, 120 * flowerAmt);
+                    p.ellipse(2, -2, 4, 4);
+                    p.pop();
+                }
+            }
+            drawMorphFlowerToFruit(p, t) {
+                // t: 0 (flower) → 1 (fruit)
+                // Morph shape and color
+                let flowerAmt = 1 - t;
+                let fruitAmt = t;
+                // Flower
+                if (flowerAmt > 0) {
+                    p.push();
+                    p.scale(flowerAmt, flowerAmt);
+                    let petalColor = p.color(255, 180, 240, 210 * flowerAmt);
+                    let centerColor = p.color(255, 220, 120, 240 * flowerAmt);
+                    for (let i = 0; i < 6; i++) {
+                        p.fill(petalColor);
+                        p.ellipse(0, 10, 10, 24);
+                        p.rotate(Math.PI / 3);
+                    }
+                    p.fill(centerColor);
+                    p.ellipse(0, 0, 12, 12);
+                    p.fill(255, 255, 255, 120 * flowerAmt);
+                    p.ellipse(2, -2, 4, 4);
+                    p.pop();
+                }
+                // Fruit
+                if (fruitAmt > 0) {
+                    p.push();
+                    p.scale(fruitAmt, fruitAmt);
+                    p.noStroke();
+                    p.fill(255, 120, 120, 240 * fruitAmt);
+                    p.ellipse(0, 0, 18, 18);
+                    p.fill(255, 200, 200, 120 * fruitAmt);
+                    p.ellipse(-3, -3, 7, 7);
+                    p.fill(200, 80, 80, 80 * fruitAmt);
+                    p.ellipse(3, 3, 7, 5);
+                    p.fill(80, 180, 80, 200 * fruitAmt);
+                    p.ellipse(0, -8, 7, 10);
+                    p.pop();
+                }
+            }
+            getBatRestPosition() {
+                let b = this.branchData.find(b => b.depth === 1 && b.x2 < 0) || this.branchData[1];
+                return new p5.Vector(
+                    this.x + b.x2 * this.scale,
+                    this.y + b.y2 * this.scale
+                );
+            }
+            getNestPosition() {
+                let b = this.branchData.find(b => b.depth === 2 && b.x2 > 0) || this.branchData[2];
+                return new p5.Vector(
+                    this.x + b.x2 * this.scale,
+                    this.y + b.y2 * this.scale
+                );
+            }
+        }
+
+        // --- Blue Wildflower at foot of tree ---
+        class GroundFlower {
+            constructor(p, x, y) {
+                this.x = x;
+                this.y = y;
+                this.sway = p.random(0, Math.PI * 2);
+                this.height = 60 + p.random(20, 40);
+                this.angle = p.random(-0.1, 0.1);
+
+                this.maxLeaves = 5;
+                this.lastGrowthDay = 0;
+                this.leafCount = 1 + Math.floor(p.random(2));
+                this.leafSizes = [];
+                this.leafAngles = [];
+                for (let i = 0; i < this.leafCount; i++) {
+                    this.leafSizes.push(0);
+                    this.leafAngles.push(p.random(-Math.PI/4, Math.PI/4));
+                }
+            }
+            grow(currentDay) {
+                if (this.height < 120) {
+                    this.height += 0.08;
+                }
+                for (let i = 0; i < this.leafSizes.length; i++) {
+                    if (this.leafSizes[i] < 1) {
+                        this.leafSizes[i] += 0.012;
+                        if (this.leafSizes[i] > 1) this.leafSizes[i] = 1;
+                    }
+                }
+                if (currentDay !== this.lastGrowthDay && this.leafSizes.length < this.maxLeaves) {
+                    this.leafSizes.push(0);
+                    this.leafAngles.push(Math.random() * Math.PI/2 - Math.PI/4);
+                    this.lastGrowthDay = currentDay;
+                }
+            }
+            update() {
+                this.sway += 0.01;
+            }
+            display(p) {
+                p.push();
+                p.translate(this.x, this.y);
+                p.rotate(this.angle + Math.sin(this.sway) * 0.08);
+                // Stem
+                p.stroke(60, 180, 60);
+                p.strokeWeight(5);
+                p.line(0, 0, 0, -this.height);
+                // Leaves
+                p.noStroke();
+                for (let i = 0; i < this.leafSizes.length; i++) {
+                    p.push();
+                    let attachY = -this.height * (0.18 + 0.12 * i);
+                    let attachX = (i % 2 === 0) ? -10 : 10;
+                    p.translate(attachX, attachY);
+                    p.rotate(this.leafAngles[i]);
+                    p.fill(60, 180, 60, 180);
+                    let leafLen = 18 * this.leafSizes[i];
+                    let leafWid = 10 * this.leafSizes[i];
+                    p.ellipse(0, 0, leafLen, leafWid);
+                    p.pop();
+                }
+                // Blue wildflower
+                p.push();
+                p.translate(0, -this.height);
+                p.noStroke();
+                p.fill(80, 140, 255);
+                for (let i = 0; i < 6; i++) {
+                    p.ellipse(0, 12, 10, 22);
+                    p.rotate(Math.PI / 3);
+                }
+                p.fill(255, 255, 180);
+                p.ellipse(0, 0, 16, 16);
+                p.fill(180, 180, 255);
+                p.ellipse(0, 0, 8, 8);
+                p.pop();
+                p.pop();
+            }
+        }
+
+        // --- Animal ---
+        class Animal {
+            constructor(type, tree, p, groundFlowers) {
+                this.type = type;
+                this.tree = tree;
+                this.groundFlowers = groundFlowers;
+                this.size = type === 'bird' ? 56 : type === 'bat' ? 60 : type === 'butterfly' ? 32 : type === 'deer' ? 140 : 40;
+                this.position = new p5.Vector(0, 0);
+                this.target = new p5.Vector(0, 0);
+                this.velocity = new p5.Vector(0, 0);
+                this.sleeping = false;
+                this.isActive = false;
+                this.wingPhase = Math.random() * Math.PI * 2;
+                this.walkCycle = 0;
+                this.grazeTimer = 0;
+                this.grazeState = "graze";
+                this.grazeTime = Math.floor(Math.random() * 120) + 80;
+                this.setInitialPosition(p);
+            }
+            setInitialPosition(p) {
+                if (this.type === 'bat') {
+                    const pos = this.tree.getBatRestPosition();
+                    this.position = pos.copy();
+                    this.target = pos.copy();
+                } else if (this.type === 'bird') {
+                    const pos = this.tree.getNestPosition();
+                    this.position = pos.copy();
+                    this.target = pos.copy();
+                } else if (this.type === 'butterfly') {
+                    if (this.groundFlowers.length) {
+                        let f = this.groundFlowers[Math.floor(Math.random() * this.groundFlowers.length)];
+                        this.position = new p5.Vector(f.x, f.y - 60);
+                        this.target = this.position.copy();
+                        this.currentFlower = Math.floor(Math.random() * this.groundFlowers.length);
+                    }
+                } else if (this.type === 'deer') {
+                    this.position = new p5.Vector(p.width * 0.55 + Math.random() * p.width * 0.25, p.height - 90);
+                    this.target = this.position.copy();
+                }
+            }
+            update(env, p) {
+                // FIXED: Better day/night detection with threshold
+                let isDay = env.lightLevel > 0.05;
+                
+                // --- Bat ---
+                if (this.type === 'bat') {
+                    const restPos = this.tree.getBatRestPosition();
+                    if (isDay) {
+                        // Day: always sleep at rest position
+                        if (!this.sleeping) {
+                            this.sleepTransition = true;
+                        }
+                        if (this.sleepTransition) {
+                            let d = p5.Vector.dist(this.position, restPos);
+                            if (d > 3) {
+                                let force = p5.Vector.sub(restPos, this.position);
+                                force.normalize();
+                                force.mult(1.2);
+                                this.velocity.add(force);
+                                this.velocity.limit(2.5);
+                                this.position.add(this.velocity);
+                                this.velocity.mult(0.92);
+                                this.wingPhase += 0.22;
+                            } else {
+                                this.position = restPos.copy();
+                                this.sleeping = true;
+                                this.sleepTransition = false;
+                            }
+                        } else {
+                            this.sleeping = true;
+                        }
+                    } else {
+                        // Night: fly around
+                        this.sleeping = false;
+                        this.isActive = true;
+                        this.sleepTransition = false;
+                        if (p5.Vector.dist(this.position, this.target) < 20 || Math.random() < 0.01) {
+                            let y = 80 + Math.random() * p.height * 0.3;
+                            let x = p.width * 0.2 + Math.random() * p.width * 0.6;
+                            this.target = new p5.Vector(x, y);
+                        }
+                        const force = p5.Vector.sub(this.target, this.position);
+                        force.normalize();
+                        force.mult(0.5);
+                        this.velocity.add(force);
+                        this.velocity.limit(2.2);
+                        this.position.add(this.velocity);
+                        this.velocity.mult(0.92);
+                        this.wingPhase += 0.22;
+                    }
+                }
+                // --- Bird ---
+                else if (this.type === 'bird') {
+                    const nestPos = this.tree.getNestPosition();
+                    if (isDay) {
+                        // Day: fly around
+                        this.sleeping = false;
+                        this.isActive = true;
+                        this.sleepTransition = false;
+                        if (p5.Vector.dist(this.position, this.target) < 20 || Math.random() < 0.01) {
+                            let y = 80 + Math.random() * p.height * 0.25;
+                            let x = p.width * 0.25 + Math.random() * p.width * 0.5;
+                            this.target = new p5.Vector(x, y);
+                        }
+                        const force = p5.Vector.sub(this.target, this.position);
+                        force.normalize();
+                        force.mult(0.5);
+                        this.velocity.add(force);
+                        this.velocity.limit(2.2);
+                        this.position.add(this.velocity);
+                        this.velocity.mult(0.92);
+                        this.wingPhase += 0.22;
+                    } else {
+                        // Night: sleep in nest
+                        if (!this.sleeping) {
+                            this.sleepTransition = true;
+                        }
+                        if (this.sleepTransition) {
+                            let d = p5.Vector.dist(this.position, nestPos);
+                            if (d > 3) {
+                                let force = p5.Vector.sub(nestPos, this.position);
+                                force.normalize();
+                                force.mult(1.2);
+                                this.velocity.add(force);
+                                this.velocity.limit(2.5);
+                                this.position.add(this.velocity);
+                                this.velocity.mult(0.92);
+                                this.wingPhase += 0.22;
+                            } else {
+                                this.position = nestPos.copy();
+                                this.sleeping = true;
+                                this.sleepTransition = false;
+                            }
+                        } else {
+                            this.sleeping = true;
+                        }
+                    }
+                }
+                // --- Butterfly ---
+                else if (this.type === 'butterfly') {
+                    if (isDay && this.groundFlowers.length) {
+                        this.sleeping = false;
+                        this.isActive = true;
+                        if (!this.currentFlower || this.currentFlower >= this.groundFlowers.length) {
+                            this.currentFlower = Math.floor(Math.random() * this.groundFlowers.length);
+                        }
+                        if (!this.targetFlower || this.targetFlower >= this.groundFlowers.length) {
+                            this.targetFlower = this.currentFlower;
+                        }
+                        if (p5.Vector.dist(this.position, this.target) < 12 || Math.random() < 0.01) {
+                            // Pick a new ground flower to fly to
+                            let next;
+                            do {
+                                next = Math.floor(p.random(this.groundFlowers.length));
+                            } while (next === this.targetFlower);
+                            this.targetFlower = next;
+                            this.target = new p5.Vector(
+                                this.groundFlowers[this.targetFlower].x + p.random(-8, 8),
+                                this.groundFlowers[this.targetFlower].y - 60 + p.random(-10, 10)
+                            );
+                        }
+                        const force = p5.Vector.sub(this.target, this.position);
+                        force.normalize();
+                        force.mult(0.18);
+                        this.velocity.add(force);
+                        this.velocity.limit(0.9);
+                        this.position.add(this.velocity);
+                        this.velocity.mult(0.92);
+                        this.wingPhase += 0.25;
+                    } else {
+                        // Night: sleep on a ground flower
+                        this.sleeping = true;
+                        if (this.groundFlowers.length) {
+                            let f = this.groundFlowers[0];
+                            this.position = new p5.Vector(f.x, f.y - 50);
+                            this.target = this.position.copy();
+                        }
+                    }
+                }
+            
+                // --- Deer ---
+                else if (this.type === 'deer') {
+                    let sleepPos = new p5.Vector(p.width * 0.7, p.height - 90);
+                    if (isDay) {
+                        this.sleeping = false;
+                        this.isActive = true;
+                        if (this.grazeState === "graze") {
+                            this.grazeTimer++;
+                            this.velocity.mult(0.8);
+                            if (this.grazeTimer > this.grazeTime) {
+                                // Switch to walk
+                                this.grazeState = "walk";
+                                this.grazeTimer = 0;
+                                this.grazeTime = Math.floor(Math.random() * 80) + 60;
+                                // Pick a new grazing spot
+                                let x = p.width * 0.5 + Math.random() * p.width * 0.35;
+                                this.target = new p5.Vector(x, p.height - 90);
+                            }
+                        } else if (this.grazeState === "walk") {
+                            if (p5.Vector.dist(this.position, this.target) < 20) {
+                                this.grazeState = "graze";
+                                this.grazeTimer = 0;
+                                this.grazeTime = Math.floor(Math.random() * 120) + 80;
+                            } else {
+                                const force = p5.Vector.sub(this.target, this.position);
+                                force.normalize();
+                                force.mult(0.18);
+                                this.velocity.add(force);
+                                this.velocity.limit(1.0);
+                                this.position.add(this.velocity);
+                                this.velocity.mult(0.94);
+                                this.walkCycle += 0.12;
+                            }
+                        }
+                    } else {
+                        // Night: sleep
+                        if (!this.sleeping) {
+                            this.sleepTransition = true;
+                        }
+                        if (this.sleepTransition) {
+                            let d = p5.Vector.dist(this.position, sleepPos);
+                            if (d > 3) {
+                                let force = p5.Vector.sub(sleepPos, this.position);
+                                force.normalize();
+                                force.mult(0.7);
+                                this.velocity.add(force);
+                                this.velocity.limit(1.2);
+                                this.position.add(this.velocity);
+                                this.velocity.mult(0.92);
+                                this.walkCycle += 0.12;
+                            } else {
+                                this.position = sleepPos.copy();
+                                this.sleeping = true;
+                                this.sleepTransition = false;
+                            }
+                        } else {
+                            this.sleeping = true;
+                        }
+                        this.grazeState = "graze";
+                        this.grazeTimer = 0;
+                    }
+                }
+            }
+            display(p) {
+                if (this.type === 'bat') {
+                    p.push();
+                    p.translate(this.position.x, this.position.y);
+                    if (this.sleeping) {
+                        // FIXED: More visible sleeping bat - larger and with better contrast
+                        p.rotate(Math.PI);
+                        // Body - larger and more visible
+                        p.fill(80, 80, 80);
+                        p.stroke(40, 40, 40);
+                        p.strokeWeight(1);
+                        p.ellipse(0, 0, 28, 45);
+                        p.noStroke();
+                        // Head (tucked in)
+                        p.fill(70, 70, 70);
+                        p.ellipse(0, -22, 20, 20);
+                        // Ears - more prominent
+                        p.fill(100, 100, 100);
+                        p.triangle(-9, -32, -3, -18, 0, -28);
+                        p.triangle(9, -32, 3, -18, 0, -28);
+                        // Folded wings (wrapped around body) - more visible
+                        p.fill(60, 60, 60);
+                        p.stroke(40, 40, 40);
+                        p.strokeWeight(1);
+                        p.beginShape();
+                        p.vertex(-14, 0);
+                        p.bezierVertex(-35, 12, -22, 38, 0, 22);
+                        p.bezierVertex(22, 38, 35, 12, 14, 0);
+                        p.endShape(p.CLOSE);
+                        p.noStroke();
+                        // Feet (claws gripping) - more visible
+                        p.stroke(60, 40, 20);
+                        p.strokeWeight(3);
+                        p.line(-5, 24, -5, 35);
+                        p.line(5, 24, 5, 35);
+                        p.line(-5, 35, -8, 40);
+                        p.line(5, 35, 8, 40);
+                        p.noStroke();
+                        // Eyes closed
+                        p.stroke(40, 40, 40);
+                        p.strokeWeight(2);
+                        p.line(-6, -24, -2, -24);
+                        p.line(6, -24, 2, -24);
+                        p.noStroke();
+                    } else {
+                        // Flying: wings upwards, head, ears, mouth, fangs
+                        p.rotate(Math.sin(this.wingPhase) * 0.15);
+                        // Body
+                        p.fill(60, 60, 60);
+                        p.ellipse(0, 0, 22, 38);
+                        // Head
+                        p.ellipse(0, -18, 16, 16);
+                        // Ears
+                        p.fill(80, 80, 80);
+                        p.triangle(-7, -26, -2, -14, 0, -22);
+                        p.triangle(7, -26, 2, -14, 0, -22);
+                        // Eyes
+                        p.fill(255);
+                        p.ellipse(-4, -20, 3, 3);
+                        p.ellipse(4, -20, 3, 3);
+                        p.fill(0);
+                        p.ellipse(-4, -20, 1.2, 1.2);
+                        p.ellipse(4, -20, 1.2, 1.2);
+                        // Mouth and fangs
+                        p.stroke(255, 100, 100);
+                        p.strokeWeight(1.2);
+                        p.line(-3, -12, 3, -12);
+                        p.stroke(255);
+                        p.line(-2, -12, -2, -9);
+                        p.line(2, -12, 2, -9);
+                        p.noStroke();
+                        // Wings upwards, bulkier at base, leaner at tip
+                        p.push();
+                        p.rotate(-Math.PI / 2.2 + Math.sin(this.wingPhase) * 0.3);
+                        p.fill(40, 40, 40);
+                        p.beginShape();
+                        p.vertex(-11, 0);
+                        p.bezierVertex(-38, -20, -28, -80, 0, -60);
+                        p.bezierVertex(-8, -50, -18, -20, -11, 0);
+                        p.endShape();
+                        p.pop();
+                        p.push();
+                        p.rotate(Math.PI / 2.2 - Math.sin(this.wingPhase) * 0.3);
+                        p.fill(40, 40, 40);
+                        p.beginShape();
+                        p.vertex(11, 0);
+                        p.bezierVertex(38, -20, 28, -80, 0, -60);
+                        p.bezierVertex(8, -50, 18, -20, 11, 0);
+                        p.endShape();
+                        p.pop();
+                    }
+                    p.pop();
+                }
+                else if (this.type === 'bird') {
+                    p.push();
+                    p.translate(this.position.x, this.position.y);
+                    if (this.sleeping) {
+                        // Sleeping in nest
+                        p.rotate(-Math.PI / 10);
+                        p.fill(220, 180, 80);
+                        p.ellipse(0, 0, 38, 28);
+                        p.fill(180, 140, 60);
+                        p.ellipse(0, -12, 22, 18);
+                        // Closed wings
+                        p.fill(180, 140, 60, 180);
+                        p.ellipse(-12, 4, 16, 28);
+                        p.ellipse(12, 4, 16, 28);
+                        // Zzz
+                        p.fill(255, 255, 255, 120);
+                        p.textSize(14);
+                        p.text('z', 18, -18);
+                    } else {
+                        // Flying
+                        p.rotate(Math.sin(this.wingPhase) * 0.1);
+                        p.fill(220, 180, 80);
+                        p.ellipse(0, 0, 38, 28);
+                        p.fill(180, 140, 60);
+                        p.ellipse(0, -12, 22, 18);
+                        // Wings
+                        p.push();
+                        p.rotate(-Math.PI / 8 + Math.sin(this.wingPhase) * 0.5);
+                        p.fill(180, 140, 60, 180);
+                        p.ellipse(-12, 4, 16, 28);
+                        p.pop();
+                        p.push();
+                        p.rotate(Math.PI / 8 - Math.sin(this.wingPhase) * 0.5);
+                        p.fill(180, 140, 60, 180);
+                        p.ellipse(12, 4, 16, 28);
+                        p.pop();
+                        // Beak
+                        p.fill(255, 180, 0);
+                        p.triangle(0, -18, 5, -24, -5, -24);
+                    }
+                    p.pop();
+                }
+                else if (this.type === 'butterfly') {
+                    p.push();
+                    p.translate(this.position.x, this.position.y);
+                    p.rotate(Math.sin(this.wingPhase) * 0.1);
+                    // Body
+                    p.stroke(80, 40, 40);
+                    p.strokeWeight(2);
+                    p.line(0, -10, 0, 10);
+                    p.noStroke();
+                    p.fill(255, 120, 200);
+                    // Wings
+                    p.push();
+                    p.rotate(-Math.PI / 8 + Math.sin(this.wingPhase) * 0.5);
+                    p.ellipse(-10, 0, 20, 32);
+                    p.pop();
+                    p.push();
+                    p.rotate(Math.PI / 8 - Math.sin(this.wingPhase) * 0.5);
+                    p.ellipse(10, 0, 20, 32);
+                    p.pop();
+                    p.fill(255, 180, 240, 180);
+                    p.ellipse(-10, 0, 14, 20);
+                    p.ellipse(10, 0, 14, 20);
+                    // Antennae
+                    p.stroke(80, 40, 40);
+                    p.strokeWeight(1);
+                    p.line(0, -10, -5, -20);
+                    p.line(0, -10, 5, -20);
+                    p.noStroke();
+                    p.pop();
+                }
+                else if (this.type === 'deer') {
+                    p.push();
+                    p.translate(this.position.x, this.position.y);
+                    if (this.sleeping) {
+                        // Sleeping curled up
+                        p.rotate(-Math.PI / 16);
+                        p.fill(180, 120, 60);
+                        p.ellipse(0, 0, 100, 48);
+                        p.ellipse(30, -16, 50, 28);
+                        p.fill(200, 160, 100);
+                        p.ellipse(-16, -14, 28, 18);
+                        // Head tucked
+                        p.push();
+                        p.translate(48, -22);
+                        p.rotate(-Math.PI / 6);
+                        p.fill(180, 120, 60);
+                        p.ellipse(0, 0, 28, 18);
+                        p.fill(120, 80, 40);
+                        p.ellipse(-6, -6, 10, 10);
+                        p.pop();
+                        // Ear
+                        p.fill(200, 160, 100);
+                        p.ellipse(54, -28, 12, 6);
+                        // Zzz
+                        p.fill(255, 255, 255, 120);
+                        p.textSize(18);
+                        p.text('z', 50, -40);
+                    } else {
+                        // Grazing or walking
+                        if (this.grazeState === "graze") {
+                            // Grazing: head down, stationary with subtle movement
+                            p.rotate(-Math.PI / 32 + Math.sin(this.grazeTimer * 0.1) * 0.05);
+                            p.fill(180, 120, 60);
+                            p.ellipse(0, 0, 100, 48);
+                            // Legs folded grazing
+                            p.stroke(120, 80, 40);
+                            p.strokeWeight(7);
+                            let legY = 24;
+                            let legX = 32;
+                            for (let i = 0; i < 4; i++) {
+                                p.line(-legX + i * (legX * 2 / 3), legY, -legX + i * (legX * 2 / 3), legY + 38);
+                            }
+                            p.noStroke();
+                            // Neck
+                            p.fill(200, 160, 100);
+                            p.ellipse(40, -20, 32, 28);
+                            // Head down
+                            p.push();
+                            p.translate(60, -32);
+                            p.rotate(Math.PI / 2.2);
+                            p.fill(180, 120, 60);
+                            p.ellipse(0, 0, 28, 18);
+                            // Ear
+                            p.fill(200, 160, 100);
+                            p.ellipse(10, -10, 12, 6);
+                            // Eye
+                            p.fill(60, 40, 20);
+                            p.ellipse(8, -4, 4, 4);
+                            p.pop();
+                            // Tail
+                            p.fill(120, 80, 40);
+                            p.ellipse(-48, -12, 12, 6);
+                        } else {
+                            // Walking
+                            p.rotate(Math.sin(this.walkCycle) * 0.02);
+                            p.fill(180, 120, 60);
+                            p.ellipse(0, 0, 100, 48);
+                            // Legs walking animation
+                            p.stroke(120, 80, 40);
+                            p.strokeWeight(7);
+                            let legY = 24;
+                            let legX = 32;
+                            for (let i = 0; i < 2; i++) {
+                                let phase = this.walkCycle + i * Math.PI;
+                                p.line(-legX + i * legX * 2, legY, -legX + i * legX * 2, legY + 38 + Math.sin(phase) * 12);
+                            }
+                            for (let i = 0; i < 2; i++) {
+                                let phase = this.walkCycle + Math.PI / 2 + i * Math.PI;
+                                p.line(-legX / 2 + i * legX, legY, -legX / 2 + i * legX, legY + 38 + Math.sin(phase) * 12);
+                            }
+                            p.noStroke();
+                            // Neck
+                            p.fill(200, 160, 100);
+                            p.ellipse(40, -20, 32, 28);
+                            // Head with subtle movement
+                            p.push();
+                            p.translate(60, -32);
+                            p.rotate(-Math.PI / 12 + Math.sin(this.grazeTimer / 30) * 0.1);
+                            p.fill(180, 120, 60);
+                            p.ellipse(0, 0, 28, 18);
+                            // Ear
+                            p.fill(200, 160, 100);
+                            p.ellipse(10, -10, 12, 6);
+                            // Eye
+                            p.fill(60, 40, 20);
+                            p.ellipse(8, -4, 4, 4);
+                            p.pop();
+                            // Tail
+                            p.fill(120, 80, 40);
+                            p.ellipse(-48, -12, 12, 6);
+                        }
+                    }
+                    p.pop();
+                }
+            }
+        }
+
+// --- Main sketch ---
+const sketch = (p) => {
+    let environment;
+    let bigTree;
+    let animals = [];
+    let grassHeights = [];
+    let canvas;
+    let groundFlowers = [];
+    let stars = [];
+    let fireflies = [];
+    let clouds = [];
+    let t = 0;
+
+    p.setup = () => {
+        canvas = p.createCanvas(window.innerWidth, window.innerHeight);
+        canvas.parent('simulation-container');
+        initializeSimulation();
+        document.getElementById('reset-btn').addEventListener('click', initializeSimulation);
+    };
+
+    p.windowResized = () => {
+        p.resizeCanvas(window.innerWidth, window.innerHeight);
+        initializeSimulation();
+    };
+
+    function initializeSimulation() {
+        environment = new Environment();
+        environment.p = p;
+        animals = [];
+        let scale = Math.min(p.width, p.height) / 700;
+        bigTree = new BigTree(120 * scale + 30, p.height - 70, scale, p);
+        groundFlowers = [];
+        let flowerBaseX = bigTree.x + 80 * scale;
+        let flowerBaseY = p.height - 80;
+        for (let i = 0; i < 7; i++) {
+            let flower = new GroundFlower(p, flowerBaseX + i * 32 * scale + p.random(-12, 12), flowerBaseY + p.random(-8, 8));
+            groundFlowers.push(flower);
+            flower.leafSizes = [];
+            flower.leafAngles = [];
+            flower.lastGrowthDay = 0;
+            for (let i = 0; i < flower.leafCount; i++) {
+                flower.leafSizes.push(0);
+                flower.leafAngles.push(Math.random() * Math.PI/2 - Math.PI/4);
+            }
+        }
+
+        animals = [
+            new Animal('bat', bigTree, p, groundFlowers),
+            new Animal('bird', bigTree, p, groundFlowers),
+            new Animal('butterfly', bigTree, p, groundFlowers),
+            new Animal('deer', bigTree, p, groundFlowers)
+        ];
+        grassHeights = [];
+        for (let x = 0; x < p.width; x += 6) {
+            grassHeights.push(12 + Math.random() * 18);
+        }
+        stars = [];
+        for (let i = 0; i < 120; i++) {
+            stars.push(new Star(p, p.width, p.height));
+        }
+        fireflies = [];
+        for (let i = 0; i < 16; i++) {
+            fireflies.push(new Firefly(p, groundFlowers));
+        }
+        clouds = [];
+        for (let i = 0; i < 8; i++) {
+            clouds.push(new Cloud(p, p.width, p.height));
+        }
+    }
+
+    p.draw = () => {
+        t += 0.01;
+        environment.update();
+        bigTree.update(environment, p);
+        groundFlowers.forEach(f => f.update());
+        animals.forEach(a => a.update(environment, p));
+        clouds.forEach(cloud => cloud.update(p));
+
+        // Sky
+        const skyColor = environment.getSkyColor(p);
+        p.background(skyColor);
+
+        // Clouds (only visible in day/transition)
+        let skyBrightness = clamp(environment.lightLevel + 0.2, 0, 1);
+        if (skyBrightness > 0.1) {
+            for (let cloud of clouds) cloud.display(p, skyBrightness);
+        }
+
+        // Stars at night
+        let nightStrength = environment.lightLevel <= 0.05 ? 1 : 0;
+        if (nightStrength > 0) {
+            let midnightPeak = 1;
+            if (environment.time >= 1080) {
+                midnightPeak = Math.sin(Math.PI * (environment.time - 1080) / 720);
+            } else if (environment.time < 360) {
+                midnightPeak = Math.sin(Math.PI * (environment.time + 360) / 720);
+            }
+            for (let s of stars) s.display(p, t, nightStrength * Math.abs(midnightPeak));
+        }
+
+        // Sun/Moon with fade in/out
+        const celestial = environment.getSunMoonPosition(p);
+        const { sunAlpha, moonAlpha } = environment.getSunMoonAlpha();
+        if (celestial.sun.visible && sunAlpha > 0.01) {
+            p.push();
+            // Sun color shifts from orange at sides to yellow at top
+            let sunColor;
+            let sunArc = 0;
+            if (environment.time >= 360 && environment.time < 1080) {
+                sunArc = (environment.time - 360) / 720;
+            }
+            if (sunArc < 0.25 || sunArc > 0.75) {
+                sunColor = p.color(255, 180, 60, 230 * sunAlpha); // Orange
+            } else {
+                sunColor = p.color(255, 255, 0, 230 * sunAlpha); // Yellow
+            }
+            p.fill(sunColor);
+            p.noStroke();
+            p.ellipse(celestial.sun.x, celestial.sun.y, 80);
+            p.stroke(255, 255, 0, 120 * sunAlpha);
+            p.strokeWeight(5);
+            for (let i = 0; i < 8; i++) {
+                const angle = (i * Math.PI) / 4;
+                const x1 = celestial.sun.x + Math.cos(angle) * 50;
+                const y1 = celestial.sun.y + Math.sin(angle) * 50;
+                const x2 = celestial.sun.x + Math.cos(angle) * 70;
+                const y2 = celestial.sun.y + Math.sin(angle) * 70;
+                p.line(x1, y1, x2, y2);
+            }
+            p.pop();
+        }
+        if (celestial.moon.visible && moonAlpha > 0.01) {
+            p.push();
+            p.fill(220, 220, 255, 220 * moonAlpha);
+            p.noStroke();
+            p.ellipse(celestial.moon.x, celestial.moon.y, 60);
+            p.fill(200, 200, 235, 180 * moonAlpha);
+            p.ellipse(celestial.moon.x - 10, celestial.moon.y - 8, 18);
+            p.ellipse(celestial.moon.x + 8, celestial.moon.y + 12, 14);
+            p.pop();
+        }
+
+        // Ground
+        p.fill(101, 67, 33);
+        p.noStroke();
+        p.rect(0, p.height - 80, p.width, 80);
+
+        // Grass
+        p.fill(34, 139, 34);
+        for (let i = 0, x = 0; x < p.width; x += 6, i++) {
+            const grassHeight = grassHeights[i];
+            p.rect(x, p.height - 80 - grassHeight, 5, grassHeight);
+        }
+
+        // Big tree
+        bigTree.display(p);
+        
+        // Only grow ground flowers during the day
+        if (environment.lightLevel > 0.05) {
+            groundFlowers.forEach(f => f.grow(environment.day));
+        }
+
+        // Ground flowers
+        groundFlowers.forEach(f => f.display(p));
+
+        // Fireflies at night: move from flower to flower
+        let isNight = !celestial.sun.visible;
+        fireflies.forEach(f => {
+            f.update(p, t, isNight);
+            f.display(p, t, isNight);
+        });
+
+        // Animals
+        animals.forEach(a => a.display(p));
+
+        // Particles
+        environment.particles.forEach(particle => particle.display(p));
+
+        updateUI();
+    };
+
+    function updateUI() {
+        document.getElementById('time-display').textContent = environment.getTimeString();
+        document.getElementById('day-display').textContent = environment.day;
+        document.getElementById('light-display').textContent = environment.lightLevel.toFixed(2);
+        document.getElementById('temp-display').textContent = `${Math.round(environment.temperature)}°C`;
+        document.getElementById('humidity-display').textContent = `${Math.round(environment.humidity)}%`;
+    }
+};
+
+new p5(sketch);
+    </script>
+</body>
+</html>

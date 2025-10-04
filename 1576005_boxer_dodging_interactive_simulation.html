@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boxing Counter Timing Simulation</title>
+    <!-- Styling -->
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h1 {
+            text-align: center;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+        #canvas-container {
+            border: 3px solid #444;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        .action-btn {
+            background: linear-gradient(45deg, #ff6b35, #f7931e);
+            color: white;
+            min-width: 200px;
+        }
+        .reset-btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .instructions {
+            text-align: center;
+            max-width: 650px;
+            background: rgba(255,255,255,0.1);
+            padding: 25px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        .key-hint {
+            background: rgba(0,0,0,0.4);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 16px;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>🥊 Boxing Timing Simulation</h1>
+    <div class="controls">
+        <button class="action-btn" id="actionBtn">Step Back & Counter (Space)</button>
+        <button class="reset-btn" id="resetBtn">Reset Game</button>
+    </div>
+    <div id="canvas-container"></div>
+    <div class="instructions">
+        <p><strong>Professional Boxing Step Back Counter Technique:</strong></p>
+        <p>• Click <span class="key-hint">Step Back & Counter</span> or press <span class="key-hint">Space</span> at the perfect moment</p>
+        <p>• <strong>Perfect Timing:</strong> Step back within the very narrow green band before opponent's punch lands</p>
+        <p>• <strong>Counter Sequence:</strong> Step back to dodge, then step forward with a powerful counter jab</p>
+        <p>• Watch the faded crowd react to your perfect boxing technique!</p>
+    </div>
+<script type="module">
+import 'p5';
+
+// ============================================================================
+// CONSTANTS - Game dimensions and timing parameters
+// ============================================================================
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 600;
+const AUDIENCE_COUNT = 20;                    // Number of audience members
+const RING_FLOOR_Y = CANVAS_HEIGHT * 0.65;   // Y position of ring floor
+const TIMING_BAR_Y = CANVAS_HEIGHT * 0.88;   // Y position of timing bar
+
+// ============================================================================
+// GLOBAL VARIABLES - Game state and animation variables
+// ============================================================================
+let sketchInstance;
+let backgroundBuffer, ringBuffer;              // Graphics buffers for performance
+let opponentKnockback = 0, playerKnockback = 0, prevCycle = 0;
+
+// Knockback animation timers and parameters
+let playerKnockbackTimer = 0, playerKnockbackDuration = 30, playerMaxKnockback = 35;
+let opponentKnockbackTimer = 0, opponentKnockbackDuration = 30, opponentMaxKnockback = 35;
+
+let gameStartTime = 0;                        // Game start timestamp
+let gameState = {};                           // Main game state object
+let audienceMembers = [];                     // Array of audience member objects
+let audienceUpdateCounter = 0;                // Counter for audience animations
+
+// ============================================================================
+// TIMING CONSTANTS - Counter sequence and dodge timing
+// ============================================================================
+const COUNTER_TOTAL = 28;        // Total frames for complete counter sequence
+const COUNTER_DODGE = 8;         // Frames for stepping back phase
+const COUNTER_TRANSITION = 3;    // Frames for transition between dodge and punch
+const COUNTER_PUNCH = 17;        // Frames for punching forward phase
+const COUNTER_HIT_FRAME = 18;    // Frame when counter punch connects
+
+// Timing windows for player actions
+const PUNCH_DURATION = 600;      // Total punch cycle duration in milliseconds
+const DODGE_WINDOW = 500;        // Window for any successful dodge
+const PERFECT_WINDOW = 120;      // Window for perfect timing (±60ms)
+const IMPACT_CYCLE = 0.8;        // When opponent's punch lands (80% through cycle)
+
+// ============================================================================
+// P5.JS SKETCH DEFINITION
+// ============================================================================
+const s = (p) => {
+
+// ----------------------------------------------------------------------------
+// SETUP - Initialize canvas and game elements
+// ----------------------------------------------------------------------------
+p.setup = function() {
+    p.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT).parent('canvas-container');
+    createGraphicsBuffers();    // Create pre-rendered backgrounds for performance
+    generateSimpleAudience();   // Generate random audience members
+    resetGame();               // Initialize game state
+    p.frameRate(60);           // Set smooth 60 FPS
+    p.pixelDensity(1);         // Optimize for performance
+};
+
+// ============================================================================
+// EASING FUNCTIONS - For smooth animations
+// ============================================================================
+
+/**
+ * Quadratic ease-out function for smooth deceleration
+ * @param {number} t - Progress value between 0 and 1
+ * @returns {number} Eased value
+ */
+function easeOutQuad(t) {
+    t = p.constrain(t, 0, 1);
+    return 1 - (1 - t) * (1 - t);
+}
+
+/**
+ * Cubic ease-in-out function for smooth acceleration and deceleration
+ * @param {number} t - Progress value between 0 and 1
+ * @returns {number} Eased value
+ */
+function easeInOut(t) {
+    t = p.constrain(t, 0, 1);
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+/**
+ * Smoothstep function for very smooth transitions
+ * @param {number} a - Start value
+ * @param {number} b - End value
+ * @param {number} t - Progress value between 0 and 1
+ * @returns {number} Smoothly interpolated value
+ */
+function smoothstep(a, b, t) {
+    t = p.constrain((t - a) / (b - a), 0, 1);
+    return t * t * (3 - 2 * t);
+}
+
+/**
+ * Elastic ease-out with back motion for knockback effects
+ * @param {number} t - Progress value between 0 and 1
+ * @returns {number} Eased value with overshoot
+ */
+function easeOutBack(t) {
+    t = p.constrain(t, 0, 1);
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+/**
+ * Elastic ease-in-out for bouncy animations
+ * @param {number} t - Progress value between 0 and 1
+ * @returns {number} Eased value with elastic motion
+ */
+function easeElastic(t) {
+    t = p.constrain(t, 0, 1);
+    const c4 = (2 * Math.PI) / 3;
+    return t === 0 ? 0 : t === 1 ? 1 : 
+           -Math.pow(2, 10 * t - 10) * Math.sin((t * 10 - 10.75) * c4);
+}
+
+// ----------------------------------------------------------------------------
+// MAIN DRAW LOOP - Called 60 times per second
+// ----------------------------------------------------------------------------
+p.draw = function() {
+    // Draw pre-rendered background layers
+    p.image(backgroundBuffer, 0, 0);
+    
+    // Update all game logic and animations
+    updateGameState();
+    
+    // Draw ring and game elements in order
+    p.image(ringBuffer, 0, 0);
+    drawSimpleAudience();   // Draw animated audience
+    drawFighters();         // Draw both boxers with animations
+    drawEffects();          // Draw hit effects and particles
+    drawTimingBar();        // Draw timing interface
+    drawFeedback();         // Draw feedback messages
+};
+
+// ============================================================================
+// GRAPHICS BUFFER CREATION - Pre-render static elements for performance
+// ============================================================================
+
+/**
+ * Creates graphics buffers for background and ring elements
+ * This improves performance by avoiding redrawing static elements each frame
+ */
+function createGraphicsBuffers() {
+    backgroundBuffer = p.createGraphics(CANVAS_WIDTH, CANVAS_HEIGHT);
+    createStaticBackground();
+    ringBuffer = p.createGraphics(CANVAS_WIDTH, CANVAS_HEIGHT);
+    createStaticRing();
+}
+
+/**
+ * Creates the gradient background
+ */
+function createStaticBackground() {
+    backgroundBuffer.background(25, 30, 45);
+    // Create subtle gradient layers
+    for (let i = 0; i < 5; i++) {
+        let alpha = p.map(i, 0, 4, 30, 0);
+        backgroundBuffer.fill(35, 40, 65, alpha);
+        backgroundBuffer.noStroke();
+        backgroundBuffer.rect(0, i * (CANVAS_HEIGHT/5), CANVAS_WIDTH, CANVAS_HEIGHT/5);
+    }
+}
+
+/**
+ * Creates the boxing ring with ropes, posts, and canvas
+ */
+function createStaticRing() {
+    ringBuffer.clear();
+    
+    // Ring canvas (floor)
+    ringBuffer.fill(180, 100, 60);
+    ringBuffer.noStroke();
+    ringBuffer.rect(0, RING_FLOOR_Y, CANVAS_WIDTH, CANVAS_HEIGHT * 0.35);
+    
+    // Center ring logo/circle
+    ringBuffer.fill(200, 120, 80, 100);
+    ringBuffer.ellipse(CANVAS_WIDTH/2, CANVAS_HEIGHT * 0.82, 80, 80);
+    
+    // Ring canvas texture lines
+    ringBuffer.stroke(140, 80, 50);
+    ringBuffer.strokeWeight(1);
+    for (let i = 0; i < CANVAS_WIDTH; i += 60)
+        ringBuffer.line(i, RING_FLOOR_Y, i, CANVAS_HEIGHT);
+    
+    // Ring ropes (3 levels)
+    ringBuffer.stroke(240, 240, 240);
+    ringBuffer.strokeWeight(5);
+    ringBuffer.line(60, CANVAS_HEIGHT * 0.25, CANVAS_WIDTH - 60, CANVAS_HEIGHT * 0.25);
+    ringBuffer.line(60, CANVAS_HEIGHT * 0.38, CANVAS_WIDTH - 60, CANVAS_HEIGHT * 0.38);
+    ringBuffer.line(60, CANVAS_HEIGHT * 0.51, CANVAS_WIDTH - 60, CANVAS_HEIGHT * 0.51);
+    
+    // Ring posts
+    ringBuffer.fill(120, 120, 120);
+    ringBuffer.stroke(80, 80, 80);
+    ringBuffer.strokeWeight(2);
+    ringBuffer.rect(52, CANVAS_HEIGHT * 0.22, 16, CANVAS_HEIGHT * 0.43);
+    ringBuffer.rect(CANVAS_WIDTH - 68, CANVAS_HEIGHT * 0.22, 16, CANVAS_HEIGHT * 0.43);
+    
+    // Turnbuckles (padding on posts)
+    ringBuffer.fill(200, 50, 50);
+    ringBuffer.noStroke();
+    let turnbuckleY = [CANVAS_HEIGHT * 0.24, CANVAS_HEIGHT * 0.37, CANVAS_HEIGHT * 0.50];
+    for (let y of turnbuckleY) {
+        ringBuffer.rect(55, y, 10, 12);
+        ringBuffer.rect(CANVAS_WIDTH - 65, y, 10, 12);
+    }
+}
+
+// ============================================================================
+// AUDIENCE SYSTEM - Animated crowd reactions
+// ============================================================================
+
+/**
+ * Generates random audience members with varied appearances
+ */
+function generateSimpleAudience() {
+    audienceMembers = [];
+    for (let i = 0; i < AUDIENCE_COUNT; i++) {
+        let baseX = (i * CANVAS_WIDTH/AUDIENCE_COUNT);
+        let randomOffset = p.random(-15, 15);
+        audienceMembers.push({
+            x: baseX + randomOffset,
+            y: CANVAS_HEIGHT * 0.08 + p.random(-10, 15),
+            size: p.random(1.2, 1.8),
+            // Random colors for diversity
+            headColor: p.color(p.random(180, 255), p.random(160, 220), p.random(140, 190), p.random(150, 180)),
+            shirtColor: p.color(p.random(60, 255), p.random(60, 255), p.random(60, 255), p.random(140, 170)),
+            hairColor: p.color(p.random(15, 100), p.random(10, 80), p.random(5, 60), p.random(130, 160)),
+            skinTone: p.random(0.7, 1.3),
+            gender: p.random() > 0.5 ? 'male' : 'female',
+            // Animation states
+            cheer: false,
+            cheerTimer: 0,
+            cheerIntensity: p.random(0.8, 1.4),
+            baseY: CANVAS_HEIGHT * 0.08 + p.random(-10, 15),
+            fadeLevel: p.random(0.5, 0.8)  // Subtle background fade
+        });
+    }
+}
+
+/**
+ * Draws animated audience members with smooth motion
+ */
+function drawSimpleAudience() {
+    audienceUpdateCounter++;
+    
+    for (let i = 0; i < audienceMembers.length; i++) {
+        let member = audienceMembers[i];
+        p.push();
+        p.translate(member.x, member.y);
+        p.scale(member.size);
+        
+        // Smooth swaying and bouncing animations
+        let bounce = member.cheer ? p.sin(p.millis() * 0.01 * member.cheerIntensity) * 3 : 0;
+        let sway = p.cos(p.millis() * 0.003 + member.x * 0.01) * 0.5;
+        p.translate(sway, bounce);
+        
+        // Body (shirt)
+        let shirtR = p.red(member.shirtColor);
+        let shirtG = p.green(member.shirtColor);
+        let shirtB = p.blue(member.shirtColor);
+        let shirtAlpha = p.alpha(member.shirtColor) * member.fadeLevel;
+        p.fill(shirtR, shirtG, shirtB, shirtAlpha);
+        p.noStroke();
+        p.ellipse(0, 15, 12, 18);
+        
+        // Head
+        let headR = p.red(member.headColor) * member.skinTone;
+        let headG = p.green(member.headColor) * member.skinTone;
+        let headB = p.blue(member.headColor) * member.skinTone;
+        let headAlpha = p.alpha(member.headColor) * member.fadeLevel;
+        p.fill(headR, headG, headB, headAlpha);
+        p.ellipse(0, 0, 8, 10);
+        
+        // Hair
+        let hairR = p.red(member.hairColor);
+        let hairG = p.green(member.hairColor);
+        let hairB = p.blue(member.hairColor);
+        let hairAlpha = p.alpha(member.hairColor) * member.fadeLevel;
+        p.fill(hairR, hairG, hairB, hairAlpha);
+        p.ellipse(0, -3, 7, 4);
+        
+        // Animated arms when cheering
+        if (member.cheer) {
+            p.stroke(headR, headG, headB, headAlpha * 0.8);
+            p.strokeWeight(2);
+            let armSwing = p.sin(p.millis() * 0.02 * member.cheerIntensity);
+            p.line(-4, 12, -6 + armSwing, 8 + armSwing);
+            p.line(4, 12, 6 - armSwing, 8 + armSwing);
+        }
+        
+        // Facial features
+        p.fill(0, 0, 0, 120 * member.fadeLevel);
+        p.noStroke();
+        p.ellipse(-2, -1, 1, 1);  // Eyes
+        p.ellipse(2, -1, 1, 1);
+        p.fill(headR * 0.8, headG * 0.8, headB * 0.8, headAlpha * 0.6);
+        p.ellipse(0, 2, 1, 0.5);  // Mouth
+        
+        p.pop();
+        
+        // Update cheer timer
+        if (member.cheerTimer > 0) {
+            member.cheerTimer--;
+            if (member.cheerTimer === 0) {
+                member.cheer = false;
+            }
+        }
+    }
+}
+
+/**
+ * Triggers audience reaction with specified probability
+ * @param {number} probability - Chance (0-1) for each member to cheer
+ */
+function triggerSimpleAudienceReaction(probability) {
+    for (let member of audienceMembers) {
+        if (p.random() < probability) {
+            member.cheer = true;
+            member.cheerTimer = p.random(40, 80);
+            member.cheerIntensity = p.random(0.8, 1.6);
+        }
+    }
+}
+
+// ============================================================================
+// GAME STATE MANAGEMENT - Core game logic and animations
+// ============================================================================
+
+/**
+ * Updates all game state, animations, and timing logic
+ * Called every frame to maintain smooth 60 FPS gameplay
+ */
+function updateGameState() {
+    const currentTime = p.millis();
+    const punchDuration = gameState.punchDuration;
+    let cycle = ((currentTime - gameStartTime) % punchDuration) / punchDuration;
+
+    // Reset state flags at start of new punch cycle
+    if (cycle < prevCycle && cycle < 0.1) {
+        gameState.dodgeSuccess = false;
+        gameState.hitRegistered = false;
+        gameState.counterRegistered = false;
+        gameState.counterHitRegistered = false;
+    }
+    prevCycle = cycle;
+    gameState.punchCycle = cycle;
+
+    // Smooth knockback animations with elastic easing
+    if (playerKnockbackTimer > 0) {
+        playerKnockbackTimer--;
+        let progress = (playerKnockbackDuration - playerKnockbackTimer) / playerKnockbackDuration;
+        let easedProgress = easeOutBack(progress);
+        playerKnockback = playerMaxKnockback * (1 - easedProgress);
+    } else playerKnockback = 0;
+
+    if (opponentKnockbackTimer > 0) {
+        opponentKnockbackTimer--;
+        let progress = (opponentKnockbackDuration - opponentKnockbackTimer) / opponentKnockbackDuration;
+        let easedProgress = easeOutBack(progress);
+        opponentKnockback = opponentMaxKnockback * (1 - easedProgress);
+    } else opponentKnockback = 0;
+
+    // Fade out visual effects smoothly
+    if (gameState.playerGlow > 0) gameState.playerGlow = p.max(0, gameState.playerGlow - 2);
+    if (gameState.opponentGlow > 0) gameState.opponentGlow = p.max(0, gameState.opponentGlow - 2);
+    if (gameState.feedbackTimer > 0) gameState.feedbackTimer--;
+    if (gameState.hitEffect > 0) gameState.hitEffect = p.max(0, gameState.hitEffect - 4);
+    if (gameState.opponentHitEffect > 0) gameState.opponentHitEffect = p.max(0, gameState.opponentHitEffect - 4);
+    if (gameState.perfectCounterEffect > 0) gameState.perfectCounterEffect = p.max(0, gameState.perfectCounterEffect - 4);
+    if (gameState.counterTrailEffect > 0) gameState.counterTrailEffect = p.max(0, gameState.counterTrailEffect - 3);
+    if (gameState.counterHitEffect > 0) gameState.counterHitEffect = p.max(0, gameState.counterHitEffect - 4);
+
+    // Update counter sequence state machine
+    if (gameState.actionSequenceTimer > 0) {
+        gameState.actionSequenceTimer--;
+        let elapsedFrames = COUNTER_TOTAL - gameState.actionSequenceTimer;
+        
+        // Determine current phase of counter sequence
+        gameState.isSteppingBack = elapsedFrames <= COUNTER_DODGE;
+        gameState.isCountering = elapsedFrames > (COUNTER_DODGE + COUNTER_TRANSITION) && elapsedFrames <= COUNTER_TOTAL;
+    } else {
+        gameState.isSteppingBack = false;
+        gameState.isCountering = false;
+    }
+
+    // Check for opponent punch landing (player gets hit)
+    let cycleProgress = gameState.punchCycle;
+    if (cycleProgress >= 0.78 && cycleProgress <= 0.82) {
+        if (!gameState.dodgeSuccess && !gameState.hitRegistered) {
+            gameState.hitRegistered = true;
+            gameState.hitEffect = 50;
+            triggerSimpleAudienceReaction(0.3);
+            
+            // Apply knockback if player isn't dodging
+            if (!gameState.isSteppingBack && playerKnockbackTimer === 0) {
+                playerKnockbackTimer = playerKnockbackDuration;
+                playerMaxKnockback = 45;
+            }
+        }
+    }
+    if (cycleProgress < 0.75 || cycleProgress > 0.85) {
+        gameState.hitRegistered = false;
+    }
+
+    // Handle counter punch landing on opponent
+    if (gameState.isCountering && gameState.dodgeSuccess) {
+        let elapsedFrames = COUNTER_TOTAL - gameState.actionSequenceTimer;
+        
+        // Counter punch connects at specific frame
+        if (elapsedFrames === COUNTER_HIT_FRAME && !gameState.counterHitRegistered) {
+            gameState.counterHitRegistered = true;
+            gameState.opponentHitEffect = 100;
+            gameState.perfectCounterEffect = 100;
+            gameState.counterHitEffect = 100;
+            triggerSimpleAudienceReaction(0.9);
+            
+            // Apply knockback to opponent
+            opponentKnockbackTimer = opponentKnockbackDuration;
+            opponentMaxKnockback = 40;
+        }
+        
+        // Counter punch trail effect during active punching frames
+        if (elapsedFrames >= (COUNTER_DODGE + COUNTER_TRANSITION + 3) && 
+            elapsedFrames <= (COUNTER_DODGE + COUNTER_TRANSITION + 12)) {
+            gameState.counterTrailEffect = 80;
+            gameState.opponentHitEffect = p.max(gameState.opponentHitEffect, 60);
+        }
+    }
+    
+    // Reset counter hit flag when not countering
+    if (!gameState.isCountering || gameState.actionSequenceTimer === 0) {
+        gameState.counterHitRegistered = false;
+    }
+}
+
+// ============================================================================
+// FIGHTER RENDERING - Draw both boxers with smooth animations
+// ============================================================================
+
+/**
+ * Draws both fighters with their current animations
+ */
+function drawFighters() {
+    let punchCycle = gameState.punchCycle;
+    let punchProgress;
+    
+    // Calculate smooth punch animation progress
+    if (punchCycle < 0.5) {
+        punchProgress = smoothstep(0, 0.5, punchCycle);
+    } else {
+        punchProgress = 1 - smoothstep(0.5, 1, punchCycle);
+    }
+    
+    // Draw fighters in order (opponent first, then player)
+    drawOpponentWithFixedSideLegs(350, CANVAS_HEIGHT * 0.52, punchProgress, opponentKnockback);
+    drawPlayerWithCounterSequence(450, CANVAS_HEIGHT * 0.52, playerKnockback);
+}
+
+/**
+ * Draws the blue boxer (player) with counter sequence animations
+ * @param {number} x - X position
+ * @param {number} y - Y position  
+ * @param {number} knockback - Knockback offset for hit reactions
+ */
+function drawPlayerWithCounterSequence(x, y, knockback = 0) {
+    p.push();
+    p.translate(x + knockback, y);
+
+    // Calculate smooth counter sequence animations
+    let stepMovement = 0, bodyLean = 0, punchExtension = 0, punchGlow = 0;
+    
+    if (gameState.actionSequenceTimer > 0) {
+        let elapsedFrames = COUNTER_TOTAL - gameState.actionSequenceTimer;
+        
+        if (gameState.isSteppingBack) {
+            // Step back phase - smooth retreat
+            let progress = p.constrain(elapsedFrames / COUNTER_DODGE, 0, 1);
+            let ease = easeInOut(progress);
+            stepMovement = ease * 50;
+            bodyLean = ease * -0.20;
+        } else if (gameState.isCountering) {
+            // Counter punch phase - explosive forward motion
+            let counterStart = COUNTER_DODGE + COUNTER_TRANSITION;
+            let punchProgress = (elapsedFrames - counterStart) / COUNTER_PUNCH;
+            punchProgress = p.constrain(punchProgress, 0, 1);
+            let easeForward = easeInOut(punchProgress);
+            stepMovement = 50 - easeForward * 75;
+            bodyLean = punchProgress * 0.25;
+            punchExtension = easeForward;
+            if (punchProgress > 0.3 && punchProgress < 0.9) punchGlow = 1;
+        } else {
+            // Transition phase - brief pause
+            let transitionProgress = (elapsedFrames - COUNTER_DODGE) / COUNTER_TRANSITION;
+            stepMovement = 50;
+            bodyLean = -0.20 + (transitionProgress * 0.20);
+        }
+    }
+    
+    p.translate(stepMovement, 0);
+
+    // Smooth leg positioning for stance
+    let legAdjustment = 0;
+    if (gameState.actionSequenceTimer > 0) {
+        let totalProgress = (COUNTER_TOTAL - gameState.actionSequenceTimer) / COUNTER_TOTAL;
+        legAdjustment = easeInOut(totalProgress);
+    }
+    
+    // Draw legs with smooth positioning
+    p.stroke(240, 210, 180); 
+    p.strokeWeight(16);
+    let backHipX = 6 + legAdjustment * 8;
+    let backHipY = 48 + legAdjustment * 2;
+    let backKneeX = backHipX + 2;
+    let backKneeY = 82 + legAdjustment * 3;
+    let backFootX = backKneeX + 2;
+    let backFootY = 110;
+    p.line(backHipX, backHipY, backKneeX, backKneeY);
+    
+    // Knee pads
+    p.fill(200, 170, 230); 
+    p.noStroke();
+    p.ellipse(backHipX + 1, 65 + legAdjustment, 14, 12);
+
+    // Body torso with smooth rotation
+    p.fill(180, 150, 210); 
+    p.stroke(150, 120, 180); 
+    p.strokeWeight(2);
+    p.push(); 
+    p.rotate(bodyLean);
+    p.ellipse(0, -10, 70, 120); 
+    p.pop();
+    
+    // Chest muscles detail
+    p.fill(200, 170, 230); 
+    p.noStroke();
+    p.ellipse(-6, -25, 10, 6); 
+    p.ellipse(6, -25, 10, 6);
+    p.ellipse(-6, -15, 10, 6); 
+    p.ellipse(6, -15, 10, 6);
+
+    // Head with smooth movement offset
+    p.fill(240, 210, 180); 
+    p.stroke(200, 170, 140); 
+    p.strokeWeight(2);
+    let headOffset = stepMovement * 0.20;
+    p.ellipse(-18 + headOffset, -75, 50, 55);
+    
+    // Face details
+    p.fill(0); 
+    p.noStroke(); 
+    p.ellipse(-30 + headOffset, -75, 4, 3);  // Eye
+    p.fill(40, 25, 15); 
+    p.ellipse(-18 + headOffset, -95, 45, 20);  // Hair
+
+    // Boxing trunks
+    p.fill(50, 70, 200); 
+    p.noStroke(); 
+    p.rect(-20, 20, 40, 30);
+
+    // Arm and glove with smooth punch animation
+    let shoulderX = 5, shoulderY = -35;
+    let gloveX = shoulderX - 25, gloveY = shoulderY - 10;
+    let elbowX = shoulderX - 18, elbowY = shoulderY + 8;
+    
+    if (gameState.isCountering) {
+        let ext = punchExtension;
+        gloveX = p.lerp(shoulderX - 25, shoulderX - 70, ext);
+        gloveY = p.lerp(shoulderY - 10, shoulderY + 8, ext);
+        elbowX = p.lerp(shoulderX - 18, shoulderX - 40, ext * 0.8);
+    }
+    
+    // Arm rendering with trail effects
+    p.stroke(220, 190, 160); 
+    p.strokeWeight(15);
+    if (gameState.isCountering && gameState.counterTrailEffect > 0) {
+        // Glowing trail effect for power punches
+        p.stroke(255, 215, 0, gameState.counterTrailEffect * 2);
+        p.strokeWeight(22);
+        p.line(shoulderX, shoulderY, elbowX, elbowY);
+        p.line(elbowX, elbowY, gloveX, gloveY);
+        p.stroke(220, 190, 160); 
+        p.strokeWeight(15);
+    }
+    p.line(shoulderX, shoulderY, elbowX, elbowY);
+    p.strokeWeight(12); 
+    p.line(elbowX, elbowY, gloveX, gloveY);
+
+    // Glove with dynamic coloring based on action
+    if (gameState.dodgeSuccess && gameState.isCountering) {
+        p.fill(255, 215, 0);  // Golden glove for successful counter
+        p.stroke(255, 165, 0);
+        if (punchExtension > 0.3) p.strokeWeight(5);
+    } else if (gameState.isCountering) {
+        p.fill(100, 150, 255);  // Blue glove when punching
+        p.stroke(80, 120, 255); 
+        p.strokeWeight(3);
+    } else {
+        p.fill(60, 80, 220);  // Default blue glove
+        p.stroke(40, 60, 190);
+    }
+    p.strokeWeight(2); 
+    p.ellipse(gloveX, gloveY, 30, 25);
+    
+    // Power glow effect for successful punches
+    if (punchGlow && gameState.dodgeSuccess) {
+        p.noStroke();
+        p.fill(255, 255, 0, 200);
+        p.ellipse(gloveX, gloveY, 50, 42);
+        p.fill(255, 255, 100, 120);
+        p.ellipse(gloveX, gloveY, 35, 30);
+    }
+
+    // Complete leg rendering
+    p.stroke(240, 210, 180); 
+    p.strokeWeight(16);
+    p.line(backKneeX, backKneeY, backFootX, backFootY);
+    
+    // Front leg with dynamic positioning
+    let frontHipX = -8 - legAdjustment * 5;
+    let frontHipY = 50;
+    let frontKneeX = frontHipX - 2;
+    let frontKneeY = 85 + legAdjustment * 4;
+    let frontFootX = frontKneeX - 2;
+    let frontFootY = 110;
+    p.line(frontHipX, frontHipY, frontKneeX, frontKneeY);
+    p.line(frontKneeX, frontKneeY, frontFootX, frontFootY);
+    
+    // Knee pad on front leg
+    p.fill(200, 170, 230); 
+    p.noStroke();
+    p.ellipse(frontKneeX + 2, 67, 18, 14);
+
+    // Boxing shoes with details
+    p.fill(20, 20, 20); 
+    p.stroke(0); 
+    p.strokeWeight(1);
+    p.ellipse(frontFootX, frontFootY + 5, 36, 16);
+    p.ellipse(backFootX, backFootY + 5, 30, 14);
+    
+    // Shoe laces
+    p.stroke(200, 200, 200); 
+    p.strokeWeight(1);
+    for (let i = 0; i < 3; i++)
+        p.line(frontFootX - 12, frontFootY + i * 2, frontFootX - 2, frontFootY + i * 2);
+    
+    p.pop();
+}
+
+/**
+ * Draws the red boxer (opponent) with punch animation
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ * @param {number} punchProgress - Progress of punch animation (0-1)
+ * @param {number} knockback - Knockback offset for hit reactions
+ */
+function drawOpponentWithFixedSideLegs(x, y, punchProgress, knockback = 0) {
+    p.push();
+    p.translate(x - knockback, y);
+    
+    // Hit effect overlay when taking damage
+    if (gameState.opponentHitEffect > 0 || gameState.counterHitEffect > 0) {
+        let intensity = p.map(
+            Math.max(gameState.opponentHitEffect, gameState.counterHitEffect),
+            0, 100, 0, 180
+        );
+        p.fill(255, 50, 50, intensity);
+        p.noStroke();
+        p.ellipse(15, -40, 150, 180);
+    }
+    
+    // Back leg
+    p.stroke(240, 210, 180);
+    p.strokeWeight(16);
+    let backHipX = 6, backHipY = 48;
+    let backKneeX = backHipX + 2, backKneeY = 82;
+    let backFootX = backKneeX + 2, backFootY = 110;
+    p.line(backHipX, backHipY, backKneeX, backKneeY);
+    
+    // Knee pad
+    p.fill(220, 190, 160); 
+    p.noStroke();
+    p.ellipse(backHipX + 1, 65, 14, 12);
+    
+    // Body torso
+    p.fill(210, 180, 150); 
+    p.stroke(180, 150, 120); 
+    p.strokeWeight(2);
+    p.ellipse(0, -10, 70, 120);
+    
+    // Chest muscle definition
+    p.fill(230, 200, 170); 
+    p.noStroke();
+    p.ellipse(-6, -25, 10, 6); 
+    p.ellipse(6, -25, 10, 6);
+    p.ellipse(-6, -15, 10, 6); 
+    p.ellipse(6, -15, 10, 6);
+    
+    // Head
+    p.fill(240, 210, 180); 
+    p.stroke(200, 170, 140); 
+    p.strokeWeight(2);
+    p.ellipse(18, -75, 50, 55);
+    
+    // Face details
+    p.fill(0); 
+    p.noStroke(); 
+    p.ellipse(30, -75, 4, 3);  // Eye
+    p.fill(60, 40, 20); 
+    p.ellipse(18, -95, 45, 20);  // Hair
+    
+    // Red boxing trunks
+    p.fill(200, 50, 50); 
+    p.noStroke(); 
+    p.rect(-20, 20, 40, 30);
+    
+    // Animated punching arm with smooth extension
+    let shoulderX = -5, shoulderY = -35;
+    let armExtension = p.lerp(30, 85, smoothstep(0, 1, punchProgress));
+    let gloveX = shoulderX + armExtension;
+    let gloveY = shoulderY + p.sin(punchProgress * p.PI) * 6;
+    let elbowX = shoulderX + (armExtension * 0.6);
+    let elbowY = shoulderY + 8;
+    
+    // Arm rendering
+    p.stroke(220, 190, 160); 
+    p.strokeWeight(15);
+    p.line(shoulderX, shoulderY, elbowX, elbowY);
+    p.strokeWeight(12); 
+    p.line(elbowX, elbowY, gloveX, gloveY);
+    
+    // Red boxing glove
+    p.fill(220, 60, 60); 
+    p.stroke(180, 40, 40); 
+    p.strokeWeight(2);
+    p.ellipse(gloveX, gloveY, 30, 25);
+    
+    // Complete back leg
+    p.stroke(240, 210, 180); 
+    p.strokeWeight(16);
+    p.line(backKneeX, backKneeY, backFootX, backFootY);
+    
+    // Front leg with smooth punch-coordinated movement
+    let frontHipX = -8, frontHipY = 50;
+    let frontKneeX = frontHipX - 2, frontKneeY = 85;
+    let frontFootX = frontKneeX - 2, frontFootY = 110;
+    let legMove = p.lerp(0, 18, smoothstep(0, 1, punchProgress));
+    frontHipX += legMove * 0.7;
+    frontKneeX += legMove * 0.9;
+    frontFootX += legMove;
+    
+    p.line(frontHipX, frontHipY, frontKneeX, frontKneeY);
+    p.line(frontKneeX, frontKneeY, frontFootX, frontFootY);
+    
+    // Front leg knee pad
+    p.fill(220, 190, 160); 
+    p.noStroke();
+    p.ellipse(frontKneeX + 2, 67, 18, 14);
+    
+    // Boxing shoes
+    p.fill(20, 20, 20); 
+    p.stroke(0); 
+    p.strokeWeight(1);
+    p.ellipse(frontFootX, frontFootY + 5, 36, 16);
+    p.ellipse(backFootX, backFootY + 5, 30, 14);
+    
+    // Shoe laces detail
+    p.stroke(200, 200, 200); 
+    p.strokeWeight(1);
+    for (let i = 0; i < 3; i++)
+        p.line(frontFootX - 12, frontFootY + i * 2, frontFootX - 2, frontFootY + i * 2);
+    
+    p.pop();
+}
+
+// ============================================================================
+// VISUAL EFFECTS SYSTEM - Particle effects and hit feedback
+// ============================================================================
+
+/**
+ * Draws all visual effects including hit sparks, trails, and impact effects
+ */
+function drawEffects() {
+    // Player hit effect (when blue boxer gets hit)
+    if (gameState.hitEffect > 0) {
+        p.push();
+        let intensity = p.map(gameState.hitEffect, 0, 60, 0, 220);
+        p.fill(255, 255, 100, intensity);
+        p.noStroke();
+        
+        // Rotating spark particles
+        for (let i = 0; i < 6; i++) {
+            let angle = (i * p.PI / 3) + (p.frameCount * 0.18);
+            let size = p.map(gameState.hitEffect, 0, 60, 2, 10);
+            let dist = p.map(gameState.hitEffect, 0, 60, 6, 22);
+            p.ellipse(430 + p.cos(angle) * dist, CANVAS_HEIGHT * 0.42 + p.sin(angle) * dist, size, size);
+        }
+        p.pop();
+    }
+    
+    // Opponent hit effect (when red boxer gets hit)
+    if (gameState.opponentHitEffect > 0 || gameState.counterHitEffect > 0) {
+        p.push();
+        let intensity = p.map(
+            Math.max(gameState.opponentHitEffect, gameState.counterHitEffect),
+            0, 100, 0, 250
+        );
+        p.fill(255, 215, 0, intensity);
+        p.noStroke();
+        
+        // More dramatic effect with more particles
+        for (let i = 0; i < 10; i++) {
+            let angle = (i * p.PI / 5) + (p.frameCount * 0.25);
+            let size = p.map(
+                Math.max(gameState.opponentHitEffect, gameState.counterHitEffect),
+                0, 100, 4, 15
+            );
+            let dist = p.map(
+                Math.max(gameState.opponentHitEffect, gameState.counterHitEffect),
+                0, 100, 10, 30
+            );
+            p.ellipse(350 + p.cos(angle) * dist, CANVAS_HEIGHT * 0.52 + p.sin(angle) * dist, size, size);
+        }
+        p.pop();
+    }
+    
+    // Perfect counter effect (golden rings)
+    if (gameState.perfectCounterEffect > 0) {
+        p.push();
+        let intensity = p.map(gameState.perfectCounterEffect, 0, 100, 0, 220);
+        
+        // Double ring effect for perfect counters
+        p.stroke(255, 215, 0, intensity);
+        p.strokeWeight(4);
+        p.noFill();
+        let size1 = p.map(gameState.perfectCounterEffect, 100, 0, 30, 80);
+        let size2 = p.map(gameState.perfectCounterEffect, 100, 0, 50, 100);
+        p.ellipse(350, CANVAS_HEIGHT * 0.52, size1, size1);
+        
+        p.stroke(255, 255, 0, intensity * 0.7);
+        p.strokeWeight(2);
+        p.ellipse(350, CANVAS_HEIGHT * 0.52, size2, size2);
+        p.pop();
+    }
+    
+    // Counter punch trail effect
+    if (gameState.counterTrailEffect > 0) {
+        p.push();
+        let intensity = p.map(gameState.counterTrailEffect, 0, 80, 0, 180);
+        
+        // Blue energy aura around punching boxer
+        p.fill(100, 150, 255, intensity * 0.4);
+        p.noStroke();
+        p.ellipse(450, CANVAS_HEIGHT * 0.45, 90, 110);
+        
+        // Orbiting energy particles
+        for (let i = 0; i < 6; i++) {
+            let angle = (i * p.PI / 3) + (p.frameCount * 0.18);
+            let dist = 35 + p.sin(p.frameCount * 0.12 + i) * 12;
+            p.fill(150, 200, 255, intensity);
+            p.ellipse(450 + p.cos(angle) * dist, CANVAS_HEIGHT * 0.45 + p.sin(angle) * dist, 10, 10);
+        }
+        p.pop();
+    }
+}
+
+// ============================================================================
+// TIMING BAR UI - Visual timing interface for player input
+// ============================================================================
+
+/**
+ * Draws the timing bar with perfect zone, indicators, and feedback
+ */
+function drawTimingBar() {
+    let barHeight = 35;
+    
+    // Main timing bar background
+    p.fill(40, 40, 40);
+    p.stroke(160, 160, 160);
+    p.strokeWeight(2);
+    p.rect(50, TIMING_BAR_Y, CANVAS_WIDTH - 100, barHeight);
+
+    // Calculate perfect timing window positions
+    const impactTime = PUNCH_DURATION * IMPACT_CYCLE;
+    const perfectStartTime = impactTime - (PERFECT_WINDOW/2);
+    const perfectEndTime = impactTime + (PERFECT_WINDOW/2);
+
+    let perfectStartCycle = perfectStartTime / PUNCH_DURATION;
+    let perfectEndCycle = perfectEndTime / PUNCH_DURATION;
+    let perfectStartX = p.map(perfectStartCycle, 0, 1, 60, CANVAS_WIDTH - 60);
+    let perfectEndX = p.map(perfectEndCycle, 0, 1, 60, CANVAS_WIDTH - 60);
+
+    // Perfect timing zone (green bar) - shifted as per your modification
+    p.fill(100, 255, 100, 230);
+    p.noStroke();
+    p.rect(perfectStartX-200, TIMING_BAR_Y + 2, perfectEndX - perfectStartX-50, barHeight - 4, 5);
+
+    // Impact line (when opponent's punch lands)
+    p.stroke(255, 80, 80); 
+    p.strokeWeight(4);
+    let impactX = p.map(IMPACT_CYCLE, 0, 1, 60, CANVAS_WIDTH - 60);
+    p.line(impactX, TIMING_BAR_Y - 5, impactX, TIMING_BAR_Y + barHeight + 5);
+
+    // Current cycle indicator (yellow moving dot)
+    let indicatorX = p.map(gameState.punchCycle, 0, 1, 60, CANVAS_WIDTH - 60);
+    let cycleProgress = gameState.punchCycle;
+    
+    // Hide indicator during impact frames for cleaner visual
+    if (!(cycleProgress >= 0.78 && cycleProgress <= 0.82)) {
+        p.fill(255, 255, 200); 
+        p.stroke(255, 200, 0); 
+        p.strokeWeight(3);
+        p.ellipse(indicatorX, TIMING_BAR_Y + barHeight/2, 20, 20);
+    }
+
+    // Perfect zone label
+    p.fill(255); 
+    p.textAlign(p.CENTER); 
+    p.textSize(12);
+    p.text('PERFECT', (perfectStartX + perfectEndX-450) / 2, TIMING_BAR_Y + barHeight + 18);
+}
+
+// ============================================================================
+// FEEDBACK SYSTEM - On-screen messages and notifications
+// ============================================================================
+
+/**
+ * Draws feedback messages with smooth fade animations
+ */
+function drawFeedback() {
+    if (gameState.feedbackTimer > 0) {
+        p.push();
+        p.textAlign(p.CENTER); 
+        p.textSize(40);
+        
+        // Smooth fade-out effect
+        let alpha = p.map(gameState.feedbackTimer, 0, 120, 0, 255);
+        p.stroke(0, 0, 0, alpha * 0.8);
+        p.strokeWeight(4);
+        
+        // Color-coded feedback text
+        if (gameState.feedbackText.includes('PERFECT') || gameState.feedbackText.includes('FLAWLESS')) {
+            p.fill(255, 215, 0, alpha);  // Gold for perfect
+        } else if (gameState.feedbackText.includes('Too')) {
+            p.fill(255, 120, 120, alpha);  // Red for failures
+        } else {
+            p.fill(120, 255, 120, alpha);  // Green for good timing
+        }
+        
+        p.text(gameState.feedbackText, CANVAS_WIDTH/2, CANVAS_HEIGHT * 0.15);
+        p.pop();
+    }
+}
+
+// ============================================================================
+// INPUT HANDLING - Player action processing and timing evaluation
+// ============================================================================
+
+/**
+ * Processes player input and evaluates timing for dodge/counter actions
+ */
+function performAction() {
+    const currentTime = p.millis();
+    const cycleTime = (currentTime - gameStartTime) % PUNCH_DURATION;
+    const timeSinceLastAction = currentTime - gameState.lastActionTime;
+    
+    // Prevent spam clicking with cooldown
+    if (timeSinceLastAction < 150 || gameState.actionSequenceTimer > 0) return;
+    
+    // Calculate timing windows
+    const impactTime = PUNCH_DURATION * IMPACT_CYCLE;
+    const perfectStart = impactTime - (PERFECT_WINDOW/2);
+    const perfectEnd = impactTime + (PERFECT_WINDOW/2);
+
+    gameState.lastActionTime = currentTime;
+
+    // Evaluate timing and provide appropriate feedback
+    if (cycleTime >= perfectStart && cycleTime <= perfectEnd) {
+        // Perfect timing window
+        gameState.dodgeSuccess = true;
+        gameState.actionSequenceTimer = COUNTER_TOTAL;
+        gameState.feedbackText = 'Sway Back!';
+        gameState.feedbackTimer = 120;
+        gameState.playerGlow = 120;
+        gameState.opponentGlow = 60;
+    } else if (
+        cycleTime >= (impactTime - DODGE_WINDOW) && cycleTime < perfectStart
+    ) {
+        // Early but acceptable timing
+        gameState.dodgeSuccess = true;
+        gameState.actionSequenceTimer = COUNTER_TOTAL;
+        gameState.feedbackText = 'Good, Perfect Counter!';
+        gameState.feedbackTimer = 80;
+        gameState.playerGlow = 90;
+        gameState.opponentGlow = 30;
+    } else if (
+        cycleTime > perfectEnd && cycleTime <= impactTime
+    ) {
+        // Late but acceptable timing
+        gameState.dodgeSuccess = true;
+        gameState.actionSequenceTimer = COUNTER_TOTAL;
+        gameState.feedbackText = 'Good, but Late!';
+        gameState.feedbackTimer = 80;
+        gameState.playerGlow = 90;
+        gameState.opponentGlow = 30;
+    } else {
+        // Failed timing
+        gameState.dodgeSuccess = false;
+        gameState.actionSequenceTimer = 15;
+        gameState.feedbackText = cycleTime < (impactTime - DODGE_WINDOW) ? 'Too Early!' : 'Too Late!';
+        gameState.feedbackTimer = 70;
+    }
+}
+
+// ============================================================================
+// GAME INITIALIZATION - Reset game state to starting conditions
+// ============================================================================
+
+/**
+ * Resets the game to initial state
+ */
+function resetGame() {
+    gameStartTime = p.millis();
+    prevCycle = 0;
+    
+    // Initialize complete game state
+    gameState = {
+        punchCycle: 0,
+        punchDuration: PUNCH_DURATION,
+        dodgeWindow: DODGE_WINDOW,
+        lastActionTime: 0,
+        dodgeSuccess: false,
+        feedbackText: '',
+        feedbackTimer: 0,
+        playerGlow: 0,
+        opponentGlow: 0,
+        isSteppingBack: false,
+        isCountering: false,
+        actionSequenceTimer: 0,
+        hitEffect: 0,
+        punchRecoil: 0,
+        perfectCounterEffect: 0,
+        opponentHitEffect: 0,
+        counterTrailEffect: 0,
+        isGameRunning: true,
+        hitRegistered: false,
+        counterRegistered: false,
+        counterHitRegistered: false,
+        counterHitEffect: 0
+    };
+    
+    // Reset animation states
+    opponentKnockback = 0;
+    playerKnockback = 0;
+    playerKnockbackTimer = 0;
+    opponentKnockbackTimer = 0;
+    audienceUpdateCounter = 0;
+    
+    // Reset audience
+    for (let member of audienceMembers) { 
+        member.cheer = false; 
+        member.cheerTimer = 0; 
+    }
+}
+
+// ============================================================================
+// INPUT EVENTS - Keyboard and mouse handling
+// ============================================================================
+
+/**
+ * Handles keyboard input for game controls
+ */
+p.keyPressed = function() {
+    if (p.key === ' ' || p.keyCode === p.DOWN_ARROW) {
+        performAction();  // Space or down arrow to dodge/counter
+    }
+    else if (p.key === 'r' || p.key === 'R') {
+        resetGame();     // R key to reset game
+    }
+};
+
+// Export functions for button event handlers
+sketchInstance = {
+    performAction: performAction,
+    resetGame: resetGame
+};
+
+}; // End of p5 sketch
+
+// ============================================================================
+// INITIALIZE P5.JS SKETCH
+// ============================================================================
+new p5(s);
+
+// ============================================================================
+// BUTTON EVENT HANDLERS - Connect HTML buttons to game functions
+// ============================================================================
+
+/**
+ * Set up button event listeners when DOM is ready
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    const actionBtn = document.getElementById('actionBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    
+    // Action button (dodge/counter)
+    if (actionBtn) {
+        actionBtn.addEventListener('click', function(e) { 
+            e.preventDefault(); 
+            if (sketchInstance && sketchInstance.performAction) {
+                sketchInstance.performAction(); 
+            }
+        });
+    }
+    
+    // Reset button
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function(e) { 
+            e.preventDefault(); 
+            if (sketchInstance && sketchInstance.resetGame) {
+                sketchInstance.resetGame(); 
+            }
+        });
+    }
+});
+
+/**
+ * Backup event handler setup for reset button
+ */
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        const resetBtn = document.getElementById('resetBtn');
+        if (resetBtn) {
+            resetBtn.onclick = function() { 
+                if (sketchInstance && sketchInstance.resetGame) {
+                    sketchInstance.resetGame(); 
+                }
+                return false; 
+            };
+        }
+    }, 100);
+});
+</script>
+</body>
+</html>

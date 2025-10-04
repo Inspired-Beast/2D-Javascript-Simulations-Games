@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Random Medieval Catapult Simulator - Real Time</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+      }
+    }
+  </script>
+  <style>
+    /* Basic page styling */
+    body {
+      margin: 0;
+      background: #e2d5c1;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow: hidden;
+    }
+    /* Flex container for layout */
+    #main-flex {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: center;
+      width: 100vw;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    /* Controls panel styling */
+    #controls {
+      background: rgba(255,255,255,0.97);
+      padding: 20px;
+      border-radius: 15px;
+      margin: 20px 0 0 20px;
+      z-index: 100;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      border: 2px solid #80664e;
+      min-width: 280px;
+      max-width: 300px;
+    }
+    /* Each parameter row in controls */
+    .param-row {
+      margin: 8px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      background: rgba(191, 161, 106, 0.1);
+      border-radius: 8px;
+    }
+    /* Label styling */
+    .param-label {
+      font-weight: bold;
+      color: #80664e;
+      min-width: 80px;
+    }
+    /* Value display styling */
+    .param-value {
+      color: #80664e;
+      font-weight: bold;
+      background: rgba(255,255,255,0.8);
+      padding: 4px 8px;
+      border-radius: 4px;
+      min-width: 60px;
+      text-align: center;
+    }
+    /* Buttons styling */
+    button {
+      padding: 12px 24px;
+      margin: 15px 0 5px 0;
+      border: none;
+      border-radius: 25px;
+      background: linear-gradient(45deg, #80664e, #bfa16a);
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.3s;
+      width: 100%;
+    }
+    button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 5px 15px rgba(128,102,78,0.2);
+    }
+    /* Statistics panel styling */
+    #stats {
+      background: rgba(255,255,255,0.97);
+      padding: 20px;
+      border-radius: 15px;
+      margin: 20px 0 0 20px;
+      text-align: center;
+      border: 2px solid #80664e;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      min-width: 200px;
+    }
+    /* Message overlay styling */
+    #message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 36px;
+      font-weight: bold;
+      color: #80664e;
+      text-shadow: 0 0 20px rgba(128,102,78,0.2);
+      opacity: 0;
+      transition: opacity 0.5s;
+      z-index: 200;
+      pointer-events: none;
+      text-align: center;
+      max-width: 600px;
+    }
+    /* Heading styling */
+    h3 {
+      margin-top: 0;
+      color: #80664e;
+      text-align: center;
+    }
+    /* Canvas container styling */
+    #canvas-holder {
+      margin: 20px 0 0 20px;
+      position: relative;
+      width: 900px;
+      height: 480px;
+      flex-shrink: 0;
+    }
+    /* Status indicator circle */
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    /* Status colors */
+    .status-ready { background: #4CAF50; }
+    .status-running { background: #FF9800; animation: pulse 1s infinite; }
+    .status-complete { background: #2196F3; }
+    /* Pulse animation for running status */
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+    /* Responsive layout for smaller screens */
+    @media (max-width: 1200px) {
+      #main-flex {
+        flex-direction: column;
+        align-items: center;
+      }
+      #controls, #stats, #canvas-holder {
+        margin: 20px 0 0 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="main-flex">
+    <div>
+      <!-- Controls panel showing current simulation parameters -->
+      <div id="controls">
+        <h3>🎲 Random Catapult Simulator</h3>
+        <div class="param-row">
+          <span class="param-label">Angle:</span>
+          <span class="param-value" id="angleDisplay">--°</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">Tension:</span>
+          <span class="param-value" id="tensionDisplay">-- N</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">Wind Speed:</span>
+          <span class="param-value" id="windDisplay">-- m/s</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">Wall Height:</span>
+          <span class="param-value" id="wallDisplay">-- m</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">Status:</span>
+          <span class="param-value">
+            <span class="status-indicator" id="statusIndicator"></span>
+            <span id="statusText">Ready</span>
+          </span>
+        </div>
+        <!-- Buttons to start new simulation and reset stats -->
+        <button id="newSimBtn">🎲 NEW RANDOM SIMULATION</button>
+        <button id="resetStatsBtn">📊 RESET STATISTICS</button>
+      </div>
+      <!-- Statistics panel showing simulation results -->
+      <div id="stats">
+        <h3>📊 Statistics</h3>
+        <div>Total Runs: <span id="totalRuns">0</span></div>
+        <div>Successes: <span id="successes">0</span></div>
+        <div>Success Rate: <span id="successRate">0%</span></div>
+        <div>Best Distance: <span id="bestDist">0 m</span></div>
+        <div>Avg Distance: <span id="avgDist">0 m</span></div>
+      </div>
+    </div>
+    <!-- Canvas container for p5.js rendering -->
+    <div id="canvas-holder">
+      <div id="message"></div>
+    </div>
+  </div>
+  <script type="module">
+    import p5 from 'p5';
+
+    // Cache references to UI elements for updating display
+    const angleDisplay = document.getElementById('angleDisplay');
+    const tensionDisplay = document.getElementById('tensionDisplay');
+    const windDisplay = document.getElementById('windDisplay');
+    const wallDisplay = document.getElementById('wallDisplay');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+    const newSimBtn = document.getElementById('newSimBtn');
+    const resetStatsBtn = document.getElementById('resetStatsBtn');
+    const messageDiv = document.getElementById('message');
+    const totalRunsSpan = document.getElementById('totalRuns');
+    const successesSpan = document.getElementById('successes');
+    const successRateSpan = document.getElementById('successRate');
+    const bestDistSpan = document.getElementById('bestDist');
+    const avgDistSpan = document.getElementById('avgDist');
+
+    // Constants defining canvas size and simulation parameters
+    const CANVAS_W = 900, CANVAS_H = 480;
+    const CATAPULT_X = 120, CATAPULT_Y = CANVAS_H - 80;
+    const WALL_X = 550, WALL_W = 60;
+    const GROUND_Y = CANVAS_H - 40;
+    const PIXELS_PER_METER = 50; // Scale factor for physics to pixels
+    
+    // Realistic physics constants with ENHANCED WIND EFFECTS
+    const GRAVITY = 9.81; // Gravity acceleration (m/s²)
+    const AIR_DENSITY = 1.225; // Air density at sea level (kg/m³)
+    const ARM_LENGTH = 100; // Length of catapult arm in pixels
+    const ARM_PULLBACK_METERS = 1.8; // Realistic pullback distance for medieval catapult
+    
+    // Knight physical properties (realistic medieval knight in armor)
+    const KNIGHT_MASS = 75; // Mass in kg (knight + armor)
+    const KNIGHT_DIAMETER = 0.8; // INCREASED diameter for more wind effect
+    const KNIGHT_CROSS_SECTION = Math.PI * Math.pow(KNIGHT_DIAMETER / 2, 2); // Cross-sectional area
+    const KNIGHT_DRAG_COEFF = 0.8; // INCREASED drag coefficient for more prominent wind effect
+
+    // Ranges for random parameter generation (realistic values)
+    const RANGES = {
+      angle: { min: 30, max: 60 },        // Optimal catapult angles
+      tension: { min: 1200, max: 3000 },  // Realistic catapult tension (N)
+      windSpeed: { min: -20, max: 20 },   // INCREASED wind speed range for more dramatic effect
+      wall: { min: 3, max: 8 }            // Wall height in meters
+    };
+
+    // Variables to hold current simulation parameters and state
+    let params = {};
+    let knight, wallCrash = false;
+    let simulationRunning = false;
+    let simulationPhase = 'idle'; // Possible phases: 'idle', 'preview', 'flying'
+    let autoLaunchTimer = 0;
+    let stats = {
+      totalRuns: 0,
+      successes: 0,
+      distances: [],
+      bestDist: 0
+    };
+
+    // Store trajectory without wind for preview and comparison
+    let trajectoryNoWind = [];
+
+    /**
+     * Class representing the knight projectile with realistic physics.
+     */
+    class Knight {
+      constructor() { this.reset(); }
+
+      /**
+       * Reset knight to initial state at catapult arm tip.
+       */
+      reset() {
+        const {x, y} = getArmTip();
+        this.pos = p.createVector(x, y); // Position vector (pixels)
+        this.velocity = p.createVector(0, 0); // Velocity vector (pixels/s)
+        this.radius = 18; // Visual radius in pixels
+        this.isFlying = false;
+        this.path = []; // Stores trajectory points for drawing
+        this.outcomeChecked = false;
+        this.animFrame = 0;
+        this.crashed = false;
+        this.windEffect = 0; // Accumulated wind displacement
+        this.totalWindDisplacement = 0; // Track total wind displacement
+      }
+
+      /**
+       * Launch the knight with realistic physics calculations.
+       * @param {number} angleDeg - Launch angle in degrees.
+       * @param {number} tensionN - Tension force in Newtons.
+       * @param {number} windSpeedMs - Wind speed in m/s.
+       */
+      launch(angleDeg, tensionN, windSpeedMs) {
+        // Calculate initial velocity from energy conservation
+        const springConstant = tensionN / ARM_PULLBACK_METERS;
+        const potentialEnergy = 0.5 * springConstant * Math.pow(ARM_PULLBACK_METERS, 2);
+        const initialSpeed = Math.sqrt(2 * potentialEnergy / KNIGHT_MASS);
+        
+        const angleRad = p.radians(angleDeg);
+        const velocityX = initialSpeed * Math.cos(angleRad);
+        const velocityY = -initialSpeed * Math.sin(angleRad);
+        
+        const {x, y} = getArmTip();
+        this.pos = p.createVector(x, y);
+        this.velocity = p.createVector(velocityX * PIXELS_PER_METER, velocityY * PIXELS_PER_METER);
+        this.isFlying = true;
+        
+        // Store wind speed
+        this.windSpeed = windSpeedMs;
+        
+        this.path = [];
+        this.outcomeChecked = false;
+        this.crashed = false;
+        this.windEffect = 0;
+        this.totalWindDisplacement = 0;
+      }
+
+      /**
+       * Update knight's position using realistic physics equations with ENHANCED WIND EFFECTS.
+       * @param {number} dt - Time delta in seconds.
+       */
+      update(dt) {
+        if (!this.isFlying || this.crashed) return;
+
+        // Convert velocity to m/s for physics calculations
+        const velocityMsX = this.velocity.x / PIXELS_PER_METER;
+        const velocityMsY = this.velocity.y / PIXELS_PER_METER;
+
+        // ENHANCED WIND PHYSICS: Much more prominent wind effects
+        const airVelocityX = this.windSpeed; // Wind velocity (m/s)
+        const airVelocityY = 0;
+        
+        // Projectile velocity relative to air
+        const relativeVelocityX = velocityMsX - airVelocityX;
+        const relativeVelocityY = velocityMsY - airVelocityY;
+        const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY);
+
+        // ENHANCED drag force with much stronger effect
+        let dragForceX = 0, dragForceY = 0;
+        if (relativeSpeed > 0) {
+          // Increased drag force magnitude for more dramatic wind effects
+          const dragForceMagnitude = 0.5 * AIR_DENSITY * relativeSpeed * relativeSpeed * 
+                                   KNIGHT_DRAG_COEFF * KNIGHT_CROSS_SECTION * 2.5; // 2.5x multiplier for dramatic effect
+          dragForceX = -dragForceMagnitude * (relativeVelocityX / relativeSpeed);
+          dragForceY = -dragForceMagnitude * (relativeVelocityY / relativeSpeed);
+        }
+
+        // ADDITIONAL DIRECT WIND FORCE for even more prominent effect
+        const directWindForce = 0.3 * AIR_DENSITY * Math.abs(this.windSpeed) * this.windSpeed * KNIGHT_CROSS_SECTION;
+        const windForceX = directWindForce;
+        const windForceY = 0;
+
+        // Accelerations from forces
+        const dragAccelX = dragForceX / KNIGHT_MASS;
+        const dragAccelY = dragForceY / KNIGHT_MASS;
+        const windAccelX = windForceX / KNIGHT_MASS;
+        const windAccelY = windForceY / KNIGHT_MASS;
+
+        // Total acceleration (gravity + drag + direct wind force)
+        const totalAccelX = dragAccelX + windAccelX;
+        const totalAccelY = GRAVITY + dragAccelY + windAccelY;
+
+        // Update velocity and position
+        this.velocity.x += totalAccelX * PIXELS_PER_METER * dt;
+        this.velocity.y += totalAccelY * PIXELS_PER_METER * dt;
+        
+        // Track wind displacement
+        const windDisplacementX = windAccelX * PIXELS_PER_METER * dt * dt * 0.5;
+        this.totalWindDisplacement += Math.abs(windDisplacementX);
+        
+        this.pos.add(p5.Vector.mult(this.velocity, dt));
+
+        // Enhanced wind effect tracking
+        this.windEffect += Math.abs(this.windSpeed * dt * 2); // Doubled for visual effect
+
+        // Store position for trajectory drawing
+        if (window.p && window.p.frameCount % 2 === 0) this.path.push(this.pos.copy());
+
+        this.animFrame += 1;
+
+        // Collision detection with castle wall
+        if (
+          this.pos.x + this.radius > WALL_X &&
+          this.pos.x - this.radius < WALL_X + WALL_W &&
+          this.pos.y + this.radius > GROUND_Y - params.wall * PIXELS_PER_METER &&
+          this.pos.y - this.radius < GROUND_Y
+        ) {
+          this.isFlying = false;
+          this.crashed = true;
+          wallCrash = true;
+        }
+
+        // Ground collision detection
+        if (this.pos.y > GROUND_Y - 2) this.isFlying = false;
+      }
+
+      /**
+       * Draw the knight with enhanced visual effects (NO ROTATION).
+       * @param {p5} p - p5 instance.
+       */
+      draw(p) {
+        // Draw trajectory with physics-based coloring
+        this.drawTrajectory(p);
+        this.drawWindEffects(p);
+
+        // Draw the knight WITHOUT rotation
+        p.push();
+        p.translate(this.pos.x, this.pos.y);
+
+        // Knight body with wind-based color intensity
+        const windIntensity = Math.min(50, Math.abs(this.windSpeed) * 2);
+        p.fill(120 + windIntensity, 120, 160 + windIntensity);
+        p.ellipse(0, 0, this.radius * 2, this.radius * 2.2);
+
+        // Helmet
+        p.fill(180, 180, 200);
+        p.arc(0, -6, this.radius * 1.6, this.radius * 1.4, p.PI, 0, p.CHORD);
+
+        // Visor
+        p.fill(80, 80, 100);
+        p.rectMode(p.CENTER);
+        p.rect(0, -10, this.radius * 1.1, this.radius * 0.5, 2);
+
+        // Plumes DRAMATICALLY affected by wind
+        p.fill(200, 40, 40);
+        let plumeY = -this.radius * 1.1 - 4 + Math.sin(this.animFrame * 0.2) * 2;
+        let plumeWindOffset = this.windSpeed * 0.5; // 5x stronger wind effect on plume
+        p.ellipse(plumeWindOffset, plumeY, 10, 18);
+
+        p.fill(220, 200, 120);
+        p.ellipse(this.radius * 0.9 + plumeWindOffset * 0.8, 0, 10, 18);
+
+        // Sword
+        p.fill(180, 180, 180);
+        p.rect(-this.radius * 0.8, 8, 3, 18, 2);
+
+        p.pop();
+      }
+
+      /**
+       * Draw trajectory with enhanced physics-based visualization.
+       * @param {p5} p - p5 instance.
+       */
+      drawTrajectory(p) {
+        if (this.path.length < 2) return;
+
+        // Enhanced color based on wind effect
+        let r = 128, g = 102, b = 78;
+        const windStrength = Math.abs(this.windSpeed);
+        if (this.windSpeed > 0) {
+          r += Math.min(80, windStrength * 4); // Much more dramatic color change
+          g -= Math.min(40, windStrength * 2);
+        } else if (this.windSpeed < 0) {
+          b += Math.min(80, windStrength * 4);
+          g -= Math.min(40, windStrength * 2);
+        }
+
+        // Variable stroke weight based on wind strength
+        const strokeWeight = 2 + Math.min(4, windStrength * 0.3);
+        p.stroke(r, g, b, 150);
+        p.strokeWeight(strokeWeight);
+        p.noFill();
+        p.beginShape();
+        for (const pt of this.path) p.vertex(pt.x, pt.y);
+        p.endShape();
+
+        // Add wind effect label
+        if (this.path.length > 10) {
+          const midPoint = this.path[Math.floor(this.path.length / 2)];
+          p.fill(r, g, b, 200);
+          p.textSize(12);
+          p.text(`Wind: ${this.windSpeed.toFixed(1)}m/s`, midPoint.x + 10, midPoint.y - 10);
+        }
+      }
+
+      /**
+       * Draw enhanced visual indicators for wind effects.
+       * @param {p5} p - p5 instance.
+       */
+      drawWindEffects(p) {
+        // Much more dramatic wind effect particles
+        if (Math.abs(this.windSpeed) > 1) {
+          const particleCount = Math.min(12, Math.abs(this.windSpeed)); // More particles
+          for (let i = 0; i < particleCount; i++) {
+            const angle = (p.frameCount * 0.15 + i * 1.2) % (2 * Math.PI);
+            const distance = 40 + Math.sin(p.frameCount * 0.08 + i) * 15; // Larger particle field
+            const particleX = this.pos.x + Math.cos(angle) * distance;
+            const particleY = this.pos.y + Math.sin(angle) * distance;
+            
+            const windOffset = this.windSpeed * 0.8; // Much stronger wind offset
+            
+            // Enhanced particle colors and sizes
+            const particleSize = 3 + Math.abs(this.windSpeed) * 0.2;
+            if (this.windSpeed > 0) {
+              p.fill(255, 150, 150, 150); // Brighter red for tailwind
+            } else {
+              p.fill(150, 150, 255, 150); // Brighter blue for headwind
+            }
+            p.noStroke();
+            p.ellipse(particleX + windOffset, particleY, particleSize, particleSize);
+            
+            // Add wind streaks
+            p.stroke(255, 255, 255, 100);
+            p.strokeWeight(1);
+            p.line(particleX, particleY, particleX + windOffset, particleY);
+          }
+          p.noStroke();
+        }
+      }
+    }
+
+    /**
+     * Calculate the tip position of the catapult arm.
+     * @returns {object} x and y coordinates of arm tip.
+     */
+    function getArmTip() {
+      const maxPullBack = 25;
+      const tensionMin = 1200;
+      const tensionMax = 3000;
+      const pullBack = p5.prototype.map(params.tension, tensionMin, tensionMax, 0, maxPullBack, true);
+      const armAngle = -params.angle - pullBack;
+      const rad = p5.prototype.radians(armAngle);
+      return {
+        x: CATAPULT_X + ARM_LENGTH * Math.cos(rad),
+        y: CATAPULT_Y + ARM_LENGTH * Math.sin(rad)
+      };
+    }
+
+    /**
+     * Generate random simulation parameters.
+     * @returns {object} Randomized parameters.
+     */
+    function generateRandomParams() {
+      return {
+        angle: Math.round(Math.random() * (RANGES.angle.max - RANGES.angle.min) + RANGES.angle.min),
+        tension: Math.round(Math.random() * (RANGES.tension.max - RANGES.tension.min) + RANGES.tension.min),
+        windSpeed: Math.round((Math.random() * (RANGES.windSpeed.max - RANGES.windSpeed.min) + RANGES.windSpeed.min) * 10) / 10,
+        wall: Math.round((Math.random() * (RANGES.wall.max - RANGES.wall.min) + RANGES.wall.min) * 10) / 10
+      };
+    }
+
+    /**
+     * Update the UI display with current parameters and statistics.
+     */
+    function updateDisplay() {
+      angleDisplay.textContent = params.angle + "°";
+      tensionDisplay.textContent = params.tension + " N";
+      
+      // Enhanced wind display with more dramatic descriptions
+      const windText = params.windSpeed.toFixed(1) + " m/s";
+      const windDirection = params.windSpeed > 0 ? " → (Tailwind)" : params.windSpeed < 0 ? " ← (Headwind)" : " (Calm)";
+      let windDescription = "";
+      const absWind = Math.abs(params.windSpeed);
+      if (absWind < 3) windDescription = " Light";
+      else if (absWind < 8) windDescription = " Moderate";
+      else if (absWind < 15) windDescription = " Strong";
+      else windDescription = " EXTREME";
+      
+      windDisplay.textContent = windText + windDirection + windDescription;
+      wallDisplay.textContent = params.wall.toFixed(1) + " m";
+      
+      totalRunsSpan.textContent = stats.totalRuns;
+      successesSpan.textContent = stats.successes;
+      successRateSpan.textContent = stats.totalRuns > 0 ? 
+        Math.round((stats.successes / stats.totalRuns) * 100) + "%" : "0%";
+      bestDistSpan.textContent = (stats.bestDist / PIXELS_PER_METER).toFixed(2) + " m";
+      
+      const avgDist = stats.distances.length > 0 ? 
+        stats.distances.reduce((a, b) => a + b, 0) / stats.distances.length : 0;
+      avgDistSpan.textContent = (avgDist / PIXELS_PER_METER).toFixed(2) + " m";
+    }
+
+    /**
+     * Update the status indicator and text.
+     * @param {string} status - One of 'ready', 'running', 'complete'.
+     * @param {string} text - Status text to display.
+     */
+    function setStatus(status, text) {
+      statusIndicator.className = `status-indicator status-${status}`;
+      statusText.textContent = text;
+    }
+
+    /**
+     * Simulate trajectory without wind for preview with enhanced physics.
+     * @returns {Array} Array of p5.Vector positions.
+     */
+    function simulateTrajectoryNoWind() {
+      const maxPullBack = 25;
+      const tensionMin = 1200;
+      const tensionMax = 3000;
+      const pullBack = p.map(params.tension, tensionMin, tensionMax, 0, maxPullBack, true);
+      const armAngle = -params.angle - pullBack;
+      const rad = p.radians(armAngle);
+
+      let x = CATAPULT_X + ARM_LENGTH * Math.cos(rad);
+      let y = CATAPULT_Y + ARM_LENGTH * Math.sin(rad);
+
+      // Calculate initial velocity using realistic physics
+      const springConstant = params.tension / ARM_PULLBACK_METERS;
+      const potentialEnergy = 0.5 * springConstant * Math.pow(ARM_PULLBACK_METERS, 2);
+      const initialSpeed = Math.sqrt(2 * potentialEnergy / KNIGHT_MASS);
+      
+      const angleRad = p.radians(params.angle);
+      let velocityX = initialSpeed * Math.cos(angleRad);
+      let velocityY = -initialSpeed * Math.sin(angleRad);
+
+      const dt = 1/60;
+      const path = [];
+
+      for (let i = 0; i < 400; i++) {
+        path.push(p.createVector(x, y));
+        
+        // No wind: air velocity zero, but still basic drag
+        const airVelocityX = 0;
+        const airVelocityY = 0;
+        
+        const relativeVelocityX = velocityX - airVelocityX;
+        const relativeVelocityY = velocityY - airVelocityY;
+        const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY);
+
+        let dragAccelX = 0, dragAccelY = 0;
+        if (relativeSpeed > 0) {
+          // Basic drag without wind enhancement
+          const dragForceMagnitude = 0.5 * AIR_DENSITY * relativeSpeed * relativeSpeed * 
+                                   KNIGHT_DRAG_COEFF * KNIGHT_CROSS_SECTION * 0.5; // Reduced for no-wind case
+          dragAccelX = -dragForceMagnitude * (relativeVelocityX / relativeSpeed) / KNIGHT_MASS;
+          dragAccelY = -dragForceMagnitude * (relativeVelocityY / relativeSpeed) / KNIGHT_MASS;
+        }
+
+        velocityX += dragAccelX * dt;
+        velocityY += (GRAVITY + dragAccelY) * dt;
+        
+        x += velocityX * PIXELS_PER_METER * dt;
+        y += velocityY * PIXELS_PER_METER * dt;
+
+        if (
+          x + 18 > WALL_X &&
+          x - 18 < WALL_X + WALL_W &&
+          y + 18 > GROUND_Y - params.wall * PIXELS_PER_METER &&
+          y - 18 < GROUND_Y
+        ) break;
+        if (y >= GROUND_Y - 2) break;
+      }
+      return path;
+    }
+
+    /**
+     * Start a new random simulation.
+     */
+    function startNewSimulation() {
+      if (simulationRunning) return;
+
+      params = generateRandomParams();
+      knight = new Knight();
+      wallCrash = false;
+      simulationRunning = true;
+      simulationPhase = 'preview';
+      autoLaunchTimer = 0;
+
+      setStatus('running', 'Preparing...');
+      updateDisplay();
+
+      // Precompute no-wind trajectory for preview
+      trajectoryNoWind = simulateTrajectoryNoWind();
+
+      // Enhanced message with dramatic wind info
+      let windInfo = "";
+      const absWind = Math.abs(params.windSpeed);
+      if (absWind > 15) {
+        windInfo = " (EXTREME WIND - Massive trajectory change!)";
+      } else if (absWind > 10) {
+        windInfo = " (Strong wind will dramatically affect flight!)";
+      } else if (absWind > 5) {
+        windInfo = " (Moderate wind will noticeably change trajectory!)";
+      } else if (absWind > 0) {
+        windInfo = " (Light wind will slightly affect flight)";
+      } else {
+        windInfo = " (No wind - pure ballistic flight)";
+      }
+      
+      messageDiv.textContent = "🎲 New enhanced simulation!" + windInfo;
+      messageDiv.style.opacity = 1;
+      setTimeout(() => { messageDiv.style.opacity = 0; }, 2000);
+    }
+
+    // Attach button event handlers
+    newSimBtn.onclick = startNewSimulation;
+
+    resetStatsBtn.onclick = () => {
+      stats = { totalRuns: 0, successes: 0, distances: [], bestDist: 0 };
+      updateDisplay();
+      messageDiv.textContent = "📊 Statistics reset!";
+      messageDiv.style.opacity = 1;
+      setTimeout(() => { messageDiv.style.opacity = 0; }, 1500);
+      startNewSimulation();
+    };
+
+    // Initialize p5 sketch
+    new p5((p) => {
+      window.p = p;
+
+      p.setup = () => {
+        const canvas = p.createCanvas(CANVAS_W, CANVAS_H);
+        canvas.parent('canvas-holder');
+        startNewSimulation();
+      };
+
+      p.draw = () => {
+        // Enhanced dynamic sky color based on wind conditions
+        let skyR = 138, skyG = 180, skyB = 230;
+        const windStrength = Math.abs(params.windSpeed);
+        if (params.windSpeed > 0) {
+          skyR += Math.min(30, windStrength * 2); // More dramatic sky color changes
+          skyG -= Math.min(20, windStrength * 1.5);
+        } else if (params.windSpeed < 0) {
+          skyB += Math.min(30, windStrength * 2);
+          skyG -= Math.min(20, windStrength * 1.5);
+        }
+        p.background(skyR, skyG, skyB);
+
+        // Enhanced wind visualization
+        drawDramaticWindIndicators(p);
+
+        // Draw sun with wind-affected intensity
+        p.noStroke();
+        const sunAlpha = 180 - Math.min(60, windStrength * 3);
+        p.fill(255, 230, 120, sunAlpha);
+        p.ellipse(80, 80, 80, 80);
+
+        // Draw ground
+        p.fill(90, 140, 80);
+        p.rect(0, GROUND_Y, CANVAS_W, CANVAS_H - GROUND_Y);
+
+        // Draw castle wall
+        drawWall(p, WALL_X, GROUND_Y - params.wall * PIXELS_PER_METER, WALL_W, params.wall * PIXELS_PER_METER);
+
+        // Draw catapult
+        drawCatapult(p, params.tension, !knight.isFlying);
+
+        // Draw no-wind trajectory preview in bright red with enhanced visibility
+        if (trajectoryNoWind.length > 1) {
+          p.stroke(255, 50, 50, 200); // Brighter red
+          p.strokeWeight(4); // Thicker line
+          p.noFill();
+          p.beginShape();
+          for (const pt of trajectoryNoWind) p.vertex(pt.x, pt.y);
+          p.endShape();
+          
+          // Enhanced label
+          const endPoint = trajectoryNoWind[trajectoryNoWind.length - 1];
+          p.fill(255, 50, 50, 255);
+          p.textSize(16);
+          p.textStyle(p.BOLD);
+          p.text("NO WIND", endPoint.x + 15, endPoint.y - 10);
+          
+          // Distance marker
+          const noWindDistance = (endPoint.x - (WALL_X + WALL_W)) / PIXELS_PER_METER;
+          if (noWindDistance > 0) {
+            p.textSize(12);
+            p.text(`${noWindDistance.toFixed(1)}m`, endPoint.x + 15, endPoint.y + 5);
+          }
+        }
+
+        // Draw knight when flying (with wind effect)
+        if (simulationPhase === 'flying') knight.draw(p);
+
+        // Draw trajectory preview with wind effect
+        if (simulationPhase === 'preview') drawDramaticTrajectory(p);
+
+        if (simulationRunning) {
+          if (simulationPhase === 'preview') {
+            autoLaunchTimer++;
+            if (autoLaunchTimer >= 180) {
+              knight.launch(params.angle, params.tension, params.windSpeed);
+              simulationPhase = 'flying';
+              autoLaunchTimer = 0;
+              setStatus('running', 'Flying...');
+            }
+          } else if (simulationPhase === 'flying') {
+            knight.update(p.deltaTime / 1000);
+            if (!knight.isFlying) {
+              simulationPhase = 'idle';
+              simulationRunning = false;
+              checkOutcome();
+            }
+          }
+        }
+      };
+
+      /**
+       * Draw dramatic wind indicators with enhanced physics visualization.
+       * @param {p5} p - p5 instance.
+       */
+      function drawDramaticWindIndicators(p) {
+        if (Math.abs(params.windSpeed) < 0.5) return;
+
+        const windStrength = Math.abs(params.windSpeed);
+        const windDirection = params.windSpeed > 0 ? 1 : -1;
+        const numIndicators = Math.min(10, Math.floor(windStrength / 1.5)); // More indicators
+
+        for (let i = 0; i < numIndicators; i++) {
+          const baseX = 150 + i * 50;
+          const baseY = 60 + i * 8;
+          const x = baseX + Math.sin(p.frameCount * 0.03 + i) * 12; // More movement
+          const y = baseY + Math.cos(p.frameCount * 0.04 + i) * 6;
+          
+          // Enhanced wind streak length
+          const streakLength = windStrength * 4;
+          
+          // Enhanced color intensity and visibility
+          const alpha = Math.min(200, windStrength * 12);
+          p.stroke(255, 255, 255, alpha);
+          p.strokeWeight(Math.min(5, windStrength * 0.3)); // Thicker lines
+          p.line(x, y, x + windDirection * streakLength, y);
+          
+          // Enhanced wind arrow
+          p.fill(255, 255, 255, alpha);
+          p.noStroke();
+          p.push();
+          p.translate(x + windDirection * streakLength, y);
+          p.rotate(windDirection > 0 ? 0 : p.PI);
+          const arrowSize = Math.min(16, 6 + windStrength * 0.7); // Larger arrows
+          p.triangle(0, 0, -arrowSize, -arrowSize/2, -arrowSize, arrowSize/2);
+          p.pop();
+          
+          // Add swirling particles for extreme wind
+          if (windStrength > 10) {
+            for (let j = 0; j < 3; j++) {
+              const swirl = Math.sin(p.frameCount * 0.1 + i + j) * windStrength * 0.5;
+              p.fill(255, 255, 255, alpha * 0.7);
+              p.ellipse(x + swirl, y + j * 8, 4, 4);
+            }
+          }
+        }
+
+        // Enhanced wind speed text indicator with dramatic styling
+        p.fill(255, 255, 255, 180);
+        p.textAlign(p.LEFT);
+        p.textSize(16);
+        p.textStyle(p.BOLD);
+        const windType = params.windSpeed > 0 ? "TAILWIND" : "HEADWIND";
+        let windLevel = "";
+        if (windStrength > 15) windLevel = " - EXTREME!";
+        else if (windStrength > 10) windLevel = " - STRONG";
+        else if (windStrength > 5) windLevel = " - MODERATE";
+        
+        p.text(`${windType}: ${Math.abs(params.windSpeed).toFixed(1)} m/s${windLevel}`, 150, 40);
+        
+        // Add wind effect description
+        p.textSize(12);
+        p.textStyle(p.NORMAL);
+        if (windStrength > 10) {
+          p.fill(255, 200, 200, 150);
+          p.text("Trajectory will be dramatically altered!", 150, 55);
+        } else if (windStrength > 5) {
+          p.fill(255, 255, 200, 150);
+          p.text("Significant trajectory change expected", 150, 55);
+        }
+      }
+
+      /**
+       * Draw catapult with realistic proportions.
+       */
+      function drawCatapult(p, tension, showKnightInSling) {
+        // Draw wheels
+        p.fill(70, 50, 30);
+        p.ellipse(CATAPULT_X - 30, CATAPULT_Y + 30, 28, 28);
+        p.ellipse(CATAPULT_X + 30, CATAPULT_Y + 30, 28, 28);
+
+        // Draw base platform
+        p.fill(110, 80, 50);
+        p.rect(CATAPULT_X - 40, CATAPULT_Y + 10, 80, 18, 6);
+
+        // Calculate arm angle based on tension
+        const maxPullBack = 25;
+        const tensionMin = 1200;
+        const tensionMax = 3000;
+        const pullBack = p.map(tension, tensionMin, tensionMax, 0, maxPullBack, true);
+        const armAngle = p.radians(-params.angle - pullBack);
+
+        // Draw arm
+        p.push();
+        p.translate(CATAPULT_X, CATAPULT_Y);
+        p.rotate(armAngle);
+        p.fill(110, 80, 50);
+        p.rect(0, -6, ARM_LENGTH, 12, 6);
+
+        // Sling cup
+        const slingX = ARM_LENGTH;
+        const slingY = 0;
+        p.fill(110, 80, 50);
+        p.ellipse(slingX, slingY, 22, 22);
+
+        // Rope
+        p.stroke(90, 60, 30);
+        p.strokeWeight(3);
+        p.line(0, 0, slingX, slingY);
+        p.noStroke();
+
+        // Knight in sling (NO ROTATION) with wind effects
+        if (showKnightInSling) {
+          p.push();
+          p.translate(slingX, slingY);
+          
+          // Add slight wind sway to knight in sling
+          const windSway = Math.sin(p.frameCount * 0.1) * Math.abs(params.windSpeed) * 0.1;
+          p.translate(windSway, 0);
+          
+          // Knight stays upright in sling
+          p.fill(120, 120, 160);
+          p.ellipse(0, 0, 36, 39.6);
+          p.fill(180, 180, 200);
+          p.arc(0, -6, 28.8, 25.2, p.PI, 0, p.CHORD);
+          p.fill(80, 80, 100);
+          p.rectMode(p.CENTER);
+          p.rect(0, -10, 19.8, 9, 2);
+          p.fill(200, 40, 40);
+          
+          // Plume affected by wind even in sling
+          const plumeWindOffset = params.windSpeed * 0.2;
+          p.ellipse(plumeWindOffset, -23.8, 10, 18);
+          p.fill(220, 200, 120);
+          p.ellipse(16.2 + plumeWindOffset * 0.5, 0, 10, 18);
+          p.fill(180, 180, 180);
+          p.rect(-14.4, 8, 3, 18, 2);
+          p.pop();
+        }
+
+        p.pop();
+
+        // Decorative shield
+        p.fill(180, 120, 60);
+        p.ellipse(CATAPULT_X, CATAPULT_Y + 18, 22, 28);
+        p.fill(120, 60, 30);
+        p.ellipse(CATAPULT_X, CATAPULT_Y + 18, 10, 16);
+      }
+
+      /**
+       * Draw castle wall.
+       */
+      function drawWall(p, x, y, w, h) {
+        p.fill(150, 150, 150);
+        p.stroke(110);
+        p.rect(x, y, w, h, 8, 8, 2, 2);
+
+        // Mortar lines
+        p.stroke(110, 110, 110, 120);
+        for (let i = 12; i < h; i += 24) {
+          p.line(x, y + i, x + w, y + i);
+        }
+        for (let i = 0; i < h; i += 48) {
+          p.line(x + w * 0.5, y + i, x + w * 0.5, y + i + 24);
+        }
+
+        // Battlements
+        p.fill(130, 130, 130);
+        for (let i = 0; i < w; i += 18) {
+          p.rect(x + i, y - 16, 14, 16, 3, 3, 0, 0);
+        }
+
+        // Door
+        p.fill(200, 40, 40);
+        p.rect(x + w / 2 - 7, y - 36, 14, 20, 4);
+        p.fill(255, 220, 80);
+        p.ellipse(x + w / 2, y - 26, 8, 8);
+        p.noStroke();
+      }
+
+      /**
+       * Draw dramatic trajectory preview with enhanced wind physics.
+       */
+      function drawDramaticTrajectory(p) {
+        const maxPullBack = 25;
+        const tensionMin = 1200;
+        const tensionMax = 3000;
+        const pullBack = p.map(params.tension, tensionMin, tensionMax, 0, maxPullBack, true);
+        const armAngle = -params.angle - pullBack;
+        const rad = p.radians(armAngle);
+
+        let x = CATAPULT_X + ARM_LENGTH * Math.cos(rad);
+        let y = CATAPULT_Y + ARM_LENGTH * Math.sin(rad);
+
+        // Calculate initial velocity using realistic physics
+        const springConstant = params.tension / ARM_PULLBACK_METERS;
+        const potentialEnergy = 0.5 * springConstant * Math.pow(ARM_PULLBACK_METERS, 2);
+        const initialSpeed = Math.sqrt(2 * potentialEnergy / KNIGHT_MASS);
+        
+        const angleRad = p.radians(params.angle);
+        let velocityX = initialSpeed * Math.cos(angleRad);
+        let velocityY = -initialSpeed * Math.sin(angleRad);
+
+        // Enhanced trajectory color based on wind conditions
+        let r = 100, g = 150, b = 100; // Start with green base
+        const windStrength = Math.abs(params.windSpeed);
+        if (params.windSpeed > 0) {
+          r += Math.min(100, windStrength * 6); // Much more dramatic color change
+          g -= Math.min(60, windStrength * 3);
+          b -= Math.min(60, windStrength * 3);
+        } else if (params.windSpeed < 0) {
+          b += Math.min(100, windStrength * 6);
+          g -= Math.min(60, windStrength * 3);
+          r -= Math.min(60, windStrength * 3);
+        }
+
+        // Enhanced stroke weight based on wind strength
+        const strokeWeight = 3 + Math.min(6, windStrength * 0.4);
+        p.stroke(r, g, b, 180);
+        p.strokeWeight(strokeWeight);
+        p.noFill();
+        p.beginShape();
+
+        // Simulate trajectory with ENHANCED wind effect
+        const dt = 1/60;
+        const trajectoryPoints = [];
+        for (let i = 0; i < 400; i++) {
+          trajectoryPoints.push({x, y});
+          p.vertex(x, y);
+          
+          const airVelocityX = params.windSpeed;
+          const airVelocityY = 0;
+          
+          const relativeVelocityX = velocityX - airVelocityX;
+          const relativeVelocityY = velocityY - airVelocityY;
+          const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY);
+
+          let dragAccelX = 0, dragAccelY = 0;
+          if (relativeSpeed > 0) {
+            // Enhanced drag force for dramatic effect
+            const dragForceMagnitude = 0.5 * AIR_DENSITY * relativeSpeed * relativeSpeed * 
+                                     KNIGHT_DRAG_COEFF * KNIGHT_CROSS_SECTION * 2.5;
+            dragAccelX = -dragForceMagnitude * (relativeVelocityX / relativeSpeed) / KNIGHT_MASS;
+            dragAccelY = -dragForceMagnitude * (relativeVelocityY / relativeSpeed) / KNIGHT_MASS;
+          }
+
+          // Additional direct wind force
+          const directWindForce = 0.3 * AIR_DENSITY * Math.abs(params.windSpeed) * params.windSpeed * KNIGHT_CROSS_SECTION;
+          const windAccelX = directWindForce / KNIGHT_MASS;
+
+          velocityX += (dragAccelX + windAccelX) * dt;
+          velocityY += (GRAVITY + dragAccelY) * dt;
+          
+          x += velocityX * PIXELS_PER_METER * dt;
+          y += velocityY * PIXELS_PER_METER * dt;
+
+          if (
+            x + 18 > WALL_X &&
+            x - 18 < WALL_X + WALL_W &&
+            y + 18 > GROUND_Y - params.wall * PIXELS_PER_METER &&
+            y - 18 < GROUND_Y
+          ) break;
+          if (y >= GROUND_Y - 2) break;
+        }
+        p.endShape();
+        
+        // Enhanced label with wind effect info
+        if (trajectoryPoints.length > 0) {
+          const endPoint = trajectoryPoints[trajectoryPoints.length - 1];
+          p.fill(r, g, b, 255);
+          p.textSize(16);
+          p.textStyle(p.BOLD);
+          p.text("WITH WIND", endPoint.x + 15, endPoint.y - 10);
+          
+          // Distance and wind effect info
+          const windDistance = (endPoint.x - (WALL_X + WALL_W)) / PIXELS_PER_METER;
+          if (windDistance > 0) {
+            p.textSize(12);
+            p.text(`${windDistance.toFixed(1)}m`, endPoint.x + 15, endPoint.y + 5);
+          }
+          
+          // Wind effect magnitude
+          p.textSize(10);
+          p.fill(r, g, b, 200);
+          p.text(`Wind: ${params.windSpeed.toFixed(1)}m/s`, endPoint.x + 15, endPoint.y + 18);
+        }
+      }
+
+      /**
+       * Check simulation outcome with enhanced physics feedback.
+       */
+      function checkOutcome() {
+        if (knight.isFlying || simulationRunning) return;
+        if (!knight.outcomeChecked) {
+          knight.outcomeChecked = true;
+          stats.totalRuns++;
+
+          const knightFrontX = knight.pos.x + knight.radius;
+          const wallBackX = WALL_X + WALL_W;
+          const distancePx = Math.max(0, knight.pos.x - wallBackX);
+          stats.distances.push(distancePx);
+
+          // Enhanced wind analysis with dramatic descriptions
+          let windAnalysis = "";
+          const windStrength = Math.abs(params.windSpeed);
+          if (windStrength > 15) {
+            windAnalysis = ` EXTREME wind (${params.windSpeed.toFixed(1)}m/s) caused massive trajectory change!`;
+          } else if (windStrength > 10) {
+            windAnalysis = ` Strong wind (${params.windSpeed.toFixed(1)}m/s) dramatically altered flight path!`;
+          } else if (windStrength > 5) {
+            windAnalysis = ` Moderate wind (${params.windSpeed.toFixed(1)}m/s) significantly affected trajectory!`;
+          } else if (windStrength > 2) {
+            windAnalysis = ` Light wind (${params.windSpeed.toFixed(1)}m/s) slightly changed the path.`;
+          }
+
+          if (wallCrash) {
+            messageDiv.textContent = "💥 Knight crashed into wall!" + windAnalysis;
+            setStatus('complete', 'Failed');
+          } else if (knightFrontX > wallBackX) {
+            stats.successes++;
+            stats.bestDist = Math.max(stats.bestDist, knight.pos.x);
+            messageDiv.textContent = `🎉 Success! Cleared by ${(distancePx / PIXELS_PER_METER).toFixed(2)}m` + windAnalysis;
+            setStatus('complete', 'Success');
+          } else {
+            messageDiv.textContent = "❌ Knight fell short" + windAnalysis;
+            setStatus('complete', 'Failed');
+          }
+
+          messageDiv.style.opacity = 1;
+          setTimeout(() => { messageDiv.style.opacity = 0; }, 4000);
+          updateDisplay();
+        }
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synchronized Digital Shuffleboard Simulation</title>
+    <!-- Import Map for module loaders (optional, for modern environments) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js",
+            "matter": "https://cdn.skypack.dev/matter-js"
+        }
+    }
+    </script>
+    <style>
+        /* Styling */
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .devices-container {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            width: 100%;
+            max-width: 1300px;
+            margin: 0 auto;
+            justify-content: center;
+        }
+        .device-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .device-title {
+            color: white;
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .canvas-container {
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            margin-bottom: 15px;
+        }
+        .score-display {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 10px 20px;
+            text-align: center;
+            color: white;
+            min-width: 120px;
+        }
+        .score-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .controls-panel {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            color: white;
+            max-width: 600px;
+            margin: 20px auto;
+            text-align: center;
+        }
+        .reset-btn {
+            background: linear-gradient(45deg, #4ECDC4, #44A08D);
+            color: white;
+            box-shadow: 0 4px 15px rgba(78, 205, 196, 0.4);
+            padding: 15px 30px;
+            margin: 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .reset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(78, 205, 196, 0.6);
+        }
+        .info-panel {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            max-width: 800px;
+        }
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        .sync-status {
+            background: rgba(76, 175, 80, 0.2);
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 15px 0;
+            color: #4CAF50;
+            font-weight: bold;
+            text-align: center;
+        }
+        .current-player {
+            border: 3px solid #FFD700;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+        .winner-panel {
+            background: rgba(255,255,255,0.15);
+            border-radius: 10px;
+            padding: 18px 24px;
+            margin: 18px auto 0 auto;
+            color: #fff;
+            font-size: 1.2em;
+            font-weight: bold;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🏒 Synchronized Digital Shuffleboard Simulation</h1>
+    <div class="sync-status" id="syncStatus">
+        All devices synchronized - Ready for Player 1
+    </div>
+    <div class="devices-container" id="devicesContainer"></div>
+    <div class="controls-panel">
+        <button class="reset-btn" id="resetBtn">🔄 Reset Simulation</button>
+        <div class="info-panel">
+            <h3 style="color: #ffe082; margin-top: 0;">Scoring Zones</h3>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(255, 215, 0, 0.8);"></div>
+                    <span>3 Points</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(255, 140, 0, 0.8);"></div>
+                    <span>2 Points</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(255, 100, 100, 0.8);"></div>
+                    <span>1 Point</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(80, 60, 40, 0.8);"></div>
+                    <span>Gutters (0 Points)</span>
+                </div>
+            </div>
+            <p style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">
+                Turn-based multiplayer: Each player's puck moves identically across all screens. Current player's device is highlighted.
+            </p>
+        </div>
+    </div>
+    <div id="winnerPanel" class="winner-panel" style="display:none"></div>
+    <script type="module">
+    // importing libraries into the script
+    import "p5";
+    import Matter from 'matter';
+    // =========================
+    // GAME CONFIGURATION
+    // =========================
+    const NUM_PLAYERS = 3;
+    const PUCKS_PER_PLAYER = 3;
+    const CANVAS_WIDTH = 400, CANVAS_HEIGHT = 240;
+    const GUTTER_WIDTH = 20;
+    const BOARD_WIDTH = CANVAS_WIDTH - (GUTTER_WIDTH * 2);
+    const BOARD_HEIGHT = CANVAS_HEIGHT - (GUTTER_WIDTH * 2);
+    const PUCK_RADIUS = 8;
+    const PUCK_START_X = GUTTER_WIDTH + 30;
+    const DEVICE_COLORS = [
+        [255, 100, 100], // Red
+        [100, 255, 100], // Green
+        [100, 100, 255]  // Blue
+    ];
+
+    // =========================
+    // PHYSICS ENGINE SETUP
+    // =========================
+    const Engine = Matter.Engine;
+    const World = Matter.World;
+    const Bodies = Matter.Bodies;
+    const Body = Matter.Body;
+    let engine, world, boundaries = [];
+
+    // =========================
+    // GAME STATE
+    // =========================
+    let globalPucks = [];
+    let globalScores = [];
+    let puckTurnOrder = [];
+    let currentTurn = 0;
+    let isSimulating = false;
+    let devices = [];
+    let currentAnimationLoop = null;
+    let turnFinishing = false;
+
+    // =========================
+    // PUCK CLASS
+    // =========================
+    class GlobalPuck {
+        constructor(playerId, color, startY) {
+            this.playerId = playerId;
+            this.color = color;
+            this.startY = startY;
+            this.body = null;
+            this.x = PUCK_START_X;
+            this.y = this.startY;
+            this.trail = [];
+            this.inGutter = false;
+            this.scored = false;
+            this.finalScore = 0;
+            this.active = false;
+            this.inPlayArea = false;
+            this.isStationary = false;
+            this.stoppedFrames = 0;
+        }
+        createPhysicsBody() {
+            this.body = Bodies.circle(this.x, this.y, PUCK_RADIUS, {
+                restitution: 0.4,
+                friction: 0.03,
+                frictionAir: 0.055,
+                density: 0.001,
+                label: 'puck'
+            });
+            World.add(world, this.body);
+            this.inPlayArea = true;
+        }
+        removePhysicsBody() {
+            if (this.body) {
+                World.remove(world, this.body);
+                this.body = null;
+            }
+            this.inPlayArea = false;
+        }
+        reset() {
+            this.removePhysicsBody();
+            this.x = PUCK_START_X;
+            this.y = this.startY;
+            this.trail = [];
+            this.inGutter = false;
+            this.scored = false;
+            this.finalScore = 0;
+            this.active = false;
+            this.isStationary = false;
+            this.stoppedFrames = 0;
+        }
+        launch(power, angle, friction) {
+            this.createPhysicsBody();
+            const forceX = power * 0.0032;
+            const forceY = 0;
+            Body.applyForce(this.body, this.body.position, { x: forceX, y: forceY });
+            this.body.frictionAir = friction;
+            this.trail = [];
+            this.inGutter = false;
+            this.scored = false;
+            this.finalScore = 0;
+            this.active = true;
+            this.isStationary = false;
+            this.stoppedFrames = 0;
+        }
+        update() {
+            if (this.body) {
+                this.x = this.body.position.x;
+                this.y = this.body.position.y;
+            }
+            if (this.active) {
+                this.trail.push({x: this.x, y: this.y});
+                if (this.trail.length > 30) this.trail.shift();
+            }
+            // Gutter check
+            if (!this.inGutter && this.inPlayArea) {
+                if (
+                    this.x - PUCK_RADIUS <= GUTTER_WIDTH || this.x + PUCK_RADIUS >= CANVAS_WIDTH - GUTTER_WIDTH ||
+                    this.y - PUCK_RADIUS <= GUTTER_WIDTH || this.y + PUCK_RADIUS >= CANVAS_HEIGHT - GUTTER_WIDTH
+                ) {
+                    this.inGutter = true;
+                    this.active = false;
+                    this.isStationary = false;
+                    this.removePhysicsBody();
+                    if (!this.scored) {
+                        this.finalScore = 0;
+                        this.scored = true;
+                    }
+                }
+            }
+            // Stopped check
+            if (this.body && this.inPlayArea && this.active) {
+                const speed = Math.abs(this.body.velocity.x) + Math.abs(this.body.velocity.y);
+                if (speed < 0.04) {
+                    this.stoppedFrames++;
+                    if (this.stoppedFrames > 15) {
+                        Body.setVelocity(this.body, { x: 0, y: 0 });
+                        this.active = false;
+                        this.isStationary = true;
+                        // Score will be recalculated for all pucks at the end of the turn
+                    }
+                } else {
+                    this.stoppedFrames = 0;
+                }
+            }
+        }
+        reactivate() {
+            if (this.isStationary && this.body && !this.inGutter) {
+                this.active = true;
+                this.isStationary = false;
+                this.scored = false;
+                this.finalScore = 0;
+                this.stoppedFrames = 0;
+            }
+        }
+        // Score if ANY part of the puck overlaps a band (highest band wins)
+        calculateScore() {
+            const scoringZoneStart = GUTTER_WIDTH + BOARD_WIDTH - 60;
+            const scoringZoneEnd = GUTTER_WIDTH + BOARD_WIDTH;
+            const zoneWidth = 60;
+            const bandWidth = zoneWidth / 3;
+            const puckLeft = this.x - PUCK_RADIUS;
+            const puckRight = this.x + PUCK_RADIUS;
+            // Must overlap the scoring zone at all
+            if (
+                puckRight >= scoringZoneStart &&
+                puckLeft <= scoringZoneEnd &&
+                this.y + PUCK_RADIUS >= GUTTER_WIDTH &&
+                this.y - PUCK_RADIUS <= GUTTER_WIDTH + BOARD_HEIGHT
+            ) {
+                // 3-point band (rightmost)
+                const band3Start = scoringZoneStart + bandWidth * 2, band3End = scoringZoneEnd;
+                if (puckRight > band3Start && puckLeft < band3End) return 3;
+                // 2-point band (middle)
+                const band2Start = scoringZoneStart + bandWidth, band2End = scoringZoneStart + bandWidth * 2;
+                if (puckRight > band2Start && puckLeft < band2End) return 2;
+                // 1-point band (leftmost)
+                const band1Start = scoringZoneStart, band1End = scoringZoneStart + bandWidth;
+                if (puckRight > band1Start && puckLeft < band1End) return 1;
+            }
+            return 0;
+        }
+        // Helper to check if puck is moving
+        isMoving() {
+            if (!this.body) return false;
+            const speed = Math.abs(this.body.velocity.x) + Math.abs(this.body.velocity.y);
+            return speed > 0.04;
+        }
+    }
+
+    // =========================
+    // DEVICE CLASS
+    // =========================
+    class Device {
+        constructor(id, containerId) {
+            this.id = id;
+            this.containerId = containerId;
+            this.canvas = null;
+            this.p5Instance = null;
+            this.scoreElement = null;
+            this.devicePanel = null;
+            this.setupDevice();
+        }
+        setupDevice() {
+            this.devicePanel = document.createElement('div');
+            this.devicePanel.className = 'device-panel';
+            this.devicePanel.innerHTML = `
+                <div class="device-title">Device ${this.id} - Player ${this.id}</div>
+                <div class="canvas-container" id="canvas-${this.id}"></div>
+                <div class="score-display">
+                    <div>Player ${this.id} Score:</div>
+                    <div class="score-value" id="score-${this.id}">0</div>
+                </div>
+            `;
+            document.getElementById(this.containerId).appendChild(this.devicePanel);
+            this.scoreElement = document.getElementById(`score-${this.id}`);
+            const sketch = (p) => {
+                p.setup = () => {
+                    this.canvas = p.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+                    this.canvas.parent(`canvas-${this.id}`);
+                };
+                p.draw = () => {
+                    p.background(240, 240, 240);
+                    this.drawBoard(p);
+                    this.drawAllPucks(p);
+                };
+            };
+            this.p5Instance = new p5(sketch);
+        }
+        drawBoard(p) {
+            p.fill(80, 60, 40);
+            p.noStroke();
+            p.rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            p.fill(160, 130, 90);
+            p.stroke(120, 90, 60);
+            p.strokeWeight(4);
+            p.rect(GUTTER_WIDTH, GUTTER_WIDTH, BOARD_WIDTH, BOARD_HEIGHT, 5);
+            p.stroke(255, 255, 255);
+            p.strokeWeight(2);
+            p.line(GUTTER_WIDTH + 40, GUTTER_WIDTH, GUTTER_WIDTH + 40, GUTTER_WIDTH + BOARD_HEIGHT);
+            this.drawScoringZones(p);
+        }
+        drawScoringZones(p) {
+            const zoneStart = GUTTER_WIDTH + BOARD_WIDTH - 60;
+            const zoneWidth = 60;
+            const bandWidth = zoneWidth / 3;
+            p.fill(255, 100, 100, 180);
+            p.stroke(255, 255, 255);
+            p.strokeWeight(1);
+            p.rect(zoneStart, GUTTER_WIDTH, bandWidth, BOARD_HEIGHT);
+            p.fill(255, 140, 0, 180);
+            p.rect(zoneStart + bandWidth, GUTTER_WIDTH, bandWidth, BOARD_HEIGHT);
+            p.fill(255, 215, 0, 180);
+            p.rect(zoneStart + bandWidth * 2, GUTTER_WIDTH, bandWidth, BOARD_HEIGHT);
+            p.fill(255, 255, 255);
+            p.stroke(0, 0, 0);
+            p.strokeWeight(1);
+            p.textAlign(p.CENTER, p.CENTER);
+            p.textSize(12);
+            p.textStyle(p.BOLD);
+            p.text("1", zoneStart + bandWidth / 2, GUTTER_WIDTH + BOARD_HEIGHT / 2);
+            p.text("2", zoneStart + bandWidth * 1.5, GUTTER_WIDTH + BOARD_HEIGHT / 2);
+            p.text("3", zoneStart + bandWidth * 2.5, GUTTER_WIDTH + BOARD_HEIGHT / 2);
+        }
+        drawAllPucks(p) {
+            for (let i = 0; i < globalPucks.length; i++) {
+                const puck = globalPucks[i];
+                const isCurrentPuck = (currentTurn < puckTurnOrder.length && i === puckTurnOrder[currentTurn]);
+                this.drawPuck(p, puck, isCurrentPuck);
+            }
+        }
+        drawPuck(p, puck, isCurrentPuck) {
+            if (puck.active && puck.trail.length > 1) {
+                p.stroke(puck.color[0], puck.color[1], puck.color[2], 100);
+                p.strokeWeight(2);
+                p.noFill();
+                p.beginShape();
+                for (let i = 0; i < puck.trail.length; i++) {
+                    const alpha = p.map(i, 0, puck.trail.length - 1, 0, 100);
+                    p.stroke(puck.color[0], puck.color[1], puck.color[2], alpha);
+                    p.vertex(puck.trail[i].x, puck.trail[i].y);
+                }
+                p.endShape();
+            }
+            if (puck.inGutter) {
+                p.fill(puck.color[0] * 0.6, puck.color[1] * 0.6, puck.color[2] * 0.6);
+            } else {
+                p.fill(puck.color[0], puck.color[1], puck.color[2]);
+            }
+            if (isCurrentPuck && puck.active) {
+                p.stroke(255, 255, 0);
+                p.strokeWeight(4);
+            } else {
+                p.stroke(255);
+                p.strokeWeight(2);
+            }
+            p.circle(puck.x, puck.y, PUCK_RADIUS * 2);
+            p.fill(255, 255, 255, puck.inGutter ? 50 : 100);
+            p.noStroke();
+            p.circle(puck.x, puck.y, PUCK_RADIUS);
+        }
+        updateScore() {
+            // Always recalculate the score for this player
+            let score = 0;
+            for (let puck of globalPucks) {
+                if (puck.playerId === this.id - 1 && puck.scored) {
+                    score += puck.finalScore;
+                }
+            }
+            this.scoreElement.textContent = score;
+        }
+        highlightCurrentPlayer(isCurrent) {
+            if (isCurrent) {
+                this.devicePanel.classList.add('current-player');
+            } else {
+                this.devicePanel.classList.remove('current-player');
+            }
+        }
+    }
+
+    // =========================
+    // PHYSICS WORLD SETUP
+    // =========================
+    function addBoundaries() {
+        if (boundaries.length > 0) {
+            for (let b of boundaries) World.remove(world, b);
+            boundaries = [];
+        }
+        boundaries.push(Bodies.rectangle(
+            GUTTER_WIDTH / 2, CANVAS_HEIGHT / 2,
+            GUTTER_WIDTH, CANVAS_HEIGHT, { isStatic: true, label: 'wall' }
+        ));
+        boundaries.push(Bodies.rectangle(
+            CANVAS_WIDTH - GUTTER_WIDTH / 2, CANVAS_HEIGHT / 2,
+            GUTTER_WIDTH, CANVAS_HEIGHT, { isStatic: true, label: 'wall' }
+        ));
+        boundaries.push(Bodies.rectangle(
+            CANVAS_WIDTH / 2, GUTTER_WIDTH / 2,
+            CANVAS_WIDTH, GUTTER_WIDTH, { isStatic: true, label: 'wall' }
+        ));
+        boundaries.push(Bodies.rectangle(
+            CANVAS_WIDTH / 2, CANVAS_HEIGHT - GUTTER_WIDTH / 2,
+            CANVAS_WIDTH, GUTTER_WIDTH, { isStatic: true, label: 'wall' }
+        ));
+        for (let b of boundaries) World.add(world, b);
+    }
+
+    // =========================
+    // GAME INITIALIZATION
+    // =========================
+    function initializeDevices() {
+        if (currentAnimationLoop) {
+            clearInterval(currentAnimationLoop);
+            currentAnimationLoop = null;
+        }
+        devices = [];
+        globalPucks = [];
+        globalScores = Array(NUM_PLAYERS).fill(0);
+        puckTurnOrder = [];
+        currentTurn = 0;
+        isSimulating = false;
+        turnFinishing = false;
+        document.getElementById('devicesContainer').innerHTML = '';
+        engine = Engine.create();
+        world = engine.world;
+        world.gravity.x = 0;
+        world.gravity.y = 0;
+        addBoundaries();
+        for (let i = 1; i <= NUM_PLAYERS; i++) {
+            devices.push(new Device(i, 'devicesContainer'));
+        }
+        for (let puckNumber = 0; puckNumber < PUCKS_PER_PLAYER; puckNumber++) {
+            for (let playerId = 0; playerId < NUM_PLAYERS; playerId++) {
+                const color = DEVICE_COLORS[playerId];
+                const startY = GUTTER_WIDTH + PUCK_RADIUS + playerId * (BOARD_HEIGHT / NUM_PLAYERS) + 30 + puckNumber * 10;
+                globalPucks.push(new GlobalPuck(playerId, color, startY));
+                puckTurnOrder.push(globalPucks.length - 1);
+            }
+        }
+        updateUI();
+    }
+
+    // =========================
+    // GAME MECHANICS
+    // =========================
+    function generateGameSettings() {
+        return {
+            power: 2.8 + Math.random() * 0.9,
+            angle: 0,
+            friction: 0.055 + Math.random() * 0.01
+        };
+    }
+    function checkCollisions() {
+        for (let i = 0; i < globalPucks.length; i++) {
+            const puckA = globalPucks[i];
+            if (!puckA.body || puckA.inGutter) continue;
+            for (let j = i + 1; j < globalPucks.length; j++) {
+                const puckB = globalPucks[j];
+                if (!puckB.body || puckB.inGutter) continue;
+                const dx = puckA.x - puckB.x;
+                const dy = puckA.y - puckB.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < PUCK_RADIUS * 2) {
+                    if (puckA.isStationary) puckA.reactivate();
+                    if (puckB.isStationary) puckB.reactivate();
+                }
+            }
+        }
+    }
+    function launchNextPuck() {
+        if (currentTurn >= puckTurnOrder.length) {
+            showWinners();
+            document.getElementById('syncStatus').textContent = 'Game Complete! All pucks have been shot.';
+            return;
+        }
+        const puckIdx = puckTurnOrder[currentTurn];
+        const currentPuck = globalPucks[puckIdx];
+        const playerId = currentPuck.playerId;
+        const settings = generateGameSettings();
+        currentPuck.launch(settings.power, settings.angle, settings.friction);
+        document.getElementById('syncStatus').textContent =
+            `Player ${playerId + 1} shooting puck ${Math.floor(currentTurn / NUM_PLAYERS) + 1} - Power: ${settings.power.toFixed(2)}, Angle: 0°`;
+        isSimulating = true;
+        turnFinishing = false;
+        updateUI();
+        if (currentAnimationLoop) {
+            clearInterval(currentAnimationLoop);
+        }
+        currentAnimationLoop = setInterval(() => {
+            Engine.update(engine, 16);
+            checkCollisions();
+            for (let puck of globalPucks) puck.update();
+            updateUI();
+            // Wait until ALL pucks are stopped before finishing the turn
+            if (!turnFinishing && allPucksStopped()) {
+                turnFinishing = true;
+                setTimeout(() => {
+                    finishTurn();
+                }, 1000);
+            }
+        }, 16);
+    }
+    // Helper: returns true if all pucks are stopped or in gutter
+    function allPucksStopped() {
+        for (let puck of globalPucks) {
+            if (!puck.inGutter && puck.inPlayArea && puck.body && puck.isMoving()) {
+                return false;
+            }
+        }
+        return true;
+    }
+    function finishTurn() {
+        if (!turnFinishing) return;
+        // --- RECALCULATE SCORES FOR ALL PUCKS AT END OF TURN ---
+        for (let puck of globalPucks) {
+            if (!puck.inGutter && puck.inPlayArea && puck.body && !puck.isMoving()) {
+                // Only for pucks that are on the board and not moving
+                const newScore = puck.calculateScore();
+                puck.finalScore = newScore;
+                puck.scored = true;
+            } else if (puck.inGutter) {
+                puck.finalScore = 0;
+                puck.scored = true;
+            }
+        }
+        updateUI();
+        isSimulating = false;
+        if (currentAnimationLoop) {
+            clearInterval(currentAnimationLoop);
+            currentAnimationLoop = null;
+        }
+        currentTurn++;
+        if (currentTurn < puckTurnOrder.length) {
+            const nextPuck = globalPucks[puckTurnOrder[currentTurn]];
+            document.getElementById('syncStatus').textContent =
+                `Ready for Player ${nextPuck.playerId + 1}'s turn`;
+            updateUI();
+            setTimeout(() => {
+                launchNextPuck();
+            }, 1500);
+        } else {
+            showWinners();
+            document.getElementById('syncStatus').textContent = 'Game Complete! All pucks have been shot.';
+        }
+    }
+
+    // =========================
+    // UI AND DISPLAY
+    // =========================
+    function showWinners() {
+        // Recalculate scores for all players
+        let scores = Array(NUM_PLAYERS).fill(0);
+        for (let puck of globalPucks) {
+            if (puck.scored) scores[puck.playerId] += puck.finalScore;
+        }
+        const results = scores.map((score, idx) => ({player: idx + 1, score}));
+        results.sort((a, b) => b.score - a.score);
+        let winnerText = `🏆 <b>Final Results:</b><br>`;
+        for (let i = 0; i < results.length; i++) {
+            let place = (i === 0) ? "1st" : (i === 1) ? "2nd" : "3rd";
+            winnerText += `${place} Place: Player ${results[i].player} (${results[i].score} pts)<br>`;
+        }
+        const panel = document.getElementById('winnerPanel');
+        panel.innerHTML = winnerText;
+        panel.style.display = 'block';
+    }
+    function resetGame() {
+        if (currentAnimationLoop) {
+            clearInterval(currentAnimationLoop);
+            currentAnimationLoop = null;
+        }
+        isSimulating = false;
+        turnFinishing = false;
+        document.getElementById('winnerPanel').style.display = 'none';
+        initializeDevices();
+        document.getElementById('syncStatus').textContent = 'All devices synchronized - Ready for Player 1';
+        setTimeout(launchNextPuck, 800);
+    }
+    function updateUI() {
+        devices.forEach((device, idx) => {
+            let isCurrent = false;
+            if (currentTurn < puckTurnOrder.length) {
+                const puckIdx = puckTurnOrder[currentTurn];
+                isCurrent = (globalPucks[puckIdx].playerId === idx);
+            }
+            device.updateScore();
+            device.highlightCurrentPlayer(isCurrent);
+        });
+    }
+
+    // =========================
+    // EVENT HANDLERS
+    // =========================
+    document.getElementById('resetBtn').addEventListener('click', resetGame);
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'r' || e.key === 'R') resetGame();
+    });
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            initializeDevices();
+            setTimeout(launchNextPuck, 800);
+        }, 100);
+    });
+    </script>
+</body>
+</html>

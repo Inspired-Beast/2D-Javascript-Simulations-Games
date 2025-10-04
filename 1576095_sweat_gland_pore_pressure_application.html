@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>2D Skin Sweat Gland Pressure Simulation</title>
+    <meta name="viewport" content="width=800, initial-scale=1.0">
+    <style>
+        /* Styling */
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e0e7ef 100%);
+            color: #222;
+            overflow-x: hidden;
+        }
+        .container { max-width: 1200px; margin: 0 auto; text-align: center; }
+        h1 { margin-bottom: 10px; font-size: 2.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.08);}
+        .subtitle { font-size: 1.2em; margin-bottom: 30px; opacity: 0.9;}
+        .simulation-container { background: rgba(255,255,255,0.7); border-radius: 15px; padding: 20px; margin: 20px 0; box-shadow: 0 8px 32px rgba(0,0,0,0.08); backdrop-filter: blur(10px); border: 1px solid rgba(200,200,200,0.2);}
+        #p5-canvas { border: 2px solid rgba(180,180,180,0.3); border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); background: #f6f1e7; }
+        .controls { margin-top: 20px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;}
+        button { padding: 12px 24px; font-size: 16px; border: none; border-radius: 8px; background: linear-gradient(45deg, #ffb199, #ffecd2); color: #333; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.08);}
+        button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.12);}
+        button:disabled { background: #eee; color: #aaa; cursor: not-allowed; transform: none;}
+        .info-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px;}
+        .info-item { background: rgba(255,255,255,0.7); padding: 15px; border-radius: 8px; border: 1px solid rgba(200,200,200,0.2);}
+        .info-label { font-weight: bold; margin-bottom: 5px; color: #d48a6e;}
+        .info-value { font-size: 1.1em; font-family: 'Courier New', monospace;}
+        .legend { margin-top: 20px; padding: 15px; background: rgba(240,240,240,0.7); border-radius: 8px; font-size: 0.9em;}
+        .legend-item { display: inline-block; margin: 5px 10px; padding: 5px 10px; border-radius: 5px; border: 1px solid rgba(180,180,180,0.3);}
+        .status-indicator { position: fixed; top: 20px; right: 20px; padding: 10px 20px; border-radius: 25px; font-weight: bold; transition: all 0.3s ease; z-index: 1000;}
+        .status-running { background: linear-gradient(45deg, #f7c873, #f7b267); color: #222;}
+        .status-failed { background: linear-gradient(45deg, #e74c3c, #c0392b); color: white; animation: pulse 2s infinite;}
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        .warning { background: rgba(255, 165, 0, 0.08); border: 1px solid #ffd580; padding: 15px; border-radius: 8px; margin-top: 20px; color: #b36b00;}
+    </style>
+    <!-- Import map for p5.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "p5": "https://cdn.skypack.dev/p5@1.4.0"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>2D Skin Pressure Simulation</h1>
+        <p class="subtitle">Realistic skin cross-section with pressure cycle (increase → decrease)</p>
+        <div class="simulation-container">
+            <div id="p5-canvas"></div>
+            <div class="controls">
+                <button id="resetBtn">Reset Simulation</button>
+            </div>
+            <div class="info-panel">
+                <div class="info-item"><div class="info-label">Applied Force</div><div class="info-value" id="forceValue">0.0 N</div></div>
+                <div class="info-item"><div class="info-label">Phase</div><div class="info-value" id="phaseValue">Ready</div></div>
+                <div class="info-item"><div class="info-label">Max Stress</div><div class="info-value" id="stressValue">0.0 MPa</div></div>
+                <div class="info-item"><div class="info-label">Pore Deformation</div><div class="info-value" id="poreValue">0.0%</div></div>
+                <div class="info-item"><div class="info-label">Duct Strain</div><div class="info-value" id="ductValue">0.0%</div></div>
+                <div class="info-item"><div class="info-label">Gland Compression</div><div class="info-value" id="glandValue">0.0%</div></div>
+                <div class="info-item"><div class="info-label">Simulation Time</div><div class="info-value" id="timeValue">0.0 s</div></div>
+                <div class="info-item"><div class="info-label">Skin Bending</div><div class="info-value" id="bendingValue">0.0%</div></div>
+            </div>
+            <div class="legend">
+                <div class="legend-item" style="background: #f9c6d0;">Epidermis</div>
+                <div class="legend-item" style="background: #e6b7a2;">Dermis</div>
+                <div class="legend-item" style="background: #ffe6a1;">Subcutaneous Tissue</div>
+                <div class="legend-item" style="background: #b6a16b;">Fat Cells</div>
+                <div class="legend-item" style="background: #b48a78;">Hair Follicle</div>
+                <div class="legend-item" style="background: #ff6b6b;">Sweat Pore</div>
+                <div class="legend-item" style="background: #4ECDC4;">Sweat Duct</div>
+                <div class="legend-item" style="background: #45B7D1;">Sweat Gland Coil</div>
+                <div class="legend-item" style="background: linear-gradient(to right, blue, red); color: white">Stress Heatmap</div>
+            </div>
+        </div>
+        <div class="warning">
+            <strong>⚠️ Note:</strong> This simulation demonstrates skin elasticity with automatic pressure increase and decrease cycles. 
+            Watch how the inverted hemisphere-shaped pore and duct deform and recover with pressure.
+        </div>
+    </div>
+    <div class="status-indicator status-running" id="statusIndicator">
+        Simulation Ready
+    </div>
+    <script type="module">
+        import p5 from "p5";
+
+        // --- Simulation parameters and state ---
+        let sim = {
+            // Canvas and geometry
+            width: 800,
+            height: 600,
+            skinTop: 100,
+            skinBottom: 500,
+            skinLeft: 50,
+            skinRight: 750,
+            epidermisThickness: 36,
+            dermisThickness: 120,
+            subcutisThickness: 0, // calculated in setup
+            // Pore and duct
+            poreX: 400,
+            poreRadius: 14,
+            originalPoreRadius: 14,
+            poreDepth: 14,
+            originalPoreDepth: 14,
+            poreTearLength: 0,
+            poreTorn: false,
+            // Bending
+            skinBending: 0,
+            maxSkinBending: 30,
+            // Duct
+            ductWidth: 4,
+            originalDuctWidth: 4,
+            ductLength: 180,
+            originalDuctLength: 180,
+            ductCurvature: 0,
+            ductSegments: [],
+            // Gland
+            glandRadius: 40,
+            originalGlandRadius: 40,
+            glandCoils: [],
+            glandCenterX: 400,
+            glandCenterY: 0, // calculated in setup
+            originalGlandCenterY: 0,
+            // Stress
+            stressField: [],
+            maxStress: 0,
+            // Simulation state
+            isRunning: true,
+            isPaused: false,
+            hasRuptured: false,
+            simulationTime: 0,
+            timeSpeed: 1,
+            maxForce: 40,
+            currentForce: 0,
+            cycleDuration: 8,
+            phase: "Ready",
+            // Failure thresholds
+            poreFailureThreshold: 35,
+            glandFailureThreshold: 30
+        };
+
+        // --- p5.js sketch ---
+        new p5((p) => {
+            // --- Setup ---
+            p.setup = function() {
+                // Attach canvas to custom div
+                let cnv = p.createCanvas(sim.width, sim.height);
+                cnv.parent("p5-canvas");
+                p.pixelDensity(1);
+
+                // Calculate subcutis thickness
+                sim.subcutisThickness = sim.skinBottom - (sim.skinTop + sim.epidermisThickness + sim.dermisThickness);
+
+                // Set gland center Y
+                sim.glandCenterY = sim.skinTop + sim.epidermisThickness + sim.ductLength + 50;
+                sim.originalGlandCenterY = sim.glandCenterY;
+
+                // Set up initial structures
+                initializeStructures();
+
+                // Button event
+                document.getElementById('resetBtn').onclick = resetSimulation;
+            };
+
+            // --- Main draw loop ---
+            p.draw = function() {
+                // Update simulation physics
+                updatePhysics();
+
+                // Draw background
+                p.background('#f6f1e7');
+
+                // Draw all skin layers and features
+                drawSkin();
+                drawDuct();
+                drawGland();
+                drawPressureIndicator();
+
+                // Draw title and scale
+                p.fill(34,34,34);
+                p.textAlign(p.CENTER, p.CENTER);
+                p.textSize(18);
+                p.textSize(12);
+                p.textAlign(p.LEFT, p.BOTTOM);
+                p.text('Scale: 1mm = 10px', 10, sim.height-10);
+
+                // Update UI panel
+                updateUI();
+            };
+
+            // --- Helper: Initialize all structures (gland, duct, stress grid) ---
+            function initializeStructures() {
+                // Gland coils (spiral)
+                sim.glandCoils = [];
+                let totalCoils = 3;
+                let pointsPerCoil = 12;
+                let totalPoints = totalCoils * pointsPerCoil;
+                for (let i = 0; i < totalPoints; i++) {
+                    let t = i / pointsPerCoil;
+                    let angle = t * p.TWO_PI;
+                    let spiralRadius = sim.glandRadius * (0.8 - (t / totalCoils) * 0.6);
+                    let x = sim.glandCenterX + Math.cos(angle) * spiralRadius;
+                    let y = sim.glandCenterY + Math.sin(angle) * spiralRadius * 0.6 + (t / totalCoils) * 15;
+                    sim.glandCoils.push({
+                        x: x,
+                        y: y,
+                        originalX: x,
+                        originalY: y,
+                        radius: 6 - (t / totalCoils) * 2,
+                        originalRadius: 6 - (t / totalCoils) * 2,
+                        stress: 0,
+                        index: i
+                    });
+                }
+                // Duct segments (from pore bottom to gland)
+                sim.ductSegments = [];
+                let ductSegmentCount = 15;
+                let ductOriginY = getPoreBottomY();
+                for (let i = 0; i < ductSegmentCount; i++) {
+                    let t = i / (ductSegmentCount - 1);
+                    let x = sim.poreX + Math.sin(t * p.HALF_PI) * 8 + sim.ductCurvature * Math.sin(t * p.PI);
+                    let y;
+                    if (i === 0) {
+                        y = ductOriginY;
+                    } else if (i === ductSegmentCount - 1) {
+                        y = sim.skinTop + sim.epidermisThickness + sim.originalDuctLength + 50;
+                    } else {
+                        y = ductOriginY + t * sim.ductLength;
+                    }
+                    sim.ductSegments.push({
+                        x: x,
+                        y: y,
+                        originalX: x,
+                        originalY: y,
+                        width: sim.ductWidth,
+                        originalWidth: sim.ductWidth
+                    });
+                }
+                // Stress field grid
+                sim.stressField = [];
+                let gridSize = 20;
+                for (let x = 0; x < sim.width; x += gridSize) {
+                    for (let y = 0; y < sim.height; y += gridSize) {
+                        sim.stressField.push({
+                            x: x,
+                            y: y,
+                            stress: 0
+                        });
+                    }
+                }
+            }
+
+            // --- Helper: Get Y coordinate of bottom of pore depression (deepest point) ---
+            function getPoreBottomY() {
+                let top = sim.skinTop;
+                let bending = sim.skinBending;
+                // Depression is 2.1x the radius
+                return top + bending + sim.poreRadius * 2.1;
+            }
+
+            // --- Simulation physics update ---
+            function updatePhysics() {
+                if (!sim.isRunning || sim.isPaused || sim.hasRuptured) return;
+                sim.simulationTime += 0.016 * sim.timeSpeed;
+                let halfCycle = sim.cycleDuration / 2;
+                if (sim.simulationTime < halfCycle) {
+                    sim.currentForce = (sim.simulationTime / halfCycle) * sim.maxForce;
+                    sim.phase = "Compression";
+                } else if (sim.simulationTime < sim.cycleDuration) {
+                    let releaseTime = sim.simulationTime - halfCycle;
+                    sim.currentForce = sim.maxForce * (1 - (releaseTime / halfCycle));
+                    sim.phase = "Recovery";
+                } else {
+                    sim.currentForce = 0;
+                    sim.phase = "Complete";
+                    sim.isRunning = false;
+                    document.getElementById('statusIndicator').textContent = 'Cycle Complete';
+                }
+                calculateStressField();
+                updatePoreDeformation();
+                updateSkinBending();
+                updateDuctDeformation();
+                updateGlandDeformation();
+                checkFailure();
+            }
+
+            // --- Calculate stress field for heatmap ---
+            function calculateStressField() {
+                let pressurePoint = { x: sim.poreX, y: sim.skinTop };
+                sim.stressField.forEach(point => {
+                    let distance = p.dist(point.x, point.y, pressurePoint.x, pressurePoint.y);
+                    let depthFactor = Math.max(0, 1 - (point.y - sim.skinTop) / (sim.skinBottom - sim.skinTop));
+                    let distanceFactor = Math.exp(-distance / 200);
+                    point.stress = sim.currentForce * distanceFactor * depthFactor;
+                });
+                sim.maxStress = Math.max(...sim.stressField.map(p => p.stress));
+            }
+
+            // --- Update pore deformation (radius/depth) ---
+            function updatePoreDeformation() {
+                let stress = sim.currentForce / 10;
+                let stretchFactor = Math.min(stress / sim.poreFailureThreshold, 3);
+                sim.poreRadius = sim.originalPoreRadius * (1 + stretchFactor * 1.5);
+                sim.poreDepth = sim.poreRadius;
+                if (sim.poreRadius > sim.originalPoreRadius * 2.5 && !sim.poreTorn) {
+                    sim.poreTorn = true;
+                }
+                if (sim.poreTorn) {
+                    sim.poreTearLength = Math.min((sim.poreRadius - sim.originalPoreRadius * 2.5) * 1.2, 50);
+                }
+            }
+
+            // --- Update skin bending (for both epidermis and dermis) ---
+            function updateSkinBending() {
+                let bendingFactor = sim.currentForce / sim.maxForce;
+                sim.skinBending = sim.maxSkinBending * bendingFactor;
+            }
+
+            // --- Update duct deformation (width, length, curvature) ---
+            function updateDuctDeformation() {
+                let stress = sim.currentForce / 10;
+                let stretchFactor = Math.min(stress / sim.poreFailureThreshold, 3);
+                sim.ductWidth = sim.originalDuctWidth * (1 - stretchFactor * 0.3);
+                sim.ductCurvature = stretchFactor * 15;
+                sim.ductLength = sim.originalDuctLength * (1 + stretchFactor * 1.2);
+                let ductSegmentCount = sim.ductSegments.length;
+                let ductOriginY = getPoreBottomY();
+                for (let i = 0; i < ductSegmentCount; i++) {
+                    let t = i / (ductSegmentCount - 1);
+                    sim.ductSegments[i].width = sim.ductWidth;
+                    sim.ductSegments[i].x = sim.poreX + Math.sin(t * p.HALF_PI) * 8 + sim.ductCurvature * Math.sin(t * p.PI);
+                    // Only first segment bends, last segment is fixed
+                    if (i === 0) {
+                        sim.ductSegments[i].y = ductOriginY;
+                    } else if (i === ductSegmentCount - 1) {
+                        sim.ductSegments[i].y = sim.skinTop + sim.epidermisThickness + sim.originalDuctLength + 50;
+                    } else {
+                        sim.ductSegments[i].y = ductOriginY + t * sim.ductLength;
+                    }
+                }
+                sim.glandCenterY = sim.skinTop + sim.epidermisThickness + sim.ductLength + 50;
+            }
+
+            // --- Update gland deformation (compression) ---
+            function updateGlandDeformation() {
+                let stress = sim.currentForce * 0.8;
+                let compression = Math.min(stress / sim.glandFailureThreshold, 1.5);
+                let glandRetraction = compression * 20;
+                sim.glandCenterY = sim.originalGlandCenterY - glandRetraction + (sim.ductLength - sim.originalDuctLength);
+                sim.glandCoils.forEach((coil, index) => {
+                    coil.radius = coil.originalRadius * (1 - compression * 0.5);
+                    let verticalCompression = compression * 0.7;
+                    let lateralCompression = compression * 0.3;
+                    let originalDx = coil.originalX - sim.poreX;
+                    let originalDy = coil.originalY - sim.originalGlandCenterY;
+                    coil.x = sim.glandCenterX + originalDx * (1 - lateralCompression);
+                    coil.y = sim.glandCenterY + originalDy * (1 - verticalCompression);
+                    coil.stress = compression;
+                });
+                sim.glandRadius = sim.originalGlandRadius * (1 - compression * 0.4);
+            }
+
+            // --- Check for pore rupture (failure) ---
+            function checkFailure() {
+                let poreStress = sim.currentForce / 10;
+                if (poreStress > sim.poreFailureThreshold) {
+                    triggerFailure();
+                }
+            }
+
+            // --- Trigger failure (rupture) ---
+            function triggerFailure() {
+                sim.hasRuptured = true;
+                sim.isRunning = false;
+                document.getElementById('statusIndicator').textContent = 'Pore Rupture!';
+                document.getElementById('statusIndicator').className = 'status-indicator status-failed';
+            }
+
+            // --- Draw all skin layers and features ---
+            function drawSkin() {
+                // --- Subcutaneous tissue (fat) ---
+                p.push();
+                p.noStroke();
+                let subcutisY = sim.skinTop + sim.epidermisThickness + sim.dermisThickness;
+                let subcutisH = sim.subcutisThickness;
+                let subcutisGradient = p.drawingContext.createLinearGradient(0, subcutisY, 0, subcutisY + subcutisH);
+                subcutisGradient.addColorStop(0, '#ffe6a1');
+                subcutisGradient.addColorStop(1, '#ffe6a1');
+                p.drawingContext.fillStyle = subcutisGradient;
+                p.rect(sim.skinLeft, subcutisY, sim.skinRight - sim.skinLeft, subcutisH);
+                // Fat cells (bubbles)
+                for (let i = 0; i < 22; i++) {
+                    let fx = sim.skinLeft + 20 + p.random(sim.skinRight - sim.skinLeft - 40);
+                    let fy = subcutisY + 18 + p.random(subcutisH - 36);
+                    let fr = 10 + p.random(8);
+                    p.drawingContext.globalAlpha = 0.18;
+                    p.fill('#f9e6b3');
+                    p.ellipse(fx, fy, fr * 2, fr * 2);
+                    p.drawingContext.globalAlpha = 1.0;
+                }
+                p.pop();
+
+                // --- Dermis (bending only, no depression) ---
+                p.push();
+                p.noStroke();
+                let n = 100;
+                let width = sim.skinRight - sim.skinLeft;
+                let left = sim.skinLeft;
+                let right = sim.skinRight;
+                let top = sim.skinTop + sim.epidermisThickness;
+                p.beginShape();
+                // Top edge (bending)
+                for (let i = 0; i <= n; i++) {
+                    let t = i / n;
+                    let x = left + t * width;
+                    let bendingRadius = width / 2;
+                    let normalizedX = (x - sim.poreX) / bendingRadius;
+                    let overallBending = sim.skinBending * (1 - normalizedX * normalizedX) * Math.exp(-Math.abs(normalizedX));
+                    let y = top + overallBending;
+                    p.vertex(x, y);
+                }
+                // Bottom edge (bending)
+                for (let i = n; i >= 0; i--) {
+                    let t = i / n;
+                    let x = left + t * width;
+                    let bendingRadius = width / 2;
+                    let normalizedX = (x - sim.poreX) / bendingRadius;
+                    let bottomBending = sim.skinBending * (1 - normalizedX * normalizedX) * Math.exp(-Math.abs(normalizedX));
+                    let y = top + sim.dermisThickness + bottomBending;
+                    p.vertex(x, y);
+                }
+                p.endShape(p.CLOSE);
+                // Dermis gradient
+                let dermisGradient = p.drawingContext.createLinearGradient(0, top, 0, top + sim.dermisThickness);
+                dermisGradient.addColorStop(0, '#f3c6b2');
+                dermisGradient.addColorStop(1, '#e6b7a2');
+                p.drawingContext.fillStyle = dermisGradient;
+                p.drawingContext.globalAlpha = 1.0;
+                p.drawingContext.fill();
+
+                // Dermis texture lines (bending applied)
+                p.drawingContext.globalAlpha = 0.13;
+                for (let i = 0; i < 18; i++) {
+                    p.beginShape();
+                    let y0 = top + 10 + i * 6;
+                    p.vertex(sim.skinLeft + 10, y0 + getBendingOffset(sim.skinLeft + 10));
+                    p.bezierVertex(
+                        sim.skinLeft + 80, y0 + 8 + getBendingOffset(sim.skinLeft + 80),
+                        sim.skinRight - 80, y0 - 8 + getBendingOffset(sim.skinRight - 80),
+                        sim.skinRight - 10, y0 + getBendingOffset(sim.skinRight - 10)
+                    );
+                    p.stroke('#b48a78');
+                    p.strokeWeight(2);
+                    p.noFill();
+                    p.endShape();
+                }
+                p.drawingContext.globalAlpha = 1.0;
+                p.pop();
+
+                // --- Hair follicles (bending applied) ---
+                p.push();
+                for (let i = 0; i < 4; i++) {
+                    let hx = sim.skinLeft + 120 + i * 160;
+                    let y1 = sim.skinTop + sim.epidermisThickness + 10 + getBendingOffset(hx);
+                    let y2 = sim.skinTop + sim.epidermisThickness + 60 + getBendingOffset(hx - 10);
+                    let y3 = sim.skinTop + sim.epidermisThickness + 100 + getBendingOffset(hx + 10);
+                    let y4 = sim.skinTop + sim.epidermisThickness + sim.dermisThickness - 10 + getBendingOffset(hx);
+                    p.stroke('#b48a78');
+                    p.strokeWeight(5);
+                    p.noFill();
+                    p.drawingContext.globalAlpha = 0.5;
+                    p.beginShape();
+                    p.vertex(hx, y1);
+                    p.bezierVertex(hx - 10, y2, hx + 10, y3, hx, y4);
+                    p.endShape();
+                }
+                p.drawingContext.globalAlpha = 1.0;
+                p.pop();
+
+                // --- Epidermis (with inverted hemisphere pore depression) ---
+                drawDeformedEpidermisWithInvertedHemispherePore();
+
+                // --- Stress overlay (heatmap) ---
+                drawStressOverlay();
+            }
+
+            // --- Helper: Get bending offset at a given x ---
+            function getBendingOffset(x) {
+                let width = sim.skinRight - sim.skinLeft;
+                let bendingRadius = width / 2;
+                let normalizedX = (x - sim.poreX) / bendingRadius;
+                return sim.skinBending * (1 - normalizedX * normalizedX) * Math.exp(-Math.abs(normalizedX));
+            }
+
+            // --- Draw epidermis with inverted hemisphere pore depression ---
+            function drawDeformedEpidermisWithInvertedHemispherePore() {
+                let n = 100;
+                let width = sim.skinRight - sim.skinLeft;
+                let left = sim.skinLeft;
+                let right = sim.skinRight;
+                let top = sim.skinTop;
+                let epi = sim.epidermisThickness;
+                p.push();
+                p.noStroke();
+                p.beginShape();
+                // Top edge (with depression)
+                for (let i = 0; i <= n; i++) {
+                    let t = i / n;
+                    let x = left + t * width;
+                    let dx = x - sim.poreX;
+                    let bendingRadius = width / 2;
+                    let normalizedX = (x - sim.poreX) / bendingRadius;
+                    let overallBending = sim.skinBending * (1 - normalizedX * normalizedX) * Math.exp(-Math.abs(normalizedX));
+                    let y = top + overallBending;
+                    // Inverted hemisphere depression
+                    if (Math.abs(dx) <= sim.poreRadius) {
+                        let hemisphereDepth = Math.sqrt(Math.max(0, sim.poreRadius * sim.poreRadius - dx * dx));
+                        y += hemisphereDepth * 2.1;
+                    }
+                    p.vertex(x, y);
+                }
+                // Bottom edge (bending only, matches dermis top)
+                for (let i = n; i >= 0; i--) {
+                    let t = i / n;
+                    let x = left + t * width;
+                    let bendingRadius = width / 2;
+                    let normalizedX = (x - sim.poreX) / bendingRadius;
+                    let bottomBending = sim.skinBending * (1 - normalizedX * normalizedX) * Math.exp(-Math.abs(normalizedX));
+                    let y = top + epi + bottomBending;
+                    p.vertex(x, y);
+                }
+                p.endShape(p.CLOSE);
+                // Epidermis gradient
+                let epiGradient = p.drawingContext.createLinearGradient(0, top, 0, top + epi);
+                epiGradient.addColorStop(0, '#f9c6d0');
+                epiGradient.addColorStop(1, '#f7b6c2');
+                p.drawingContext.fillStyle = epiGradient;
+                p.drawingContext.shadowColor = '#ffd6e0';
+                p.drawingContext.shadowBlur = 8;
+                p.drawingContext.fill();
+                p.drawingContext.shadowBlur = 0;
+                // Subtle texture lines
+                p.drawingContext.globalAlpha = 0.18;
+                for (let i = 0; i < 8; i++) {
+                    p.beginShape();
+                    let y = top + 4 + i * 4;
+                    p.vertex(left + 10, y);
+                    p.bezierVertex(left + 80, y + 2, right - 80, y - 2, right - 10, y);
+                    p.stroke('#e6a1b0');
+                    p.strokeWeight(1.2);
+                    p.noFill();
+                    p.endShape();
+                }
+                p.drawingContext.globalAlpha = 1.0;
+                // Draw hemisphere depression outline and shading (no blue arc)
+                if (sim.poreDepth > 1) {
+                    p.push();
+                    // Outline of depression (bottom half of hemisphere)
+                    p.stroke(sim.poreTorn ? "#FF0000" : "#ff6b6b");
+                    p.strokeWeight(3.2);
+                    p.noFill();
+                    p.drawingContext.shadowColor = sim.poreTorn ? "#FF0000" : "#FFD700";
+                    p.drawingContext.shadowBlur = 8;
+                    p.arc(sim.poreX, top + sim.skinBending, sim.poreRadius * 2, sim.poreRadius * 2, p.PI, p.TWO_PI, p.OPEN);
+                    p.drawingContext.shadowBlur = 0;
+                    // Shading inside depression (bottom half only)
+                    let gradient = p.drawingContext.createRadialGradient(
+                        sim.poreX, top + sim.skinBending + sim.poreRadius * 1.1, 0,
+                        sim.poreX, top + sim.skinBending + sim.poreRadius * 1.1, sim.poreRadius * 1.1
+                    );
+                    gradient.addColorStop(0, 'rgba(255, 107, 107, 0.85)');
+                    gradient.addColorStop(0.7, 'rgba(255, 107, 107, 0.35)');
+                    gradient.addColorStop(1, 'rgba(255, 107, 107, 0.08)');
+                    p.drawingContext.fillStyle = gradient;
+                    p.beginShape();
+                    for (let a = p.PI; a <= p.TWO_PI + 0.01; a += 0.05) {
+                        let x = sim.poreX + Math.cos(a) * sim.poreRadius * 1.05;
+                        let y = top + sim.skinBending + Math.sin(a) * sim.poreRadius * 1.05;
+                        p.vertex(x, y);
+                    }
+                    p.vertex(sim.poreX + sim.poreRadius * 1.05, top + sim.skinBending);
+                    p.vertex(sim.poreX - sim.poreRadius * 1.05, top + sim.skinBending);
+                    p.endShape(p.CLOSE);
+                    p.drawingContext.fill();
+                    p.pop();
+                }
+                p.pop();
+                if (sim.poreTorn) {
+                    drawPoreTear();
+                }
+            }
+
+            // --- Draw pore tear (if ruptured) ---
+            function drawPoreTear() {
+                let poreTop = sim.skinTop + sim.skinBending * Math.exp(-0);
+                p.push();
+                p.stroke('#FF0000');
+                p.strokeWeight(3);
+                p.drawingContext.shadowColor = '#FF0000';
+                p.drawingContext.shadowBlur = 8;
+                let tearCount = 8;
+                for (let i = 0; i < tearCount; i++) {
+                    let angle = (i / tearCount) * p.TWO_PI;
+                    let startX = sim.poreX + Math.cos(angle) * sim.poreRadius;
+                    let startY = poreTop + Math.sin(angle) * 0;
+                    let endX = startX + Math.cos(angle) * sim.poreTearLength;
+                    let endY = startY + Math.sin(angle) * sim.poreTearLength;
+                    p.line(startX, startY, endX, endY);
+                }
+                p.drawingContext.shadowBlur = 0;
+                p.pop();
+            }
+
+            // --- Draw stress overlay (heatmap) ---
+            function drawStressOverlay() {
+                if (sim.maxStress === 0) return;
+                sim.stressField.forEach(point => {
+                    let intensity = Math.min(point.stress / sim.maxStress, 1);
+                    if (intensity > 0.1) {
+                        let red = Math.floor(255 * intensity);
+                        let blue = Math.floor(255 * (1 - intensity));
+                        p.noStroke();
+                        p.fill(red, 0, blue, intensity * 46);
+                        p.rect(point.x, point.y, 20, 20);
+                    }
+                });
+            }
+
+            // --- Draw sweat duct (from pore to gland) ---
+            function drawDuct() {
+                p.push();
+                p.stroke(sim.hasRuptured ? '#FF0000' : '#4ECDC4');
+                p.strokeWeight(sim.ductWidth);
+                p.noFill();
+                p.beginShape();
+                let ductOriginY = getPoreBottomY();
+                p.vertex(sim.poreX, ductOriginY);
+                sim.ductSegments.forEach((segment, index) => {
+                    p.vertex(segment.x, segment.y);
+                });
+                p.endShape();
+                // Draw visible end tip at pore
+                p.noStroke();
+                p.fill('#4ECDC4');
+                p.drawingContext.globalAlpha = 0.7;
+                p.ellipse(sim.poreX, ductOriginY, sim.ductWidth * 2.4, sim.ductWidth * 2.4);
+                p.drawingContext.globalAlpha = 1.0;
+                // Draw connection to gland
+                let lastSegment = sim.ductSegments[sim.ductSegments.length - 1];
+                let glandConnectionY = sim.glandCenterY - sim.glandRadius;
+                p.stroke(sim.hasRuptured ? '#FF0000' : '#4ECDC4');
+                p.strokeWeight(sim.ductWidth);
+                p.line(lastSegment.x, lastSegment.y, sim.glandCenterX, glandConnectionY);
+                p.pop();
+            }
+
+            // --- Draw sweat gland (coils and boundary) ---
+            function drawGland() {
+                p.push();
+                // Gland boundary
+                p.noFill();
+                p.stroke(sim.hasRuptured ? '#FF0000' : '#45B7D1');
+                p.strokeWeight(2);
+                p.drawingContext.setLineDash([5, 5]);
+                p.ellipse(sim.glandCenterX, sim.glandCenterY, sim.glandRadius * 2, sim.glandRadius * 2);
+                p.drawingContext.setLineDash([]);
+                // Gland coils (spiral)
+                p.stroke(sim.hasRuptured ? '#FF0000' : '#45B7D1');
+                p.strokeWeight(3.5);
+                p.noFill();
+                p.beginShape();
+                sim.glandCoils.forEach((coil, index) => {
+                    p.vertex(coil.x, coil.y);
+                });
+                p.endShape();
+                // Draw visible end tip at gland
+                let lastCoil = sim.glandCoils[sim.glandCoils.length - 1];
+                p.noStroke();
+                p.fill('#45B7D1');
+                p.drawingContext.globalAlpha = 0.7;
+                p.ellipse(lastCoil.x, lastCoil.y, 12, 12);
+                p.drawingContext.globalAlpha = 1.0;
+                // Draw individual coil segments
+                sim.glandCoils.forEach((coil, index) => {
+                    let intensity = Math.min(coil.stress, 1);
+                    let red = Math.floor(255 * intensity);
+                    let blue = Math.floor(255 * (1 - intensity));
+                    p.fill(sim.hasRuptured ? '#FF0000' : p.color(69, 181 - red, 209 - blue));
+                    p.noStroke();
+                    p.ellipse(coil.x, coil.y, coil.radius * 2, coil.radius * 2);
+                    p.fill(255, 255, 255, 46);
+                    p.ellipse(coil.x - coil.radius * 0.3, coil.y - coil.radius * 0.3, coil.radius * 0.8, coil.radius * 0.8);
+                });
+                p.pop();
+            }
+
+            // --- Draw pressure indicator (arrow and value) ---
+            function drawPressureIndicator() {
+                p.push();
+                p.stroke('#FF4444');
+                p.strokeWeight(4);
+                p.fill('#FF4444');
+                let arrowY = sim.skinTop - 40;
+                let arrowHeight = 25;
+                // Arrow line
+                p.line(sim.poreX, arrowY, sim.poreX, arrowY + arrowHeight);
+                // Arrow head
+                p.beginShape();
+                p.vertex(sim.poreX, arrowY + arrowHeight);
+                p.vertex(sim.poreX - 8, arrowY + arrowHeight - 8);
+                p.vertex(sim.poreX + 8, arrowY + arrowHeight - 8);
+                p.endShape(p.CLOSE);
+                // Force value
+                p.noStroke();
+                p.fill('#222');
+                p.textAlign(p.CENTER, p.BOTTOM);
+                p.textSize(14);
+                p.text(`${sim.currentForce.toFixed(1)} N`, sim.poreX, arrowY - 10);
+                // Bar
+                p.fill('#888888');
+                p.rect(sim.poreX - 30, arrowY - 5, 60, 8, 4);
+                p.pop();
+            }
+
+            // --- Update UI panel values ---
+            function updateUI() {
+                document.getElementById('forceValue').textContent = `${sim.currentForce.toFixed(1)} N`;
+                document.getElementById('phaseValue').textContent = sim.phase;
+                document.getElementById('stressValue').textContent = `${sim.maxStress.toFixed(1)} MPa`;
+                let poreDeformation = ((sim.poreRadius - sim.originalPoreRadius) / sim.originalPoreRadius * 100);
+                let poreStatus = sim.poreTorn ? ' (TORN)' : '';
+                document.getElementById('poreValue').textContent = `${poreDeformation.toFixed(1)}%${poreStatus}`;
+                let ductStrain = ((sim.originalDuctWidth - sim.ductWidth) / sim.originalDuctWidth * 100);
+                document.getElementById('ductValue').textContent = `${ductStrain.toFixed(1)}%`;
+                let glandCompression = ((sim.originalGlandRadius - sim.glandRadius) / sim.originalGlandRadius * 100);
+                document.getElementById('glandValue').textContent = `${glandCompression.toFixed(1)}%`;
+                document.getElementById('timeValue').textContent = `${sim.simulationTime.toFixed(1)} s`;
+                let bendingPercent = (sim.skinBending / sim.maxSkinBending * 100);
+                document.getElementById('bendingValue').textContent = `${bendingPercent.toFixed(1)}%`;
+            }
+
+            // --- Reset simulation to initial state ---
+            function resetSimulation() {
+                sim.isRunning = true;
+                sim.isPaused = false;
+                sim.hasRuptured = false;
+                sim.simulationTime = 0;
+                sim.currentForce = 0;
+                sim.maxStress = 0;
+                sim.phase = "Ready";
+                sim.poreRadius = sim.originalPoreRadius;
+                sim.poreDepth = sim.originalPoreDepth;
+                sim.poreTearLength = 0;
+                sim.poreTorn = false;
+                sim.skinBending = 0;
+                sim.ductWidth = sim.originalDuctWidth;
+                sim.ductLength = sim.originalDuctLength;
+                sim.ductCurvature = 0;
+                sim.glandRadius = sim.originalGlandRadius;
+                sim.glandCenterY = sim.originalGlandCenterY;
+                initializeStructures();
+                document.getElementById('statusIndicator').textContent = 'Simulation Ready';
+                document.getElementById('statusIndicator').className = 'status-indicator status-running';
+                updateUI();
+            }
+        });
+    </script>
+</body>
+</html>

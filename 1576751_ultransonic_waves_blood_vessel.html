@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimized 2D Ultrasound with Performance Tuned Reflections</title>
+    
+    <!-- Import p5.js library for graphics rendering -->
+    <script type="importmap">
+        {
+            "imports": {
+                "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"
+            }
+        }
+    </script>
+    
+    <style>
+        /* General body styling for a modern, dark theme */
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h1 {
+            color: #ffffff;
+            text-align: center;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        /* Container for the p5.js canvas with a decorative border and background */
+        .canvas-container {
+            border: 3px solid #4CAF50;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            margin: 10px;
+            overflow: hidden;
+        }
+        /* Flex container for control buttons */
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin: 20px 0;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        /* General button styling */
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        /* Specific styling for the reset button */
+        .reset-btn {
+            background: linear-gradient(45deg, #74b9ff, #0984e3);
+            color: white;
+            box-shadow: 0 4px 15px rgba(116,185,255,0.4);
+        }
+        .reset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(116,185,255,0.6);
+        }
+        /* Panel for displaying simulation metrics and information */
+        .info-panel {
+            background: rgba(0,0,0,0.7);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            max-width: 900px;
+            width: 100%;
+            box-sizing: border-box;
+            backdrop-filter: blur(5px);
+        }
+        /* Main speed display styling */
+        .speed-display {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        .speed-section {
+            text-align: center;
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .speed-label {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .speed-value {
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(46, 213, 115, 0.5);
+        }
+        .pulse-speed {
+            color: #2ed573;
+        }
+        .blood-speed {
+            color: #ff6b6b;
+        }
+        .speed-unit {
+            font-size: 16px;
+            color: #ddd;
+            margin-left: 5px;
+        }
+        /* Grid layout for detailed metrics (Time, Distance, Reflections) */
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .metric {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .metric-label {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        /* Styling for the color-coded legend */
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 1px solid white;
+        }
+    </style>
+</head>
+<body>
+    <!-- Main title of the simulation -->
+    <h1>🔊 Optimized 2D Ultrasound with Performance Tuned Reflections</h1>
+    
+    <!-- Container for control buttons -->
+    <div class="controls">
+        <button class="reset-btn" id="resetBtn">🔄 Reset & Restart</button>
+    </div>
+    
+    <!-- This div will hold the p5.js canvas -->
+    <div class="canvas-container">
+        <div id="sketch-container"></div>
+    </div>
+    
+    <!-- This div contains all the informational displays: speed, metrics, and legend -->
+    <div class="info-panel">
+        <!-- Main speed display with both pulse and blood flow speeds -->
+        <div class="speed-display">
+            <div class="speed-section">
+                <div class="speed-label">Ultrasonic Pulse Speed</div>
+                <span class="speed-value pulse-speed" id="mainSpeedValue">0</span>
+                <span class="speed-unit">cm/s</span>
+            </div>
+            <div class="speed-section">
+                <div class="speed-label">Blood Flow Speed</div>
+                <span class="speed-value blood-speed" id="bloodSpeedValue">150</span>
+                <span class="speed-unit">cm/s</span>
+            </div>
+        </div>
+        
+        <!-- Detailed metrics -->
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-label">Travel Time</div>
+                <div class="metric-value" id="timeValue">0 ms</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Distance</div>
+                <div class="metric-value" id="distanceValue">0 mm</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Reflections</div>
+                <div class="metric-value" id="reflectionValue">0</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Received Echoes</div>
+                <div class="metric-value" id="echoValue">0</div>
+            </div>
+        </div>
+        
+        <!-- Legend explaining the colors of the simulated particles -->
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #dc143c;"></div>
+                <span>Red Blood Cells</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #f0e68c;"></div>
+                <span>Plasma</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #9370db;"></div>
+                <span>White Blood Cells</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ff4500;"></div>
+                <span>Platelets</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #2ed573;"></div>
+                <span>Outgoing Ultrasound</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffeb3b;"></div>
+                <span>Reflected Wavefronts</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ff6b6b;"></div>
+                <span>Blood Flow</span>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        import "p5";
+        
+        // ===================================================
+        // --- SIMULATION PARAMETERS AND CONSTANTS ---
+        // ===================================================
+        
+        // Canvas and vessel dimensions
+        const CANVAS_WIDTH = 900;
+        const CANVAS_HEIGHT = 500;
+        const VESSEL_Y = CANVAS_HEIGHT / 2 + 80;          // Vertical position of blood vessel
+        const VESSEL_HEIGHT = 140;                        // Height of blood vessel
+        const VESSEL_START_X = 0;
+        const VESSEL_END_X = CANVAS_WIDTH;
+        
+        // Transducer positioning
+        const TRANSDUCER_X = CANVAS_WIDTH / 2;            // Center horizontally
+        const TRANSDUCER_Y = VESSEL_Y - VESSEL_HEIGHT / 2 - 40; // Above vessel
+        
+        // Physical constants for ultrasound simulation
+        const MM_PER_PIXEL = 0.1;                         // Scale conversion
+        const INITIAL_SPEED_MS = 1570;                    // Sound speed in tissue (m/s)
+        const BLOOD_FLOW_SPEED = 1.5;                     // Blood flow speed (pixels/frame)
+        const BLOOD_FLOW_SPEED_CM_S = 150;                // Blood flow speed for display (cm/s)
+        
+        // PERFORMANCE OPTIMIZATION: Reduced reflection probability
+        const REFLECTION_PROBABILITY = 0.3;               // Only 30% of hits create reflections
+        const MAX_REFLECTED_WAVES = 8;                    // Limit simultaneous reflected waves
+
+        // ===================================================
+        // --- SIMULATION STATE VARIABLES ---
+        // ===================================================
+        
+        // Wave arrays for different types of acoustic waves
+        let waves = [];                    // Main outgoing ultrasound pulses
+        let reflectedWaves = [];          // Reflected waves from blood particles
+        let scatters = [];                // Brief visual scatter effects
+        
+        // Particle and indicator arrays
+        let bloodCells = [];              // All blood cell types
+        let flowIndicators = [];          // Visual blood flow indicators
+        let speedIndicators = [];         // Pulse speed visualization
+        let transducerReceiveEffects = [];// Visual effects when echoes received
+        
+        // Simulation timing and metrics
+        let startTime = 0;
+        let reflectionCount = 0;
+        let receivedEchoCount = 0;
+        let isSimulationActive = false;
+        let pulseTimer = 0;
+        let pulseInterval = 180;          // Frames between pulses
+        let pulseStartTime = 0;
+        let pulseMaxDistanceMM = 0;
+        let currentDisplayedSpeedCmS = 0;
+        let lastKnownSpeed = 0;
+
+        // ===================================================
+        // --- BLOOD FLOW VISUALIZATION CLASS ---
+        // ===================================================
+        
+        /**
+         * FlowIndicator - Shows directional arrows representing blood flow
+         * Creates animated arrows that move with the blood flow speed
+         */
+        class FlowIndicator {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.length = 30;              // Arrow length
+                this.speed = BLOOD_FLOW_SPEED;
+                this.opacity = 200;
+                this.age = 0;
+                this.maxAge = 60;              // Lifespan in frames
+            }
+            
+            update() {
+                // Move with blood flow
+                this.x += this.speed;
+                this.age++;
+                
+                // Fade out over lifetime
+                this.opacity = 200 * (1 - this.age / this.maxAge);
+                
+                // Wrap around screen when reaching edge
+                if (this.x > CANVAS_WIDTH + this.length) {
+                    this.x = -this.length;
+                    this.y = Math.random() * (VESSEL_HEIGHT - 20) + VESSEL_Y - VESSEL_HEIGHT/2 + 10;
+                    this.age = 0; // Reset age for new cycle
+                }
+            }
+            
+            display(p) {
+                if (this.opacity <= 0) return;
+                
+                p.push();
+                p.stroke(255, 107, 107, this.opacity);
+                p.strokeWeight(3);
+                p.fill(255, 107, 107, this.opacity * 0.3);
+                
+                // Draw main arrow line
+                p.line(this.x, this.y, this.x + this.length, this.y);
+                
+                // Draw arrowhead
+                let arrowSize = 8;
+                p.line(this.x + this.length, this.y, 
+                       this.x + this.length - arrowSize, this.y - arrowSize/2);
+                p.line(this.x + this.length, this.y, 
+                       this.x + this.length - arrowSize, this.y + arrowSize/2);
+                
+                // Draw speed indicator dots along arrow
+                for (let i = 0; i < 3; i++) {
+                    let dotX = this.x + (i * this.length / 4);
+                    p.ellipse(dotX, this.y, 4, 4);
+                }
+                p.pop();
+            }
+        }
+        
+        // ===================================================
+        // --- TRANSDUCER RECEPTION EFFECT CLASS ---
+        // ===================================================
+        
+        /**
+         * TransducerReceiveEffect - Visual feedback when echoes reach transducer
+         * Creates bright flash and ripple effects to show successful echo reception
+         */
+        class TransducerReceiveEffect {
+            constructor() {
+                this.age = 0;
+                this.maxAge = 30;
+                this.intensity = 255;
+            }
+            
+            update() {
+                this.age++;
+                this.intensity = 255 * (1 - this.age / this.maxAge);
+            }
+            
+            display(p) {
+                if (this.intensity <= 0) return;
+                
+                p.push();
+                p.translate(TRANSDUCER_X, TRANSDUCER_Y);
+                
+                // Bright white flash effect
+                p.fill(255, 255, 255, this.intensity * 0.6);
+                p.noStroke();
+                p.ellipse(0, 0, 80 * (this.age / this.maxAge), 30 * (this.age / this.maxAge));
+                
+                // Cyan ripple effects expanding outward
+                p.noFill();
+                p.stroke(0, 255, 255, this.intensity);
+                p.strokeWeight(3);
+                for (let i = 0; i < 3; i++) {
+                    let radius = (this.age + i * 5) * 2;
+                    p.ellipse(0, 0, radius, radius * 0.5);
+                }
+                p.pop();
+            }
+            
+            isDead() {
+                return this.age >= this.maxAge;
+            }
+        }
+        
+        // ===================================================
+        // --- SPEED VISUALIZATION CLASS ---
+        // ===================================================
+        
+        /**
+         * SpeedIndicator - Shows trail and speed of ultrasound pulse
+         * Tracks wave position and displays speed information
+         */
+        class SpeedIndicator {
+            constructor(wave) {
+                this.wave = wave;
+                this.trailPoints = [];
+                this.maxTrailLength = 10;
+            }
+            
+            update() {
+                if (!this.wave || this.wave.isDead()) return;
+                
+                // Record current position and speed for trail
+                let currentPoint = {
+                    x: this.wave.originX,
+                    y: this.wave.originY + this.wave.radius,
+                    speed: this.wave.physicalSpeedMS
+                };
+                
+                this.trailPoints.push(currentPoint);
+                
+                // Maintain trail length limit
+                if (this.trailPoints.length > this.maxTrailLength) {
+                    this.trailPoints.shift();
+                }
+            }
+            
+            display(p) {
+                if (!this.wave || this.wave.isDead() || this.trailPoints.length < 2) return;
+                
+                p.push();
+                p.noFill();
+                
+                // Draw speed trail with color-coded speed
+                for (let i = 1; i < this.trailPoints.length; i++) {
+                    let prev = this.trailPoints[i-1];
+                    let curr = this.trailPoints[i];
+                    let alpha = (i / this.trailPoints.length) * 255;
+                    
+                    // Color gradient based on speed (green=fast, yellow=slow)
+                    let speedRatio = curr.speed / INITIAL_SPEED_MS;
+                    let r = p.map(speedRatio, 0, 1, 255, 47);
+                    let g = p.map(speedRatio, 0, 1, 255, 213);
+                    let b = p.map(speedRatio, 0, 1, 0, 115);
+                    
+                    p.stroke(r, g, b, alpha);
+                    p.strokeWeight(4);
+                    p.line(prev.x, prev.y, curr.x, curr.y);
+                }
+                
+                // Display current speed value
+                if (this.trailPoints.length > 0) {
+                    let latest = this.trailPoints[this.trailPoints.length - 1];
+                    p.fill(255, 255, 255, 200);
+                    p.noStroke();
+                    p.textAlign(p.CENTER, p.CENTER);
+                    p.textSize(10);
+                    p.text(`${(latest.speed * 100).toFixed(0)} cm/s`, 
+                           latest.x + 30, latest.y);
+                }
+                p.pop();
+            }
+        }
+
+        // ===================================================
+        // --- SCATTER EFFECT CLASS ---
+        // ===================================================
+        
+        /**
+         * Scatter - Brief visual effect when waves hit blood particles
+         * Creates expanding ring effect at collision point
+         */
+        class Scatter {
+            constructor(x, y, initialSize) {
+                this.x = x;
+                this.y = y;
+                this.size = initialSize;
+                this.maxSize = initialSize * 2.5;
+                this.age = 0;
+                this.maxAge = 20;
+                this.alpha = 255;
+            }
+            
+            update() {
+                this.age++;
+                this.size += 0.5;    // Expand outward
+                this.alpha = 255 * (1 - this.age / this.maxAge); // Fade out
+            }
+            
+            display(p) {
+                p.push();
+                p.noFill();
+                p.stroke(255, 255, 200, this.alpha);
+                p.strokeWeight(2);
+                p.ellipse(this.x, this.y, this.size, this.size);
+                p.pop();
+            }
+            
+            isDead() {
+                return this.age >= this.maxAge;
+            }
+        }
+
+        // ===================================================
+        // --- REFLECTED WAVE CLASS (PERFORMANCE OPTIMIZED) ---
+        // ===================================================
+        
+        /**
+         * WavefrontReflectedWave - Circular wavefront reflections from blood particles
+         * OPTIMIZED: Reduced visual complexity for better performance
+         */
+        class WavefrontReflectedWave {
+            constructor(originX, originY, amplitude, cellVelocity = {x: 0, y: 0}) {
+                this.originX = originX;
+                this.originY = originY;
+                this.radius = 0;
+                this.maxRadius = 600;                    // OPTIMIZED: Reduced max radius
+                this.visualSpeed = 3.2;
+                this.physicalSpeedMS = INITIAL_SPEED_MS * 0.92;
+                this.amplitude = amplitude * 0.35;
+                this.age = 0;
+                this.maxAge = 250;                      // OPTIMIZED: Shorter lifespan
+                this.hasReachedTransducer = false;
+                this.cellVelocity = cellVelocity;
+                
+                // Pre-calculate distance to transducer for performance
+                this.distanceToTransducer = Math.sqrt(
+                    Math.pow(TRANSDUCER_X - originX, 2) + 
+                    Math.pow(TRANSDUCER_Y - originY, 2)
+                );
+            }
+
+            update() {
+                // Wave propagation physics
+                if (this.visualSpeed > 0) {
+                    this.radius += this.visualSpeed;
+                    this.visualSpeed *= 0.998;      // Gradual slowdown
+                }
+                this.physicalSpeedMS *= 0.999;
+                this.amplitude *= 0.996;            // Energy loss over time
+                this.age++;
+                
+                // Check for transducer reception
+                this.checkTransducerReception();
+            }
+
+            /**
+             * Detects when reflected wavefront reaches the transducer
+             * Triggers visual effects and increments echo count
+             */
+            checkTransducerReception() {
+                if (this.hasReachedTransducer) return;
+                
+                // Calculate if wavefront has reached transducer position
+                let distFromOriginToTransducer = Math.sqrt(
+                    Math.pow(TRANSDUCER_X - this.originX, 2) + 
+                    Math.pow(TRANSDUCER_Y - this.originY, 2)
+                );
+                
+                // Detection with tolerance for visual speed
+                if (Math.abs(this.radius - distFromOriginToTransducer) <= this.visualSpeed + 5) {
+                    this.hasReachedTransducer = true;
+                    receivedEchoCount++;
+                    
+                    // Create visual feedback at transducer
+                    transducerReceiveEffects.push(new TransducerReceiveEffect());
+                    
+                    // Calculate and log Doppler shift
+                    let dopplerShift = this.calculateDopplerShift();
+                    console.log(`Echo received! Doppler shift: ${dopplerShift.toFixed(2)} Hz`);
+                }
+            }
+
+            /**
+             * Calculates Doppler frequency shift based on blood cell velocity
+             * Uses simplified Doppler equation for moving reflector
+             */
+            calculateDopplerShift() {
+                let originalFreq = 5000000; // 5 MHz ultrasound frequency
+                let soundSpeed = INITIAL_SPEED_MS * 100; // Convert to cm/s
+                let sourceVelocity = Math.sqrt(
+                    this.cellVelocity.x * this.cellVelocity.x + 
+                    this.cellVelocity.y * this.cellVelocity.y
+                );
+                
+                // Doppler shift calculation: f' = f * c / (c + v)
+                return originalFreq * (soundSpeed) / (soundSpeed + sourceVelocity);
+            }
+
+            display(p) {
+                if (this.radius <= 0 || this.amplitude <= 0.03) return;
+                
+                p.push();
+                
+                // Clip drawing to vessel area for realism
+                p.drawingContext.save();
+                p.drawingContext.beginPath();
+                p.drawingContext.rect(0, VESSEL_Y - VESSEL_HEIGHT / 2, CANVAS_WIDTH, VESSEL_HEIGHT);
+                p.drawingContext.clip();
+
+                let alpha = p.map(this.age, 0, this.maxAge, 255, 0) * this.amplitude;
+                alpha = Math.max(0, Math.min(255, alpha));
+                
+                // Highlight when echo reaches transducer
+                let colorIntensity = this.hasReachedTransducer ? 1.8 : 1.0;
+                
+                // OPTIMIZED: Reduced to 2 layers instead of 3 for performance
+                for (let i = 0; i < 2; i++) {
+                    let layerRadius = this.radius - i * 8;
+                    if (layerRadius <= 0) continue;
+                    let layerAlpha = alpha * (1 - i * 0.3) * colorIntensity;
+                    
+                    // Yellow/amber coloring for reflected waves
+                    p.stroke(255, 235, 59, layerAlpha * 0.4);
+                    p.strokeWeight(4 - i * 2);
+                    p.noFill();
+                    p.ellipse(this.originX, this.originY, layerRadius * 2, layerRadius * 2);
+                }
+                
+                // Main wavefront circle
+                p.stroke(255, 193, 7, alpha * colorIntensity);
+                p.strokeWeight(2);
+                p.noFill();
+                p.ellipse(this.originX, this.originY, this.radius * 2, this.radius * 2);
+                
+                p.drawingContext.restore();
+                p.pop();
+            }
+
+            isDead() {
+                return this.age >= this.maxAge || 
+                       this.amplitude < 0.03 || 
+                       this.radius > this.maxRadius;
+            }
+        }
+
+        // ===================================================
+        // --- MAIN ULTRASOUND WAVE CLASS ---
+        // ===================================================
+        
+        /**
+         * ArcWave - Main outgoing ultrasound pulse from transducer
+         * Handles collision detection and reflection generation
+         */
+        class ArcWave {
+            constructor(originX, originY) {
+                this.originX = originX;
+                this.originY = originY;
+                this.radius = 0;
+                this.maxRadius = 1000;
+                this.visualSpeed = 4;
+                this.physicalSpeedMS = INITIAL_SPEED_MS;
+                this.age = 0;
+                this.maxAge = 400;
+                this.amplitude = 1;
+            }
+
+            update() {
+                // Wave propagation physics
+                if (this.visualSpeed > 0) {
+                    this.radius += this.visualSpeed;
+                    this.visualSpeed *= 0.998;      // Gradual slowdown
+                }
+                this.physicalSpeedMS *= 0.999;
+                this.amplitude *= 0.9995;           // Energy dissipation
+                this.age++;
+                
+                // Check for collisions with blood cells
+                this.checkCellCollisions();
+            }
+
+            /**
+             * PERFORMANCE OPTIMIZED: Collision detection with selective reflection
+             * Only creates reflections based on probability and wave limits
+             */
+            checkCellCollisions() {
+                for (let cell of bloodCells) {
+                    let dist = Math.sqrt(
+                        Math.pow(cell.x - this.originX, 2) + 
+                        Math.pow(cell.y - this.originY, 2)
+                    );
+                    
+                    // Check if wave front is hitting cell
+                    if (Math.abs(this.radius - dist) < this.visualSpeed && 
+                        !cell.hit && 
+                        this.amplitude > 0.1) {
+                        
+                        // Always create scatter effect (low cost)
+                        scatters.push(new Scatter(cell.x, cell.y, cell.size * 0.5));
+                        
+                        // PERFORMANCE OPTIMIZATION: Selective reflection creation
+                        let shouldCreateReflection = (
+                            Math.random() < REFLECTION_PROBABILITY &&        // Random chance
+                            reflectedWaves.length < MAX_REFLECTED_WAVES &&   // Limit active waves
+                            cell.reflectionCoeff > 0.1                       // Strong enough reflector
+                        );
+                        
+                        if (shouldCreateReflection) {
+                            // Calculate cell velocity for Doppler effect
+                            let cellVelocity = {
+                                x: BLOOD_FLOW_SPEED + cell.drift.x,
+                                y: cell.drift.y
+                            };
+                            
+                            // Create reflected wavefront
+                            let reflectedWave = new WavefrontReflectedWave(
+                                cell.x, 
+                                cell.y, 
+                                this.amplitude * cell.reflectionCoeff,
+                                cellVelocity
+                            );
+                            reflectedWaves.push(reflectedWave);
+                        }
+                        
+                        // Mark cell as hit and update counters
+                        cell.hit = true;
+                        cell.hitTime = 0;
+                        reflectionCount++;
+                        
+                        // Wave loses energy when passing through particle
+                        this.amplitude *= (1 - cell.reflectionCoeff * 0.1);
+                    }
+                }
+            }
+
+            display(p) {
+                if (this.radius <= 0 || this.amplitude <= 0.05) return;
+                
+                p.push();
+                
+                // Clip to vessel area
+                p.drawingContext.save();
+                p.drawingContext.beginPath();
+                p.drawingContext.rect(0, VESSEL_Y - VESSEL_HEIGHT / 2, CANVAS_WIDTH, VESSEL_HEIGHT);
+                p.drawingContext.clip();
+
+                let alpha = p.map(this.age, 0, this.maxAge, 255, 0) * this.amplitude;
+                alpha = Math.max(0, Math.min(255, alpha));
+                
+                // Draw multiple concentric circles for realistic wavefront
+                for (let i = 0; i < 3; i++) {
+                    let layerRadius = this.radius - i * 8;
+                    if (layerRadius <= 0) continue;
+                    let layerAlpha = alpha * (1 - i * 0.3);
+                    
+                    // Green coloring for outgoing waves
+                    p.stroke(47, 213, 115, layerAlpha * 0.2);
+                    p.strokeWeight(6 - i);
+                    p.noFill();
+                    p.ellipse(this.originX, this.originY, layerRadius * 2, layerRadius * 2);
+                }
+                
+                // Main wavefront
+                p.stroke(144, 238, 144, alpha);
+                p.strokeWeight(2);
+                p.noFill();
+                p.ellipse(this.originX, this.originY, this.radius * 2, this.radius * 2);
+                
+                p.drawingContext.restore();
+                p.pop(); 
+            }
+
+            isDead() {
+                return this.age >= this.maxAge || 
+                       this.amplitude < 0.05 || 
+                       this.radius > this.maxRadius;
+            }
+        }
+
+        // ===================================================
+        // --- BLOOD CELL BASE CLASS ---
+        // ===================================================
+        
+        /**
+         * BloodCellBase - Common functionality for all blood cell types
+         * Handles movement, boundary checking, and hit state management
+         */
+        class BloodCellBase {
+            update() {
+                // Move with blood flow and random drift
+                this.x += BLOOD_FLOW_SPEED;
+                this.x += this.drift.x;
+                this.y += this.drift.y;
+
+                // Wrap around screen when reaching right edge
+                if (this.x > CANVAS_WIDTH + this.size) {
+                    this.x = -this.size;
+                    this.y = Math.random() * (VESSEL_HEIGHT - 2 * this.size) + 
+                             VESSEL_Y - VESSEL_HEIGHT / 2 + this.size;
+                }
+
+                // Boundary collision with vessel walls
+                if (this.y < VESSEL_Y - VESSEL_HEIGHT/2 + this.size) {
+                    this.drift.y = Math.abs(this.drift.y);
+                }
+                if (this.y > VESSEL_Y + VESSEL_HEIGHT/2 - this.size) {
+                    this.drift.y = -Math.abs(this.drift.y);
+                }
+                
+                // Manage hit state duration
+                if (this.hit) {
+                    this.hitTime++;
+                    if (this.hitTime > this.maxHitTime) {
+                        this.hit = false;
+                        this.hitTime = 0;
+                    }
+                }
+            }
+        }
+        
+        // ===================================================
+        // --- BLOOD CELL IMPLEMENTATIONS ---
+        // ===================================================
+        
+        /**
+         * RedBloodCell - Most common blood cell, biconcave disc shape
+         * Medium reflection coefficient (25%)
+         */
+        class RedBloodCell extends BloodCellBase { 
+            constructor(x, y) { 
+                super(); 
+                this.x = x; 
+                this.y = y; 
+                this.size = Math.random() * 8 + 18; 
+                this.rotation = Math.random() * Math.PI * 2; 
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02; 
+                this.drift = { 
+                    x: (Math.random() - 0.5) * 0.1, 
+                    y: (Math.random() - 0.5) * 0.05 
+                }; 
+                this.hit = false; 
+                this.hitTime = 0; 
+                this.maxHitTime = 40; 
+                this.reflectionCoeff = 0.25;  // 25% reflection strength
+                this.type = 'rbc'; 
+            } 
+            
+            update() { 
+                super.update(); 
+                this.rotation += this.rotationSpeed; 
+            } 
+            
+            display(p) { 
+                p.push(); 
+                p.translate(this.x, this.y); 
+                p.rotate(this.rotation); 
+                
+                // Scale up when hit by ultrasound
+                let scale = this.hit ? 1 + 0.2 * Math.sin(this.hitTime * 0.4) : 1; 
+                
+                // Shadow effect
+                p.fill(0, 0, 0, 40); 
+                p.noStroke(); 
+                p.ellipse(2, 2, this.size * scale * 1.1, this.size * scale * 0.7); 
+                
+                // Main cell body (red)
+                p.fill(220, 20, 60, 220); 
+                p.stroke(180, 0, 40, 150); 
+                p.strokeWeight(1); 
+                p.ellipse(0, 0, this.size * scale, this.size * scale * 0.7); 
+                
+                // Inner highlight
+                p.fill(255, 120, 140, 180); 
+                p.noStroke(); 
+                p.ellipse(0, 0, this.size * scale * 0.5, this.size * scale * 0.35); 
+                
+                // Secondary highlight
+                p.fill(255, 180, 200, 120); 
+                p.ellipse(-this.size * 0.15, -this.size * 0.1, 
+                         this.size * scale * 0.3, this.size * scale * 0.2); 
+                
+                // Outer rim
+                p.stroke(255, 80, 100, 100); 
+                p.strokeWeight(0.5); 
+                p.noFill(); 
+                p.ellipse(0, 0, this.size * scale * 0.9, this.size * scale * 0.63); 
+                
+                // Hit indicator (bright white ring)
+                if (this.hit) { 
+                    p.stroke(255, 255, 255, 200); 
+                    p.strokeWeight(2); 
+                    p.noFill(); 
+                    p.ellipse(0, 0, this.size * scale * 1.4, this.size * scale * 1.0); 
+                } 
+                p.pop(); 
+            } 
+        }
+        
+        /**
+         * WhiteBloodCell - Larger immune system cells with complex nucleus
+         * High reflection coefficient (40%) due to different density
+         */
+        class WhiteBloodCell extends BloodCellBase { 
+            constructor(x, y, subtype = 'neutrophil') { 
+                super(); 
+                this.x = x; 
+                this.y = y; 
+                this.subtype = subtype; 
+                this.size = Math.random() * 10 + 25; 
+                this.nucleusSegments = subtype === 'neutrophil' ? 
+                                     Math.floor(Math.random() * 3) + 2 : 1; 
+                this.drift = { 
+                    x: (Math.random() - 0.5) * 0.05, 
+                    y: (Math.random() - 0.5) * 0.03 
+                }; 
+                
+                // Generate irregular membrane shape
+                this.membrane = []; 
+                for (let i = 0; i < 16; i++) { 
+                    this.membrane.push(Math.random() * 0.3 + 0.8); 
+                } 
+                
+                this.hit = false; 
+                this.hitTime = 0; 
+                this.maxHitTime = 50; 
+                this.reflectionCoeff = 0.4;  // 40% reflection (higher density)
+                this.type = 'wbc'; 
+            } 
+            
+            display(p) { 
+                p.push(); 
+                p.translate(this.x, this.y); 
+                let scale = this.hit ? 1 + 0.15 * Math.sin(this.hitTime * 0.3) : 1; 
+                
+                // Shadow
+                p.fill(0, 0, 0, 50); 
+                p.noStroke(); 
+                p.ellipse(2, 2, this.size * scale, this.size * scale); 
+                
+                // Main cell body with irregular membrane
+                p.fill(147, 112, 219, 200); 
+                p.stroke(120, 80, 200, 180); 
+                p.strokeWeight(1.5); 
+                p.beginShape(); 
+                for (let i = 0; i < this.membrane.length; i++) { 
+                    let angle = (i / this.membrane.length) * Math.PI * 2; 
+                    let radius = this.size * scale * this.membrane[i] * 0.5; 
+                    let x = Math.cos(angle) * radius; 
+                    let y = Math.sin(angle) * radius; 
+                    p.vertex(x, y); 
+                } 
+                p.endShape(p.CLOSE); 
+                
+                // Nucleus (different for different subtypes)
+                p.fill(80, 50, 150, 220); 
+                p.stroke(60, 30, 120, 180); 
+                p.strokeWeight(1); 
+                if (this.nucleusSegments === 1) { 
+                    // Single nucleus (lymphocyte)
+                    p.ellipse(0, 0, this.size * scale * 0.6, this.size * scale * 0.5); 
+                } else { 
+                    // Segmented nucleus (neutrophil)
+                    for (let i = 0; i < this.nucleusSegments; i++) { 
+                        let offsetX = (i - this.nucleusSegments/2 + 0.5) * 
+                                     this.size * scale * 0.25; 
+                        p.ellipse(offsetX, 0, this.size * scale * 0.35, 
+                                 this.size * scale * 0.3); 
+                    } 
+                } 
+                
+                // Cytoplasmic granules
+                p.fill(200, 150, 255, 150); 
+                p.noStroke(); 
+                for (let i = 0; i < 8; i++) { 
+                    let granulesX = (Math.random() - 0.5) * this.size * scale * 0.6; 
+                    let granulesY = (Math.random() - 0.5) * this.size * scale * 0.6; 
+                    p.ellipse(granulesX, granulesY, 2, 2); 
+                } 
+                
+                // Hit indicator
+                if (this.hit) { 
+                    p.stroke(255, 255, 255, 220); 
+                    p.strokeWeight(3); 
+                    p.noFill(); 
+                    p.ellipse(0, 0, this.size * scale * 1.3, this.size * scale * 1.3); 
+                } 
+                p.pop(); 
+            } 
+        }
+        
+        /**
+         * Platelet - Small cell fragments for blood clotting
+         * Low reflection coefficient (15%) due to small size
+         */
+        class Platelet extends BloodCellBase { 
+            constructor(x, y) { 
+                super(); 
+                this.x = x; 
+                this.y = y; 
+                this.size = Math.random() * 3 + 6; 
+                this.rotation = Math.random() * Math.PI * 2; 
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1; 
+                this.drift = { 
+                    x: (Math.random() - 0.5) * 0.2, 
+                    y: (Math.random() - 0.5) * 0.1 
+                }; 
+                this.hit = false; 
+                this.hitTime = 0; 
+                this.maxHitTime = 30; 
+                this.reflectionCoeff = 0.15;  // 15% reflection (small size)
+                this.type = 'platelet'; 
+                this.activated = Math.random() < 0.3;  // 30% chance of activation
+            } 
+            
+            update() { 
+                super.update(); 
+                this.rotation += this.rotationSpeed; 
+            } 
+            
+            display(p) { 
+                p.push(); 
+                p.translate(this.x, this.y); 
+                p.rotate(this.rotation); 
+                let scale = this.hit ? 1 + 0.3 * Math.sin(this.hitTime * 0.5) : 1; 
+                
+                // Shadow
+                p.fill(0, 0, 0, 40); 
+                p.noStroke(); 
+                p.ellipse(1, 1, this.size * scale, this.size * scale * 0.8); 
+                
+                if (this.activated) { 
+                    // Activated platelet (star shape for clotting)
+                    p.fill(255, 69, 0, 200); 
+                    p.stroke(200, 50, 0, 180); 
+                    p.strokeWeight(0.8); 
+                    p.beginShape(); 
+                    for (let i = 0; i < 8; i++) { 
+                        let angle = (i / 8) * Math.PI * 2; 
+                        let radius = this.size * scale * (i % 2 === 0 ? 0.7 : 0.4); 
+                        let x = Math.cos(angle) * radius; 
+                        let y = Math.sin(angle) * radius; 
+                        p.vertex(x, y); 
+                    } 
+                    p.endShape(p.CLOSE); 
+                } else { 
+                    // Resting platelet (circular)
+                    p.fill(255, 140, 0, 180); 
+                    p.stroke(220, 100, 0, 150); 
+                    p.strokeWeight(0.5); 
+                    p.ellipse(0, 0, this.size * scale, this.size * scale * 0.8); 
+                } 
+                
+                // Central granules
+                p.fill(180, 80, 0, 220); 
+                p.noStroke(); 
+                p.ellipse(0, 0, this.size * scale * 0.4, this.size * scale * 0.3); 
+                
+                // Hit indicator
+                if (this.hit) { 
+                    p.stroke(255, 255, 255, 240); 
+                    p.strokeWeight(1.5); 
+                    p.noFill(); 
+                    p.ellipse(0, 0, this.size * scale * 1.8, this.size * scale * 1.4); 
+                } 
+                p.pop(); 
+            } 
+        }
+        
+        /**
+         * PlasmaParticle - Liquid component of blood with proteins
+         * Very low reflection coefficient (5%) - mostly transparent to ultrasound
+         */
+        class PlasmaParticle extends BloodCellBase { 
+            constructor(x, y) { 
+                super(); 
+                this.x = x; 
+                this.y = y; 
+                this.size = Math.random() * 12 + 12; 
+                this.drift = { 
+                    x: (Math.random() - 0.5) * 0.03, 
+                    y: (Math.random() - 0.5) * 0.02 
+                }; 
+                this.hit = false; 
+                this.hitTime = 0; 
+                this.maxHitTime = 25; 
+                this.reflectionCoeff = 0.05;  // 5% reflection (liquid)
+                this.type = 'plasma'; 
+                this.opacity = Math.random() * 80 + 80; 
+            } 
+            
+            display(p) { 
+                p.push(); 
+                p.translate(this.x, this.y); 
+                let scale = this.hit ? 1 + 0.1 * Math.sin(this.hitTime * 0.6) : 1; 
+                
+                // Shadow
+                p.fill(0, 0, 0, 30); 
+                p.noStroke(); 
+                p.ellipse(1.5, 1.5, this.size * scale, this.size * scale * 0.9); 
+                
+                // Main plasma body (yellowish)
+                p.fill(240, 230, 140, this.opacity); 
+                p.stroke(200, 190, 100, this.opacity * 0.8); 
+                p.strokeWeight(1); 
+                p.ellipse(0, 0, this.size * scale, this.size * scale * 0.9); 
+                
+                // Inner highlight
+                p.fill(255, 245, 160, this.opacity * 0.7); 
+                p.noStroke(); 
+                p.ellipse(0, 0, this.size * scale * 0.6, this.size * scale * 0.5); 
+                
+                // Protein particles
+                p.fill(255, 255, 180, this.opacity * 0.5); 
+                for (let i = 0; i < 3; i++) { 
+                    let offsetX = (Math.random() - 0.5) * this.size * scale * 0.4; 
+                    let offsetY = (Math.random() - 0.5) * this.size * scale * 0.4; 
+                    p.ellipse(offsetX, offsetY, 2, 2); 
+                } 
+                
+                // Hit indicator
+                if (this.hit) { 
+                    p.stroke(255, 255, 255, 180); 
+                    p.strokeWeight(2); 
+                    p.noFill(); 
+                    p.ellipse(0, 0, this.size * scale * 1.2, this.size * scale * 1.1); 
+                } 
+                p.pop(); 
+            } 
+        }
+
+        // ===================================================
+        // --- P5.JS SKETCH SETUP AND MAIN DRAW LOOP ---
+        // ===================================================
+        const sketch = (p) => {
+            // Initial setup - called once when sketch starts
+            p.setup = () => {
+                let canvas = p.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+                canvas.parent('sketch-container');
+                initializeBloodCells();
+                initializeFlowIndicators();
+                startSimulation();
+            };
+
+            // Main animation loop - called every frame
+            p.draw = () => {
+                // Draw background layers
+                drawGradientBackground(p);
+                drawVessel(p);
+                
+                // Update and draw all simulation elements
+                updateAndDrawBloodCells(p);
+                updateAndDrawFlowIndicators(p);
+                updateAndDrawWaves(p);
+                updateAndDrawReflectedWaves(p);
+                updateAndDrawTransducerReceiveEffects(p);
+                updateAndDrawSpeedIndicators(p);
+                updateAndDrawScatters(p);
+                drawTransducer(p);
+                
+                // Pulse timing management
+                pulseTimer++;
+                if (pulseTimer >= pulseInterval) {
+                    sendPulse();
+                    pulseTimer = 0;
+                }
+                
+                // Update UI metrics
+                updateMetrics();
+            };
+
+            /**
+             * Draws animated gradient background
+             */
+            function drawGradientBackground(p) { 
+                for (let i = 0; i <= CANVAS_HEIGHT; i++) { 
+                    let inter = p.map(i, 0, CANVAS_HEIGHT, 0, 1); 
+                    let c = p.lerpColor(p.color(15, 25, 45), p.color(30, 45, 75), inter); 
+                    p.stroke(c); 
+                    p.line(0, i, CANVAS_WIDTH, i); 
+                } 
+            }
+            
+            /**
+             * Draws blood vessel with walls and texture details
+             */
+            function drawVessel(p) {
+                const vesselTopY = VESSEL_Y - VESSEL_HEIGHT / 2;
+                const vesselBottomY = VESSEL_Y + VESSEL_HEIGHT / 2;
+                
+                // Vessel walls (thick gray lines)
+                p.stroke(120, 120, 120); 
+                p.strokeWeight(6);
+                p.fill(60, 40, 40, 150);
+                p.rect(0, vesselTopY - 15, CANVAS_WIDTH, 15);  // Top wall
+                p.rect(0, vesselBottomY, CANVAS_WIDTH, 15);    // Bottom wall
+                
+                // Vessel interior (semi-transparent red)
+                p.fill(140, 50, 50, 100); 
+                p.noStroke(); 
+                p.rect(0, vesselTopY, CANVAS_WIDTH, VESSEL_HEIGHT);
+                
+                // Wall texture details
+                p.stroke(100, 80, 80, 80); 
+                p.strokeWeight(1);
+                for (let x = 0; x < CANVAS_WIDTH; x += 25) { 
+                    p.line(x, vesselTopY, x + 15, vesselTopY + 3); 
+                    p.line(x, vesselBottomY, x + 15, vesselBottomY - 3); 
+                }
+                
+                // Interior flow lines (subtle)
+                p.stroke(255, 255, 255, 40); 
+                p.strokeWeight(1);
+                for (let x = 30; x < CANVAS_WIDTH; x += 60) { 
+                    p.line(x, VESSEL_Y - 40, x + 25, VESSEL_Y - 30); 
+                    p.line(x, VESSEL_Y, x + 25, VESSEL_Y + 10); 
+                    p.line(x, VESSEL_Y + 30, x + 25, VESSEL_Y + 40); 
+                }
+            }
+
+            /**
+             * Draws ultrasound transducer probe
+             */
+            function drawTransducer(p) { 
+                const w = 120; 
+                const h = 25;
+                p.push();
+                p.translate(TRANSDUCER_X, TRANSDUCER_Y);
+                
+                // Main transducer body
+                p.fill(80, 80, 80); 
+                p.stroke(160, 160, 160); 
+                p.strokeWeight(2); 
+                p.rect(-w / 2, -h / 2, w, h, 8);
+                
+                // Active element (blue)
+                p.fill(30, 100, 150); 
+                p.stroke(50, 120, 170); 
+                p.strokeWeight(1.5); 
+                p.rect(-w / 2 + 10, h / 2 - 12, w - 20, 12, 4);
+                
+                // Cable connection
+                p.stroke(60, 60, 60); 
+                p.strokeWeight(8); 
+                p.line(0, -h/2, -10, -h/2 - 20); 
+                p.line(-10, -h/2 - 20, -15, -h);
+                
+                // Labels
+                p.fill(220, 220, 220); 
+                p.noStroke(); 
+                p.textAlign(p.CENTER, p.CENTER); 
+                p.textSize(10);
+                p.text("ULTRASOUND PROBE", 0, -5);
+                p.textSize(9); 
+                p.text("5 MHz", 0, 10);
+                p.pop();
+            }
+            
+            /**
+             * Updates and renders all blood cells
+             */
+            function updateAndDrawBloodCells(p) { 
+                for (let cell of bloodCells) { 
+                    cell.update(); 
+                    cell.display(p); 
+                } 
+            }
+
+            /**
+             * Initializes blood flow indicator arrows
+             */
+            function initializeFlowIndicators() {
+                flowIndicators = [];
+                for (let i = 0; i < 8; i++) {
+                    flowIndicators.push(new FlowIndicator(
+                        Math.random() * CANVAS_WIDTH,
+                        Math.random() * (VESSEL_HEIGHT - 40) + VESSEL_Y - VESSEL_HEIGHT/2 + 20
+                    ));
+                }
+            }
+
+            /**
+             * Updates and renders blood flow indicators
+             */
+            function updateAndDrawFlowIndicators(p) {
+                for (let indicator of flowIndicators) {
+                    indicator.update();
+                    indicator.display(p);
+                }
+            }
+
+            /**
+             * Updates and renders main ultrasound waves
+             */
+            function updateAndDrawWaves(p) {
+                let maxDistPixels = 0;
+                let primaryWaveExists = false;
+                
+                for (let i = waves.length - 1; i >= 0; i--) {
+                    let wave = waves[i];
+                    wave.update();
+                    wave.display(p);
+
+                    maxDistPixels = Math.max(maxDistPixels, wave.radius);
+                    primaryWaveExists = true;
+                    currentDisplayedSpeedCmS = wave.physicalSpeedMS * 100;
+                    lastKnownSpeed = currentDisplayedSpeedCmS;
+
+                    // Remove dead waves
+                    if (wave.isDead()) {
+                        waves.splice(i, 1);
+                    }
+                }
+
+                // Handle speed display when no active waves
+                if (!primaryWaveExists && lastKnownSpeed > 0) {
+                    lastKnownSpeed *= 0.95;
+                    if (lastKnownSpeed < 1) lastKnownSpeed = 0;
+                    currentDisplayedSpeedCmS = lastKnownSpeed;
+                } else if (!primaryWaveExists) {
+                    currentDisplayedSpeedCmS = 0;
+                }
+
+                // Update distance metric
+                if (isSimulationActive) {
+                    pulseMaxDistanceMM = maxDistPixels * MM_PER_PIXEL;
+                }
+            }
+
+            /**
+             * Updates and renders reflected waves (PERFORMANCE OPTIMIZED)
+             */
+            function updateAndDrawReflectedWaves(p) {
+                for (let i = reflectedWaves.length - 1; i >= 0; i--) {
+                    let reflectedWave = reflectedWaves[i];
+                    reflectedWave.update();
+                    reflectedWave.display(p);
+
+                    // Remove dead reflected waves
+                    if (reflectedWave.isDead()) {
+                        reflectedWaves.splice(i, 1);
+                    }
+                }
+            }
+
+            /**
+             * Updates and renders transducer reception effects
+             */
+            function updateAndDrawTransducerReceiveEffects(p) {
+                for (let i = transducerReceiveEffects.length - 1; i >= 0; i--) {
+                    let effect = transducerReceiveEffects[i];
+                    effect.update();
+                    effect.display(p);
+
+                    if (effect.isDead()) {
+                        transducerReceiveEffects.splice(i, 1);
+                    }
+                }
+            }
+
+            /**
+             * Updates and renders speed visualization trails
+             */
+            function updateAndDrawSpeedIndicators(p) {
+                // Clean up indicators for dead waves
+                for (let i = speedIndicators.length - 1; i >= 0; i--) {
+                    if (!speedIndicators[i].wave || speedIndicators[i].wave.isDead()) {
+                        speedIndicators.splice(i, 1);
+                    }
+                }
+                
+                // Update and display remaining indicators
+                for (let indicator of speedIndicators) {
+                    indicator.update();
+                    indicator.display(p);
+                }
+            }
+            
+            /**
+             * Updates and renders scatter effects from particle collisions
+             */
+            function updateAndDrawScatters(p) {
+                 for (let i = scatters.length - 1; i >= 0; i--) {
+                    scatters[i].update();
+                    scatters[i].display(p);
+                    if (scatters[i].isDead()) {
+                        scatters.splice(i, 1);
+                    }
+                }
+            }
+        };
+
+        // ===================================================
+        // --- SIMULATION CONTROL FUNCTIONS ---
+        // ===================================================
+        
+        /**
+         * Initializes all blood cell populations with realistic distributions
+         */
+        function initializeBloodCells() {
+            bloodCells = [];
+            
+            // Red blood cells (most abundant - ~40% of blood volume)
+            for (let i = 0; i < 35; i++) { // OPTIMIZED: Reduced from 40
+                bloodCells.push(new RedBloodCell(
+                    Math.random() * CANVAS_WIDTH, 
+                    Math.random() * (VESSEL_HEIGHT - 40) + VESSEL_Y - VESSEL_HEIGHT/2 + 20
+                )); 
+            }
+            
+            // White blood cells (less common - various types)
+            for (let i = 0; i < 6; i++) { // OPTIMIZED: Reduced from 8
+                let subtype = i < 3 ? 'neutrophil' : 'lymphocyte'; 
+                bloodCells.push(new WhiteBloodCell(
+                    Math.random() * CANVAS_WIDTH, 
+                    Math.random() * (VESSEL_HEIGHT - 60) + VESSEL_Y - VESSEL_HEIGHT/2 + 30, 
+                    subtype
+                )); 
+            }
+            
+            // Platelets (small, numerous)
+            for (let i = 0; i < 25; i++) { // OPTIMIZED: Reduced from 30
+                bloodCells.push(new Platelet(
+                    Math.random() * CANVAS_WIDTH, 
+                    Math.random() * (VESSEL_HEIGHT - 20) + VESSEL_Y - VESSEL_HEIGHT/2 + 10
+                )); 
+            }
+            
+            // Plasma particles (liquid component)
+            for (let i = 0; i < 15; i++) { // OPTIMIZED: Reduced from 20
+                bloodCells.push(new PlasmaParticle(
+                    Math.random() * CANVAS_WIDTH, 
+                    Math.random() * (VESSEL_HEIGHT - 40) + VESSEL_Y - VESSEL_HEIGHT/2 + 20
+                )); 
+            }
+        }
+
+        /**
+         * Generates new ultrasound pulse from transducer
+         */
+        function sendPulse() {
+            // Clear old waves and effects
+            waves = [];
+            scatters = [];
+            // Note: Don't clear reflectedWaves - let them continue naturally
+            speedIndicators = [];
+            
+            // Create new main wave from transducer
+            const startY = VESSEL_Y - VESSEL_HEIGHT / 2;
+            let newWave = new ArcWave(TRANSDUCER_X, startY);
+            waves.push(newWave);
+            
+            // Create speed visualization for new wave
+            speedIndicators.push(new SpeedIndicator(newWave));
+            
+            // Reset timing and cell states
+            pulseStartTime = Date.now();
+            pulseMaxDistanceMM = 0;
+            if (!isSimulationActive) {
+                startTime = Date.now();
+                isSimulationActive = true;
+            }
+            
+            // Reset hit states for all cells
+            for (let cell of bloodCells) {
+                cell.hit = false;
+                cell.hitTime = 0;
+            }
+        }
+
+        /**
+         * Starts the simulation
+         */
+        function startSimulation() {
+            isSimulationActive = true;
+            startTime = Date.now();
+            pulseTimer = 0;
+            sendPulse();
+        }
+
+        /**
+         * Resets and restarts entire simulation
+         */
+        function resetAndRestart() {
+            // Clear all arrays
+            waves = [];
+            scatters = [];
+            reflectedWaves = [];
+            speedIndicators = [];
+            transducerReceiveEffects = [];
+            
+            // Reset state variables
+            isSimulationActive = false;
+            startTime = 0;
+            reflectionCount = 0;
+            receivedEchoCount = 0;
+            pulseTimer = 0;
+            pulseStartTime = 0;
+            pulseMaxDistanceMM = 0;
+            currentDisplayedSpeedCmS = 0;
+            lastKnownSpeed = 0;
+            
+            // Reinitialize components
+            initializeBloodCells();
+            initializeFlowIndicators();
+            
+            // Restart after brief delay
+            setTimeout(() => {
+                startSimulation();
+            }, 100);
+            
+            updateMetrics();
+        }
+
+        /**
+         * Updates all displayed metrics and counters
+         */
+        function updateMetrics() {
+            let elapsedTimeMS = isSimulationActive && pulseStartTime > 0 ? 
+                               Date.now() - pulseStartTime : 0;
+            
+            // Update speed displays
+            document.getElementById('mainSpeedValue').textContent = 
+                currentDisplayedSpeedCmS.toLocaleString(undefined, {maximumFractionDigits: 0});
+            document.getElementById('bloodSpeedValue').textContent = 
+                BLOOD_FLOW_SPEED_CM_S.toLocaleString();
+            
+            // Update metrics
+            document.getElementById('timeValue').textContent = `${elapsedTimeMS.toFixed(0)} ms`;
+            document.getElementById('distanceValue').textContent = `${pulseMaxDistanceMM.toFixed(1)} mm`;
+            document.getElementById('reflectionValue').textContent = reflectionCount;
+            document.getElementById('echoValue').textContent = receivedEchoCount;
+        }
+
+        // ===================================================
+        // --- INITIALIZATION ---
+        // ===================================================
+        
+        // Create p5.js sketch instance and attach reset button
+        let p = new p5(sketch);
+        document.getElementById('resetBtn').addEventListener('click', resetAndRestart);
+    </script>
+</body>
+</html>

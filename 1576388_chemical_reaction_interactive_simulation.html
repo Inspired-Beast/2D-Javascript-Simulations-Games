@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chemical Reaction Simulator</title>
+    <!--  Styling  -->
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            max-width: 1400px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            min-width: 150px;
+        }
+        label {
+            font-weight: bold;
+            color: #34495e;
+            margin-bottom: 5px;
+        }
+        select, input, button {
+            padding: 8px;
+            border: 2px solid #3498db;
+            border-radius: 5px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        /*  slider styling for full range control */
+        input[type="range"] {
+            width: 140px;
+            height: 20px;
+            padding: 0 !important;
+            margin: 8px 0;
+            background: transparent;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        input[type="range"]::-webkit-slider-track {
+            width: 100%;
+            height: 8px;
+            background: #ddd;
+            border-radius: 5px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 20px;
+            width: 20px;
+            background: #3498db;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        input[type="range"]::-moz-range-track {
+            width: 100%;
+            height: 8px;
+            background: #ddd;
+            border-radius: 5px;
+            border: none;
+        }
+        input[type="range"]::-moz-range-thumb {
+            height: 20px;
+            width: 20px;
+            background: #3498db;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+        select:focus, input:focus {
+            border-color: #2980b9;
+            box-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
+        }
+        button {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 12px 24px;
+            margin: 10px;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        button:hover:enabled {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+        button:active:enabled {
+            transform: translateY(0);
+        }
+        .canvas-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        .results {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 20px;
+            text-align: center;
+            display: block;
+        }
+        .result-item {
+            display: inline-block;
+            margin: 10px 15px;
+            padding: 15px;
+            background: linear-gradient(45deg, #f39c12, #e67e22);
+            color: white;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 16px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            min-width: 120px;
+        }
+        .result-item.product1 {
+            background: linear-gradient(45deg, #27ae60, #2ecc71);
+        }
+        .result-item.product2 {
+            background: linear-gradient(45deg, #8e44ad, #9b59b6);
+        }
+        .equation-display {
+            background: rgba(44, 62, 80, 0.9);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .timer-bar {
+            width: 350px;
+            margin: 0 auto 10px auto;
+            background: #eee;
+            border-radius: 10px;
+            height: 24px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: none;
+        }
+        .timer-bar-inner {
+            background: linear-gradient(90deg, #3498db, #f39c12);
+            height: 100%;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        .timer-label {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            transform: translateX(-50%);
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 16px;
+            line-height: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Chemical Reaction & Automatic Product Separation Simulator</h1>
+        <div class="controls">
+            <div class="control-group">
+                <label for="reaction-select">Reaction:</label>
+                <select id="reaction-select">
+                    <option value="0">HCl + NaOH → NaCl + H₂O (Neutralization)</option>
+                    <option value="1">Fe + CuSO₄ → FeSO₄ + Cu (Displacement)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="temperature">Temperature (°C):</label>
+                <input type="range" id="temperature" min="0" max="100" value="25" step="1">
+                <span id="temp-value">25°C</span>
+            </div>
+            <div class="control-group">
+                <label for="concentration">Concentration (M):</label>
+                <input type="range" id="concentration" min="0.1" max="2.0" step="0.1" value="1.0">
+                <span id="conc-value">1.0 M</span>
+            </div>
+            <div class="control-group">
+                <label for="time">Reaction Time (s):</label>
+                <input type="range" id="time" min="0.5" max="10" step="0.5" value="5">
+                <span id="time-value">5.0 s</span>
+            </div>
+        </div>
+        <div class="equation-display" id="equation-display">
+            HCl + NaOH → NaCl + H₂O (Neutralization)
+        </div>
+        <!-- Real-time reaction progress timer -->
+        <div class="timer-bar" id="timer-bar">
+            <div class="timer-bar-inner" id="timer-bar-inner"></div>
+            <span class="timer-label" id="timer-label">0.0 s</span>
+        </div>
+        <div class="canvas-container">
+            <div id="simulation-canvas"></div>
+        </div>
+        <div style="text-align: center;">
+            <button id="mix-button">🔬 Mix & React</button>
+            <button id="reset-button">↻ Reset</button>
+        </div>
+        <!--  results section with individual product yields -->
+        <div class="results" id="results">
+            <div class="result-item">
+                <div>Overall Yield</div>
+                <div id="yield-display">-</div>
+            </div>
+            <div class="result-item product1">
+                <div>Product 1</div>
+                <div id="product1-display">-</div>
+            </div>
+            <div class="result-item product2">
+                <div>Product 2</div>
+                <div id="product2-display">-</div>
+            </div>
+            <div class="result-item">
+                <div>Limiting Reagent</div>
+                <div id="limiting-display">-</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modern ES6 module imports -->
+    <script type="importmap">
+        {
+            "imports": {
+                "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"
+            }
+        }
+    </script>
+    
+    <!-- Main Chemical Reaction Simulation Script -->
+    <script type="module">
+        import 'p5';
+        
+        //  reaction database with individual product tracking
+        const reactions = [
+            {
+                equation: "HCl + NaOH → NaCl + H₂O (Neutralization)",
+                reactants: ["HCl", "NaOH"],
+                products: ["NaCl", "H₂O"],
+                productNames: ["Sodium Chloride", "Water"],
+                separationMethod: "evaporation",
+                separationDescription: "Evaporation separates salt from water",
+                colors: {
+                    reactant1: [255, 80, 80],       // Bright red for HCl (acidic)
+                    reactant2: [80, 80, 255],       // Bright blue for NaOH (basic)
+                    product: [80, 255, 80],         // Bright green for neutral solution
+                    final: [100, 255, 120],         // Final stable green color
+                    product1: [255, 255, 255],      // White crystals for NaCl
+                    product2: [150, 200, 255],      // Light blue for pure water
+                    solid: null
+                },
+                heatGenerated: true,
+                gasProduced: false,
+                precipitate: false
+            },
+            {
+                equation: "Fe + CuSO₄ → FeSO₄ + Cu (Displacement)",
+                reactants: ["Fe", "CuSO₄"],
+                products: ["FeSO₄", "Cu"],
+                productNames: ["Iron Sulfate", "Copper Metal"],
+                separationMethod: "filtration",
+                separationDescription: "Filtration separates solid copper from solution",
+                colors: {
+                    reactant1: [150, 150, 150],     // Metallic gray for Fe
+                    reactant2: [60, 120, 255],      // Blue for CuSO₄ solution
+                    product: [120, 255, 120],       // Green for FeSO₄ solution
+                    final: [100, 220, 100],         // Final green solution color
+                    product1: [150, 255, 150],      // Light green for FeSO₄ solution
+                    product2: [180, 100, 60],       // Copper brown for Cu metal
+                    solid: [180, 100, 60]
+                },
+                heatGenerated: false,
+                gasProduced: false,
+                precipitate: true
+            }
+        ];
+
+        //  global state variables
+        let canvas;
+        let currentReaction = 0;
+        let isReacting = false;
+        let reactionProgress = 0;
+        let bubbles = [];
+        let temperature = 25;
+        let concentration = 1.0;
+        let reactionTime = 5.0;
+        let actualYield = 0;
+        let theoreticalYield = 0;
+        let percentYield = 0;
+        let limitingReagent = "";
+        let beakerHasChemicals = false;
+        let stirring = false;
+        let stirAngle = 0;
+        let stirDirection = 1;
+        let stirSpeed = 0.06;
+        let stirRadius = 25;
+        let stirCenterX = 0;
+        let stirCenterY = 0;
+        let pouringAnimation = false;
+        let pouringProgress = 0;
+        let precipitateParticles = [];
+        let settledPrecipitate = []; 
+        let heatWaves = [];
+        let timerStart = 0;
+        let timerElapsed = 0;
+        let pouringDone = false;
+        let reactionCompleted = false;
+        let solutionSwirls = [];
+        let mixingIntensity = 0;
+        
+        //  quantity tracking system
+        let reactant1Amount = 1.0;
+        let reactant2Amount = 1.0;
+        let mixedReactant1 = 0;
+        let mixedReactant2 = 0;
+        let finalProductAmount = 0;
+        
+        // Individual product tracking variables
+        let product1Amount = 0;         // First product yield (e.g., NaCl or FeSO₄)
+        let product2Amount = 0;         // Second product yield (e.g., H₂O or Cu)
+        let product1Yield = 0;          // Percentage yield for product 1
+        let product2Yield = 0;          // Percentage yield for product 2
+        let separationInProgress = false;
+        let separationProgress = 0;
+        let separationCompleted = false;
+        let evaporationSteam = [];
+        let filtrationActive = false;
+        let autoSeparationDelay = 0;
+        
+        // Main beaker solution tracking for separation
+        let mainBeakerSolutionHeight = 0;  // Tracks the solution level in main beaker
+
+        // Utility Functions for Color and Visual Effects
+        
+        function blendColors(c1, c2, t) {
+            return [
+                Math.round(c1[0] * (1 - t) + c2[0] * t),
+                Math.round(c1[1] * (1 - t) + c2[1] * t),
+                Math.round(c1[2] * (1 - t) + c2[2] * t)
+            ];
+        }
+
+        function modulateColor(color, intensity) {
+            return color.map(c => Math.max(0, Math.min(255, Math.round(127 + (c - 127) * intensity))));
+        }
+
+        // Main P5.js Sketch with Enhanced Visuals
+        const sketch = (p) => {
+            p.setup = () => {
+                canvas = p.createCanvas(1200, 600);
+                canvas.parent('simulation-canvas');
+                resetDisplay();
+            };
+
+            p.draw = () => {
+                // Clean laboratory background
+                p.background(240, 245, 250);
+                
+                // Draw all laboratory components in proper layering order
+                drawLab(p);
+                drawBurner(p);
+                drawTripodStand(p);
+                drawReactants(p);
+                drawBeaker(p);
+                
+                // Draw separation apparatus when active
+                if (separationInProgress || separationCompleted) {
+                    drawSeparationApparatus(p);
+                }
+                
+                // Update active animations
+                if (isReacting) updateReaction(p);
+                if (pouringAnimation) updatePouring(p);
+                if (separationInProgress) updateSeparation(p);
+                
+                // Update and render all visual effects
+                updateBubbles(p);
+                drawBubbles(p);
+                updatePrecipitate(p);
+                drawPrecipitate(p);
+                updateHeatWaves(p);
+                drawHeatWaves(p);
+                updateSolutionSwirls(p);
+                drawSolutionSwirls(p);
+                updateEvaporationSteam(p);
+                drawEvaporationSteam(p);
+            };
+
+            // Laboratory Environment Rendering Functions
+            
+            function drawLab(p) {
+                p.fill(139, 90, 43);
+                p.noStroke();
+                p.rect(0, p.height - 80, p.width, 80);
+                
+                // Wood grain texture
+                p.stroke(120, 80, 40);
+                p.strokeWeight(1);
+                for (let i = 0; i < 10; i++) {
+                    let y = p.height - 70 + i * 6;
+                    p.line(0, y, p.width, y);
+                }
+            }
+
+            function drawTripodStand(p) {
+                p.push();
+                p.stroke(60, 60, 60);
+                p.strokeWeight(6);
+                
+                let ringY = p.height - 145;
+                let ringR = 45;
+                let groundY = p.height - 80;
+                
+                // Three-legged tripod
+                p.line(p.width/2 - ringR, ringY, p.width/2 - 40, groundY);
+                p.line(p.width/2 + ringR, ringY, p.width/2 + 40, groundY);
+                p.line(p.width/2, ringY, p.width/2, groundY);
+                
+                p.noFill();
+                p.strokeWeight(4);
+                p.pop();
+            }
+
+            function drawBurner(p) {
+                p.push();
+                
+                // Burner base
+                p.fill(40, 40, 40);
+                p.noStroke();
+                p.rect(p.width/2 - 60, p.height - 120, 120, 40);
+                
+                // Burner top
+                p.fill(80, 80, 80);
+                p.rect(p.width/2 - 50, p.height - 120, 100, 20);
+                
+                // Gas outlets
+                p.fill(20, 20, 20);
+                for (let i = 0; i < 6; i++) {
+                    let x = p.width/2 - 40 + i * 16;
+                    p.rect(x, p.height - 115, 4, 10);
+                }
+                
+                // Show flames when active
+                if (temperature > 20 || isReacting || (beakerHasChemicals && !separationCompleted) || separationInProgress) {
+                    drawFlames(p);
+                }
+                
+                p.pop();
+            }
+
+            function drawFlames(p) {
+                let maxFlameHeight = 32;
+                let flameHeight = p.map(temperature, 20, 100, 12, maxFlameHeight);
+                
+                // Enhanced flame intensity during separation
+                if (separationInProgress) {
+                    flameHeight = Math.max(flameHeight, 25);
+                }
+                
+                let flameFlicker = p.sin(p.frameCount * 0.3) * 1.5;
+                
+                for (let i = 0; i < 6; i++) {
+                    let x = p.width/2 - 40 + i * 16;
+                    let y = p.height - 120;
+                    
+                    let maxY = p.height - 165;
+                    let actualFlameHeight = Math.min(flameHeight, y - maxY);
+                    
+                    if (actualFlameHeight > 0) {
+                        // Blue base
+                        p.fill(100, 150, 255, 180);
+                        p.noStroke();
+                        p.ellipse(x + 2 + flameFlicker * 0.3, y - actualFlameHeight * 0.3, 6, actualFlameHeight * 0.6);
+                        
+                        // Orange middle
+                        p.fill(255, 150, 50, 160);
+                        p.ellipse(x + 2 + flameFlicker * 0.2, y - actualFlameHeight * 0.6, 4, actualFlameHeight * 0.8);
+                        
+                        // Red tip
+                        p.fill(255, 100, 100, 140);
+                        p.ellipse(x + 2 + flameFlicker * 0.1, y - actualFlameHeight * 0.8, 3, actualFlameHeight * 0.4);
+                    }
+                }
+                
+                // Generate heat waves
+                if (p.frameCount % 15 === 0) {
+                    heatWaves.push({
+                        x: p.width/2 + p.random(-30, 30),
+                        y: p.height - 120 - flameHeight,
+                        life: 60,
+                        opacity: 80
+                    });
+                }
+            }
+
+            // Laboratory Glassware Functions
+            
+            function drawBeakerOutline(p, x, y, w, h) {
+                p.stroke(0, 0, 0);
+                p.strokeWeight(3);
+                p.noFill();
+                p.beginShape();
+                p.vertex(x, y + h);
+                p.vertex(x, y);
+                p.vertex(x + w, y);
+                p.vertex(x + w, y + h);
+                p.endShape(p.CLOSE);
+                p.line(x + w, y + 20, x + w + 15, y + 30);
+            }
+
+            function drawVolumeMarkings(p, x, y, w, h) {
+                p.stroke(0, 0, 0);
+                p.strokeWeight(1);
+                for (let i = 1; i <= 4; i++) {
+                    let markY = y + h - i * (h/5);
+                    p.line(x + 5, markY, x + 15, markY);
+                    p.line(x + w - 15, markY, x + w - 5, markY);
+                }
+            }
+
+            function drawChemicalLabel(p, x, y, name, info) {
+                p.fill(255, 255, 255);
+                p.noStroke();
+                p.rect(x - 40, y, 80, 25);
+                p.stroke(0, 0, 0);
+                p.strokeWeight(1);
+                p.rect(x - 40, y, 80, 25);
+                p.fill(0);
+                p.textAlign(p.CENTER);
+                p.textSize(12);
+                p.text(name, x, y + 15);
+                if (info) {
+                    p.textSize(8);
+                    p.text(info, x, y + 23);
+                }
+            }
+
+            // Reactant beakers with accurate level tracking
+            function drawReactants(p) {
+                const reaction = reactions[currentReaction];
+                
+                // Draw stands
+                p.fill(100, 100, 100);
+                p.noStroke();
+                p.rect(110, p.height - 160, 40, 80);
+                p.rect(230, p.height - 160, 40, 80);
+                
+                let remainingReactant1 = reactant1Amount - mixedReactant1;
+                let remainingReactant2 = reactant2Amount - mixedReactant2;
+                
+                // Reactant 1 beaker
+                drawBeakerOutline(p, 80, p.height - 300, 100, 150);
+                let maxLevel1 = 67;
+                let level1 = Math.max(5, (remainingReactant1 / 1.0) * maxLevel1);
+                
+                if (pouringAnimation && pouringProgress < 0.5) {
+                    let pourAmount = 0.6 * (pouringProgress / 0.5);
+                    level1 = ((1.0 - pourAmount) / 1.0) * maxLevel1;
+                }
+                
+                if (level1 > 0) {
+                    p.noStroke();
+                    p.fill(reaction.colors.reactant1[0], reaction.colors.reactant1[1], reaction.colors.reactant1[2]);
+                    p.rect(83, p.height - 153 - level1, 94, level1);
+                    p.fill(reaction.colors.reactant1[0] + 20, reaction.colors.reactant1[1] + 20, reaction.colors.reactant1[2] + 20);
+                    p.ellipse(130, p.height - 153 - level1, 94, 8);
+                }
+                
+                // Pouring stream for reactant 1
+                if (pouringAnimation && pouringProgress > 0.1 && pouringProgress < 0.5) {
+                    p.fill(reaction.colors.reactant1[0], reaction.colors.reactant1[1], reaction.colors.reactant1[2], 150);
+                    let t = (pouringProgress - 0.1) / 0.4;
+                    let streamX = p.lerp(195, p.width/2 - 30, t);
+                    let streamY = p.lerp(p.height - 270, p.height - 250, t);
+                    p.rect(streamX, streamY, 6, p.height - 250 - streamY);
+                }
+                
+                drawVolumeMarkings(p, 80, p.height - 300, 100, 150);
+                
+                // Reactant 2 beaker
+                drawBeakerOutline(p, 200, p.height - 300, 100, 150);
+                let maxLevel2 = 67;
+                let level2 = Math.max(5, (remainingReactant2 / 1.0) * maxLevel2);
+                
+                if (pouringAnimation && pouringProgress > 0.5) {
+                    let pourAmount = 0.6 * ((pouringProgress - 0.5) / 0.5);
+                    level2 = ((1.0 - pourAmount) / 1.0) * maxLevel2;
+                }
+                
+                if (level2 > 0) {
+                    p.noStroke();
+                    p.fill(reaction.colors.reactant2[0], reaction.colors.reactant2[1], reaction.colors.reactant2[2]);
+                    p.rect(203, p.height - 153 - level2, 94, level2);
+                    p.fill(reaction.colors.reactant2[0] + 20, reaction.colors.reactant2[1] + 20, reaction.colors.reactant2[2] + 20);
+                    p.ellipse(250, p.height - 153 - level2, 94, 8);
+                }
+                
+                // Pouring stream for reactant 2
+                if (pouringAnimation && pouringProgress > 0.6 && pouringProgress < 1.0) {
+                    p.fill(reaction.colors.reactant2[0], reaction.colors.reactant2[1], reaction.colors.reactant2[2], 150);
+                    let t = (pouringProgress - 0.6) / 0.4;
+                    let streamX = p.lerp(305, p.width/2 + 30, t);
+                    let streamY = p.lerp(p.height - 270, p.height - 250, t);
+                    p.rect(streamX, streamY, 6, p.height - 250 - streamY);
+                }
+                
+                drawVolumeMarkings(p, 200, p.height - 300, 100, 150);
+                
+                drawChemicalLabel(p, 130, p.height - 135, reaction.reactants[0], 
+                    remainingReactant1.toFixed(2) + " mol, " + concentration.toFixed(1) + " M");
+                drawChemicalLabel(p, 250, p.height - 135, reaction.reactants[1], 
+                    remainingReactant2.toFixed(2) + " mol, " + concentration.toFixed(1) + " M");
+            }
+
+            // Main reaction beaker - shows empty after separation
+            function drawBeaker(p) {
+                drawBeakerOutline(p, p.width/2 - 100, p.height - 350, 200, 200);
+                
+                if (!beakerHasChemicals && !pouringAnimation) return;
+                
+                let reaction = reactions[currentReaction];
+                let t = reactionProgress;
+                
+                let mixColor = blendColors(reaction.colors.reactant1, reaction.colors.reactant2, 0.5);
+                let solColor = t < 0.2
+                    ? blendColors(mixColor, reaction.colors.product, t / 0.2)
+                    : blendColors(reaction.colors.product, reaction.colors.final, (t - 0.2) / 0.8);
+                
+                let intensity = 0.9 + 0.2 * ((concentration - 0.1) / 1.9) + 0.15 * (temperature / 100) + 0.1 * (reactionTime / 10);
+                intensity = Math.min(1.4, Math.max(0.7, intensity));
+                let vividColor = modulateColor(solColor, intensity);
+                
+                // Controlled solution height that empties after separation
+                let totalMixedMoles = mixedReactant1 + mixedReactant2;
+                let baseSolutionHeight = 60 + (totalMixedMoles * 25);
+                let solutionHeight = baseSolutionHeight + (reactionProgress * 8);
+                
+                if (pouringAnimation) {
+                    let reactant1Poured = Math.min(0.6, pouringProgress * 1.2);
+                    let reactant2Poured = Math.max(0, Math.min(0.6, (pouringProgress - 0.5) * 1.2));
+                    let currentTotal = reactant1Poured + reactant2Poured;
+                    solutionHeight = 60 + (currentTotal * 25);
+                }
+                
+                // Store main beaker solution height for separation tracking
+                if (!separationInProgress && !separationCompleted) {
+                    mainBeakerSolutionHeight = solutionHeight;
+                }
+                
+                // Gradual solution reduction during separation
+                if (separationInProgress) {
+                    if (reactions[currentReaction].separationMethod === "evaporation") {
+                        solutionHeight = mainBeakerSolutionHeight * (1 - separationProgress * 0.95);
+                    } else if (reactions[currentReaction].separationMethod === "filtration") {
+                        solutionHeight = mainBeakerSolutionHeight * (1 - separationProgress * 0.90);
+                    }
+                }
+                
+                // Empty beaker after separation is complete
+                if (separationCompleted) {
+                    solutionHeight = 0; // Main beaker is now empty
+                }
+                
+                if (solutionHeight > 0) {
+                    p.noStroke();
+                    p.fill(vividColor[0], vividColor[1], vividColor[2], 220);
+                    p.rect(p.width/2 - 97, p.height - 150 - solutionHeight, 194, solutionHeight);
+                    p.fill(Math.min(255, vividColor[0] + 30), Math.min(255, vividColor[1] + 30), Math.min(255, vividColor[2] + 30));
+                    p.ellipse(p.width/2, p.height - 150 - solutionHeight, 194, 12);
+                }
+                
+                // Stirring animation
+                if (stirring) {
+                    stirCenterX = p.width/2;
+                    stirCenterY = p.height - 200;
+                    
+                    stirAngle += stirSpeed;
+                    let baseX = Math.cos(stirAngle) * stirRadius;
+                    let baseY = Math.sin(stirAngle * 2) * (stirRadius * 0.4);
+                    
+                    let stirX = stirCenterX + baseX;
+                    let stirY = stirCenterY + baseY;
+                    
+                    // Stirring rod
+                    p.stroke(120, 120, 120);
+                    p.strokeWeight(4);
+                    p.line(stirX, stirY - 80, stirX, stirY + 40);
+                    
+                    // Stirring paddle
+                    p.stroke(140, 140, 140);
+                    p.strokeWeight(3);
+                    p.line(stirX - 18, stirY + 35, stirX + 18, stirY + 35);
+                    p.line(stirX - 12, stirY + 30, stirX + 12, stirY + 40);
+                    
+                    // Handle
+                    p.stroke(100, 100, 100);
+                    p.strokeWeight(6);
+                    p.line(stirX - 8, stirY - 85, stirX + 8, stirY - 85);
+                    
+                    if (p.frameCount % 2 === 0) {
+                        solutionSwirls.push({
+                            x: stirX + p.random(-25, 25),
+                            y: stirY + p.random(-15, 15),
+                            life: 45,
+                            angle: stirAngle + p.random(-0.5, 0.5),
+                            radius: p.random(8, 20),
+                            opacity: 120
+                        });
+                    }
+                }
+                
+                drawVolumeMarkings(p, p.width/2 - 100, p.height - 350, 200, 200);
+                
+                // Temperature indicator
+                if (temperature > 30 || separationInProgress) {
+                    p.fill(255, 200, 200);
+                    p.noStroke();
+                    p.rect(p.width/2 + 105, p.height - 340, 8, 180);
+                    let tempHeight = p.map(Math.max(temperature, separationInProgress ? 80 : temperature), 30, 100, 0, 160);
+                    p.fill(255, 100, 100);
+                    p.rect(p.width/2 + 105, p.height - 160 - tempHeight, 8, tempHeight);
+                }
+                
+                // Label shows appropriate status based on separation state
+                if (beakerHasChemicals || pouringAnimation) {
+                    if (separationCompleted) {
+                        drawChemicalLabel(p, p.width/2, p.height - 125, "Empty Beaker", "Products Separated");
+                    } else if (separationInProgress) {
+                        drawChemicalLabel(p, p.width/2, p.height - 125, "Separating...", 
+                            Math.round(separationProgress * 100) + "% Complete");
+                    } else {
+                        drawChemicalLabel(p, p.width/2, p.height - 125, "Mixed Solution", 
+                            "Total: " + (mixedReactant1 + mixedReactant2).toFixed(2) + " mol");
+                    }
+                }
+            }
+
+            // Product separation apparatus
+            function drawSeparationApparatus(p) {
+                let reaction = reactions[currentReaction];
+                
+                if (reaction.separationMethod === "evaporation") {
+                    drawEvaporationSetup(p);
+                } else if (reaction.separationMethod === "filtration") {
+                    drawFiltrationSetup(p);
+                }
+                
+                // Draw separated product beakers
+                drawSeparatedProducts(p);
+            }
+
+            // Evaporation setup for neutralization reaction
+            function drawEvaporationSetup(p) {
+                // Evaporating dish
+                p.stroke(0, 0, 0);
+                p.strokeWeight(3);
+                p.fill(255, 255, 255);
+                p.ellipse(p.width/2, p.height - 170, 120, 20);
+                
+                // Show evaporation in progress
+                if (separationInProgress && separationProgress > 0.1) {
+                    // Steam/vapor rising
+                    for (let i = 0; i < evaporationSteam.length; i++) {
+                        let steam = evaporationSteam[i];
+                        p.fill(255, 255, 255, steam.opacity);
+                        p.noStroke();
+                        p.ellipse(steam.x, steam.y, steam.size, steam.size * 0.6);
+                    }
+                    
+                    // Water vapor label
+                    drawChemicalLabel(p, p.width/2 + 80, p.height - 300, "H₂O vapor", "Evaporating");
+                }
+                
+            }
+
+            // Filtration setup for displacement reaction
+            function drawFiltrationSetup(p) {
+                // Filter funnel
+                p.stroke(0, 0, 0);
+                p.strokeWeight(3);
+                p.noFill();
+                p.triangle(p.width/2 - 40, p.height - 200, p.width/2 + 40, p.height - 200, p.width/2, p.height - 150);
+                
+                // Filter paper
+                p.fill(255, 255, 255);
+                p.triangle(p.width/2 - 35, p.height - 195, p.width/2 + 35, p.height - 195, p.width/2, p.height - 155);
+                
+                if (separationInProgress && separationProgress > 0.2) {
+                    // Copper particles on filter
+                    for (let i = 0; i < 8; i++) {
+                        p.fill(180, 100, 60);
+                        p.noStroke();
+                        let particleX = p.width/2 - 25 + (i % 4) * 12;
+                        let particleY = p.height - 185 + Math.floor(i / 4) * 8;
+                        p.ellipse(particleX, particleY, 3, 3);
+                    }
+                    
+                    drawChemicalLabel(p, p.width/2 + 80, p.height - 180, "Cu metal", "Filtered");
+                }
+                
+                if (separationProgress > 0.5) {
+                    drawChemicalLabel(p, p.width/2, p.height - 120, "FeSO₄ solution", "Filtrate");
+                }
+            }
+
+            // Draw separated product containers with matching volumes
+            function drawSeparatedProducts(p) {
+                let reaction = reactions[currentReaction];
+                
+                // Product 1 container (left side)
+                p.fill(100, 100, 100);
+                p.noStroke();
+                p.rect(p.width - 450, p.height - 152, 40, 80);
+                
+                drawBeakerOutline(p, p.width - 470, p.height - 250, 80, 100);
+                
+                if (separationCompleted || (separationInProgress && separationProgress > 0.6)) {
+                    // Product height proportional to actual amount
+                    let product1Height = Math.max(12, product1Amount * 40);
+                    
+                    p.noStroke();
+                    p.fill(reaction.colors.product1[0], reaction.colors.product1[1], reaction.colors.product1[2]);
+                    p.rect(p.width - 467, p.height - 150 - product1Height, 74, product1Height);
+                    p.fill(reaction.colors.product1[0] + 20, reaction.colors.product1[1] + 20, reaction.colors.product1[2] + 20);
+                    p.ellipse(p.width - 430, p.height - 150 - product1Height, 74, 6);
+                }
+                
+                drawVolumeMarkings(p, p.width - 470, p.height - 250, 80, 100);
+                drawChemicalLabel(p, p.width - 430, p.height - 135, reaction.products[0], 
+                    product1Amount.toFixed(3) + " mol");
+                
+                // Product 2 container (right side) 
+                p.fill(100, 100, 100);
+                p.noStroke();
+                p.rect(p.width - 350, p.height - 152, 40, 80);
+                
+                drawBeakerOutline(p, p.width - 370, p.height - 250, 80, 100);
+                
+                if (separationCompleted || (separationInProgress && separationProgress > 0.6)) {
+                    // Product height proportional to actual amount
+                    let product2Height = Math.max(12, product2Amount * 40);
+                    
+                    p.noStroke();
+                    p.fill(reaction.colors.product2[0], reaction.colors.product2[1], reaction.colors.product2[2]);
+                    p.rect(p.width - 367, p.height - 150 - product2Height, 74, product2Height);
+                    p.fill(reaction.colors.product2[0] + 20, reaction.colors.product2[1] + 20, reaction.colors.product2[2] + 20);
+                    p.ellipse(p.width - 330, p.height - 150 - product2Height, 74, 6);
+                }
+                
+                drawVolumeMarkings(p, p.width - 370, p.height - 250, 80, 100);
+                drawChemicalLabel(p, p.width - 330, p.height - 135, reaction.products[1], 
+                    product2Amount.toFixed(3) + " mol");
+            }
+
+            // Visual Effects Update Functions
+            
+            function updateSolutionSwirls(p) {
+                for (let i = solutionSwirls.length - 1; i >= 0; i--) {
+                    let swirl = solutionSwirls[i];
+                    swirl.life--;
+                    swirl.angle += 0.08;
+                    swirl.radius *= 0.99;
+                    swirl.opacity *= 0.98;
+                    
+                    if (swirl.life <= 0 || swirl.radius < 3 || swirl.opacity < 10) {
+                        solutionSwirls.splice(i, 1);
+                    }
+                }
+            }
+
+            function drawSolutionSwirls(p) {
+                for (let swirl of solutionSwirls) {
+                    let alpha = swirl.opacity;
+                    p.stroke(255, 255, 255, alpha);
+                    p.strokeWeight(2);
+                    p.noFill();
+                    
+                    let x = swirl.x + Math.cos(swirl.angle) * swirl.radius;
+                    let y = swirl.y + Math.sin(swirl.angle) * swirl.radius * 0.4;
+                    
+                    p.ellipse(x, y, swirl.radius * 0.6, swirl.radius * 0.3);
+                    p.stroke(200, 200, 255, alpha * 0.7);
+                    p.ellipse(x + 3, y + 2, swirl.radius * 0.4, swirl.radius * 0.2);
+                }
+            }
+
+            // Evaporation steam effects
+            function updateEvaporationSteam(p) {
+                if (separationInProgress && reactions[currentReaction].separationMethod === "evaporation") {
+                    // Generate steam particles
+                    if (p.frameCount % 10 === 0) {
+                        evaporationSteam.push({
+                            x: p.width/2 + p.random(-40, 40),
+                            y: p.height - 160,
+                            size: p.random(8, 16),
+                            speed: p.random(0.8, 1.5),
+                            life: 120,
+                            opacity: p.random(80, 150)
+                        });
+                    }
+                }
+                
+                // Update existing steam
+                for (let i = evaporationSteam.length - 1; i >= 0; i--) {
+                    let steam = evaporationSteam[i];
+                    steam.y -= steam.speed;
+                    steam.life--;
+                    steam.opacity = steam.life * 1.2;
+                    steam.size *= 1.02; // Expand as it rises
+                    
+                    if (steam.life <= 0 || steam.y < 50) {
+                        evaporationSteam.splice(i, 1);
+                    }
+                }
+            }
+
+            function drawEvaporationSteam(p) {
+                for (let steam of evaporationSteam) {
+                    p.fill(255, 255, 255, steam.opacity);
+                    p.noStroke();
+                    p.ellipse(steam.x, steam.y, steam.size, steam.size * 0.7);
+                }
+            }
+
+            // Enhanced reaction progress with automatic separation
+            function updateReaction(p) {
+                if (reactionProgress === 0) {
+                    timerStart = Date.now();
+                    timerElapsed = 0;
+                    showTimerBar(true);
+                }
+                
+                let dt = 1 / (60 * reactionTime);
+                reactionProgress += dt;
+                stirring = true;
+                
+                let reaction = reactions[currentReaction];
+                
+                // Visual effects
+                if (reaction.gasProduced && Math.random() < 0.3) {
+                    bubbles.push({
+                        x: p.width/2 + p.random(-60, 60),
+                        y: p.height - 200,
+                        size: p.random(3, 12),
+                        speed: p.random(0.5, 2),
+                        life: 255,
+                        opacity: p.random(150, 255)
+                    });
+                }
+                
+                if (reaction.precipitate && Math.random() < 0.15) {
+                    precipitateParticles.push({
+                        x: p.width/2 + p.random(-70, 70),
+                        y: p.random(p.height - 280, p.height - 180),
+                        size: p.random(2, 4),
+                        speed: p.random(0.2, 0.8),
+                        color: reaction.colors.solid,
+                        settled: false,
+                        settling: false
+                    });
+                }
+                
+                // Update timer
+                timerElapsed = (Date.now() - timerStart) / 1000;
+                updateTimerBar(timerElapsed, reactionTime);
+
+                // Complete reaction and automatically start separation
+                if (reactionProgress >= 1) {
+                    isReacting = false;
+                    stirring = false;
+                    reactionCompleted = true;
+                    
+                    finalProductAmount = mixedReactant1 + mixedReactant2;
+                    
+                    calculateYield();
+                    showTimerBar(false);
+                    
+                    // Move precipitate to settled state
+                    for (let particle of precipitateParticles) {
+                        if (!particle.settled) {
+                            settledPrecipitate.push(particle);
+                        }
+                    }
+                    
+                    // Automatically start separation after a short delay
+                    setTimeout(() => {
+                        startAutomaticSeparation();
+                    }, 1000); // 1 second delay before separation starts
+                }
+            }
+
+            // Product separation animation
+            function updateSeparation(p) {
+                separationProgress += 0.015; // Slightly faster separation
+                
+                if (separationProgress >= 1) {
+                    separationInProgress = false;
+                    separationCompleted = true;
+                    enableControls(true);
+                }
+            }
+
+            // Pouring animation
+            function updatePouring(p) {
+                pouringProgress += 0.02;
+                
+                if (pouringProgress >= 0.5 && mixedReactant1 === 0) {
+                    mixedReactant1 = 0.6;
+                    reactant1Amount -= 0.6;
+                }
+                
+                if (pouringProgress >= 1.0 && mixedReactant2 === 0) {
+                    mixedReactant2 = 0.6;
+                    reactant2Amount -= 0.6;
+                    
+                    pouringAnimation = false;
+                    pouringProgress = 0;
+                    beakerHasChemicals = true;
+                    pouringDone = true;
+                    
+                    setTimeout(() => {
+                        isReacting = true;
+                        reactionProgress = 0;
+                        bubbles = [];
+                        precipitateParticles = [];
+                        settledPrecipitate = [];
+                        solutionSwirls = [];
+                        pouringDone = false;
+                    }, 500);
+                }
+            }
+
+            // Standard visual effects functions
+            function updateBubbles(p) {
+                for (let i = bubbles.length - 1; i >= 0; i--) {
+                    let bubble = bubbles[i];
+                    bubble.y -= bubble.speed;
+                    bubble.life -= 3;
+                    bubble.x += Math.sin(bubble.y * 0.01) * 0.5;
+                    if (bubble.life <= 0 || bubble.y < 100) {
+                        bubbles.splice(i, 1);
+                    }
+                }
+            }
+
+            function drawBubbles(p) {
+                for (let bubble of bubbles) {
+                    let alpha = bubble.opacity * (bubble.life / 255);
+                    p.fill(255, 255, 255, alpha);
+                    p.stroke(200, 200, 255, alpha);
+                    p.strokeWeight(1);
+                    p.ellipse(bubble.x, bubble.y, bubble.size);
+                    p.fill(255, 255, 255, alpha * 0.5);
+                    p.noStroke();
+                    p.ellipse(bubble.x - bubble.size/4, bubble.y - bubble.size/4, bubble.size/3);
+                }
+            }
+
+            function updatePrecipitate(p) {
+                for (let i = precipitateParticles.length - 1; i >= 0; i--) {
+                    let particle = precipitateParticles[i];
+                    if (!particle.settled && !particle.settling) {
+                        particle.y += particle.speed;
+                        if (particle.y >= p.height - 165) {
+                            particle.settled = true;
+                            particle.settling = false;
+                            particle.y = p.height - 165;
+                        }
+                    }
+                }
+            }
+
+            function drawPrecipitate(p) {
+                for (let particle of precipitateParticles) {
+                    if (!particle.settled) {
+                        p.fill(particle.color[0], particle.color[1], particle.color[2]);
+                        p.noStroke();
+                        p.ellipse(particle.x, particle.y, particle.size);
+                    }
+                }
+            }
+
+            function updateHeatWaves(p) {
+                for (let i = heatWaves.length - 1; i >= 0; i--) {
+                    let wave = heatWaves[i];
+                    wave.y -= 1.5;
+                    wave.life--;
+                    wave.opacity = wave.life * 1.2;
+                    if (wave.life <= 0) {
+                        heatWaves.splice(i, 1);
+                    }
+                }
+            }
+
+            function drawHeatWaves(p) {
+                for (let wave of heatWaves) {
+                    p.stroke(255, 120, 80, wave.opacity);
+                    p.strokeWeight(1.5);
+                    p.noFill();
+                    let wobble = Math.sin(wave.y * 0.08) * 2;
+                    p.line(wave.x + wobble, wave.y, wave.x + wobble, wave.y - 12);
+                }
+            }
+        };
+
+        // Function to automatically start separation
+        function startAutomaticSeparation() {
+            if (reactionCompleted && !separationInProgress && !separationCompleted) {
+                separationInProgress = true;
+                separationProgress = 0;
+                enableControls(false);
+                
+                // Show separation method info
+                const reaction = reactions[currentReaction];
+                console.log(`Automatic ${reaction.separationMethod} started: ${reaction.separationDescription}`);
+            }
+        }
+
+        // Enhanced yield calculation with individual products
+        function calculateYield() {
+            const reaction = reactions[currentReaction];
+            
+            // Environmental effects
+            const tempEffect = 0.6 + (temperature / 100) * 0.4;
+            const concEffect = 0.7 + (concentration * 0.3);
+            const timeEffect = Math.min(reactionTime / 5, 1.0) * 0.9 + 0.1;
+            const efficiency = tempEffect * concEffect * timeEffect;
+            const maxEfficiency = Math.min(efficiency, 0.98);
+            
+            // Calculate based on mixed amounts
+            let limitingAmount = Math.min(mixedReactant1, mixedReactant2);
+            theoreticalYield = limitingAmount;
+            actualYield = theoreticalYield * maxEfficiency;
+            percentYield = (actualYield / theoreticalYield) * 100;
+            
+            // Determine limiting reagent
+            if (mixedReactant1 < mixedReactant2) {
+                limitingReagent = reaction.reactants[0];
+            } else {
+                limitingReagent = reaction.reactants[1];
+            }
+            
+            // Calculate individual product yields
+            // Assume 1:1 stoichiometry for both products
+            product1Amount = actualYield; // Product 1 yield
+            product2Amount = actualYield; // Product 2 yield
+            
+            product1Yield = (product1Amount / limitingAmount) * 100;
+            product2Yield = (product2Amount / limitingAmount) * 100;
+            
+            finalProductAmount = product1Amount + product2Amount;
+            
+            updateDisplay();
+        }
+
+        // Enhanced display functions
+        function updateDisplay() {
+            const reaction = reactions[currentReaction];
+            
+            document.getElementById('yield-display').textContent = percentYield.toFixed(1) + '%';
+            document.getElementById('product1-display').innerHTML = 
+                `<div>${reaction.productNames[0]}</div><div>${product1Amount.toFixed(3)} mol (${product1Yield.toFixed(1)}%)</div>`;
+            document.getElementById('product2-display').innerHTML = 
+                `<div>${reaction.productNames[1]}</div><div>${product2Amount.toFixed(3)} mol (${product2Yield.toFixed(1)}%)</div>`;
+            document.getElementById('limiting-display').textContent = limitingReagent;
+        }
+
+        function resetDisplay() {
+            document.getElementById('yield-display').textContent = '-';
+            document.getElementById('product1-display').innerHTML = '<div>Product 1</div><div>-</div>';
+            document.getElementById('product2-display').innerHTML = '<div>Product 2</div><div>-</div>';
+            document.getElementById('limiting-display').textContent = '-';
+        }
+
+        // Enhanced reset function
+        function resetSimulation() {
+            // Reset reaction state
+            isReacting = false;
+            reactionProgress = 0;
+            bubbles = [];
+            precipitateParticles = [];
+            settledPrecipitate = [];
+            heatWaves = [];
+            solutionSwirls = [];
+            beakerHasChemicals = false;
+            stirring = false;
+            stirAngle = 0;
+            pouringAnimation = false;
+            pouringProgress = 0;
+            actualYield = 0;
+            theoreticalYield = 0;
+            percentYield = 0;
+            pouringDone = false;
+            reactionCompleted = false;
+            mixingIntensity = 0;
+            autoSeparationDelay = 0;
+            
+            // Reset quantity tracking
+            reactant1Amount = 1.0;
+            reactant2Amount = 1.0;
+            mixedReactant1 = 0;
+            mixedReactant2 = 0;
+            finalProductAmount = 0;
+            
+            // Reset separation and product tracking
+            product1Amount = 0;
+            product2Amount = 0;
+            product1Yield = 0;
+            product2Yield = 0;
+            separationInProgress = false;
+            separationProgress = 0;
+            separationCompleted = false;
+            evaporationSteam = [];
+            filtrationActive = false;
+            mainBeakerSolutionHeight = 0;
+            
+            showTimerBar(false);
+            resetDisplay();
+            enableControls(true);
+        }
+
+        // Control functions
+        function enableControls(enable) {
+            document.getElementById('reaction-select').disabled = !enable;
+            document.getElementById('temperature').disabled = !enable;
+            document.getElementById('concentration').disabled = !enable;
+            document.getElementById('time').disabled = !enable;
+            document.getElementById('mix-button').disabled = !enable;
+        }
+
+        function showTimerBar(show) {
+            const bar = document.getElementById('timer-bar');
+            bar.style.display = show ? 'block' : 'none';
+        }
+
+        function updateTimerBar(elapsed, total) {
+            const percent = Math.min(1, elapsed / total) * 100;
+            document.getElementById('timer-bar-inner').style.width = percent + '%';
+            document.getElementById('timer-label').textContent = elapsed.toFixed(1) + ' s';
+        }
+
+        // Event listeners
+        document.getElementById('reaction-select').addEventListener('change', (e) => {
+            currentReaction = parseInt(e.target.value);
+            document.getElementById('equation-display').textContent = reactions[currentReaction].equation;
+            resetSimulation();
+        });
+
+        document.getElementById('temperature').addEventListener('input', (e) => {
+            temperature = parseInt(e.target.value);
+            document.getElementById('temp-value').textContent = temperature + '°C';
+        });
+
+        document.getElementById('concentration').addEventListener('input', (e) => {
+            concentration = parseFloat(e.target.value);
+            document.getElementById('conc-value').textContent = concentration.toFixed(1) + ' M';
+        });
+
+        document.getElementById('time').addEventListener('input', (e) => {
+            reactionTime = parseFloat(e.target.value);
+            document.getElementById('time-value').textContent = reactionTime.toFixed(1) + ' s';
+        });
+
+        document.getElementById('mix-button').addEventListener('click', () => {
+            if (!isReacting && !pouringAnimation && !beakerHasChemicals) {
+                if (reactant1Amount >= 0.6 && reactant2Amount >= 0.6) {
+                    pouringAnimation = true;
+                    pouringProgress = 0;
+                    enableControls(false);
+                } else {
+                    alert('Insufficient reactants remaining. Please reset to add fresh chemicals.');
+                }
+            }
+        });
+
+        document.getElementById('reset-button').addEventListener('click', () => {
+            resetSimulation();
+        });
+
+        // Initialize the p5.js simulation
+        new p5(sketch);
+    </script>
+</body>
+</html>

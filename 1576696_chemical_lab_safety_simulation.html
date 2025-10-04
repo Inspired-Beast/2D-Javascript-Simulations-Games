@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chemistry Lab Safety Simulation</title>
+    <!-- Importing Libraries -->
+    <script type="importmap">
+    {
+        "imports": {
+            "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"
+        }
+    }
+    </script>
+    <style>
+        /* Main body styling with gradient background */
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Header section styling */
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            margin: 10px 0;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        /* Main simulation container */
+        .simulation-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Control panel at the top */
+        .controls {
+            background: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        /* Toolbar with interactive tools */
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* Individual tool button styling */
+        .tool-item {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .tool-item:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        .tool-item.active {
+            background: #28a745;
+        }
+
+        /* Compliance status panel */
+        .compliance-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 10px;
+            max-width: 200px;
+        }
+
+        .compliance-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .status-icon {
+            margin-right: 8px;
+            font-size: 16px;
+        }
+
+        /* Popup window for chemical labeling */
+        .popup {
+            position: absolute;
+            background: white;
+            border: 2px solid #007bff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            z-index: 1000;
+            min-width: 250px;
+        }
+
+        .popup h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+
+        /* Hazard selection options grid */
+        .hazard-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .hazard-option {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .hazard-option:hover {
+            background: #e9ecef;
+            border-color: #007bff;
+        }
+
+        .hazard-option.selected {
+            background: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+
+        /* Popup action buttons */
+        .popup-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        /* Instructions panel */
+        .instructions {
+            background: rgba(255,255,255,0.95);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            max-width: 800px;
+        }
+
+        .instructions h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+
+        .instructions ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin: 5px 0;
+        }
+
+        /* Animation keyframes for visual feedback */
+        @keyframes shake {
+            0%, 100% { transform: translate(0); }
+            25% { transform: translate(-2px, 0); }
+            75% { transform: translate(2px, 0); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .shake {
+            animation: shake 0.5s ease-in-out infinite;
+        }
+
+        .pulse {
+            animation: pulse 1s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body>
+    <!-- Application header with title and description -->
+    <div class="header">
+        <h1>🧪 Realistic Chemistry Lab Safety Simulation</h1>
+        <p>Identify hazardous chemicals and place fire extinguishers correctly</p>
+    </div>
+    
+    <!-- Instructions panel for user guidance -->
+    <div class="instructions">
+        <h3>📋 Instructions</h3>
+        <ul>
+            <li><strong>Navigate:</strong> Use arrow keys or drag with mouse to pan around the lab</li>
+            <li><strong>Label Chemicals:</strong> Click on chemical containers to identify their hazard types</li>
+            <li><strong>Place Extinguishers:</strong> Select the fire extinguisher tool and click on walls to place them</li>
+            <li><strong>Coverage Overlay:</strong> Toggle to see extinguisher coverage areas (now 100ft range)</li>
+            <li><strong>Complete:</strong> Ensure all chemicals are labeled and extinguishers properly placed</li>
+        </ul>
+    </div>
+
+    <!-- Main simulation container -->
+    <div class="simulation-container">
+        <!-- Control panel with tools and compliance status -->
+        <div class="controls">
+            <div class="toolbar">
+                <button class="tool-item active" id="selectTool">🖱️ Select</button>
+                <button class="tool-item" id="extinguisherTool">🧯 Fire Extinguisher</button>
+                <button class="tool-item" id="toggleOverlay">📊 Toggle Coverage</button>
+                <button class="tool-item" id="resetBtn">🔄 Reset</button>
+            </div>
+            
+            <!-- Real-time compliance tracking -->
+            <div class="compliance-panel">
+                <strong>Compliance Status</strong>
+                <div class="compliance-item">
+                    <span class="status-icon" id="chemicalStatus">❌</span>
+                    <span>Chemicals Labeled: <span id="chemicalCount">0/10</span></span>
+                </div>
+                <div class="compliance-item">
+                    <span class="status-icon" id="extinguisherStatus">❌</span>
+                    <span>Extinguishers: <span id="extinguisherCount">0/3</span></span>
+                </div>
+                <div class="compliance-item">
+                    <span class="status-icon" id="overallStatus">❌</span>
+                    <span>Overall Compliance</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Canvas container for p5.js simulation -->
+        <div id="canvasContainer"></div>
+    </div>
+
+    <script type="module">
+        import "p5";
+        // ===========================================
+        // MAIN APPLICATION STATE
+        // ===========================================
+        
+        /**
+         * Central state object containing all simulation data
+         * Controls camera position, current tool, and all lab elements
+         */
+        let labState = {
+            camera: { x: 0, y: 0 },              // Camera position for panning
+            currentTool: 'select',               // Currently selected tool
+            showCoverage: false,                 // Whether to show extinguisher coverage
+            dragging: false,                     // Is user currently dragging the view
+            dragStart: { x: 0, y: 0 },          // Start position of drag
+            selectedChemical: null,              // Currently selected chemical
+            chemicals: [],                       // Array of all chemicals in lab
+            extinguishers: [],                   // Array of placed extinguishers
+            walls: [],                           // Lab wall segments
+            labElements: []                      // Lab furniture and equipment
+        };
+
+        // ===========================================
+        // CHEMICAL DATABASE WITH REALISTIC PROPERTIES
+        // ===========================================
+        
+        /**
+         * Comprehensive chemical database with hazard classifications
+         * Each chemical has specific visual properties and safety hazards
+         */
+        const chemicalDatabase = {
+            'Hydrochloric Acid': { 
+                hazards: ['corrosive'], 
+                liquidColor: [255, 100, 100, 150],  // Reddish transparent liquid
+                container: 'beaker',
+                viscosity: 0.8,
+                description: 'Strong acid, highly corrosive'
+            },
+            'Sodium Metal': { 
+                hazards: ['reactive', 'flammable'], 
+                liquidColor: [255, 200, 100, 180],  // Golden metallic appearance
+                container: 'vial',
+                viscosity: 0.3,
+                description: 'Highly reactive alkali metal'
+            },
+            'Acetone': { 
+                hazards: ['flammable'], 
+                liquidColor: [100, 150, 255, 120],  // Clear blue tint
+                container: 'flask',
+                viscosity: 0.6,
+                description: 'Volatile organic solvent'
+            },
+            'Sulfuric Acid': { 
+                hazards: ['corrosive'], 
+                liquidColor: [255, 50, 50, 160],    // Dark red, highly concentrated
+                container: 'beaker',
+                viscosity: 0.9,
+                description: 'Concentrated strong acid'
+            },
+            'Potassium': { 
+                hazards: ['reactive'], 
+                liquidColor: [200, 100, 255, 140],  // Purple metallic sheen
+                container: 'vial',
+                viscosity: 0.4,
+                description: 'Reactive alkali metal'
+            },
+            'Ethanol': { 
+                hazards: ['flammable'], 
+                liquidColor: [100, 255, 100, 130],  // Clear with green tint
+                container: 'flask',
+                viscosity: 0.7,
+                description: 'Flammable alcohol'
+            },
+            'Nitric Acid': { 
+                hazards: ['corrosive', 'oxidizer'], 
+                liquidColor: [255, 150, 30, 170],   // Orange-yellow, oxidizing
+                container: 'beaker',
+                viscosity: 0.8,
+                description: 'Strong oxidizing acid'
+            },
+            'Phosphorus': { 
+                hazards: ['reactive', 'flammable'], 
+                liquidColor: [255, 255, 100, 160],  // Bright yellow
+                container: 'vial',
+                viscosity: 0.5,
+                description: 'Highly reactive element'
+            },
+            'Bromine': { 
+                hazards: ['corrosive', 'oxidizer'], 
+                liquidColor: [139, 69, 19, 180],    // Dark brown liquid
+                container: 'flask',
+                viscosity: 0.9,
+                description: 'Corrosive halogen'
+            },
+            'Lithium': { 
+                hazards: ['reactive', 'flammable'], 
+                liquidColor: [192, 192, 192, 150],  // Metallic silver
+                container: 'vial',
+                viscosity: 0.3,
+                description: 'Light reactive metal'
+            }
+        };
+
+        // Available hazard types for classification
+        const hazardTypes = ['flammable', 'corrosive', 'reactive', 'oxidizer'];
+        let popup = null; // Reference to active popup window
+
+        // ===========================================
+        // P5.JS SETUP AND INITIALIZATION
+        // ===========================================
+        
+        /**
+         * Initialize the p5.js canvas and set up the laboratory
+         * Called once at the start of the program
+         */
+        function setup() {
+            // Create canvas and attach to container
+            const canvas = createCanvas(1200, 700);
+            canvas.parent('canvasContainer');
+            
+            // Initialize lab layout and event handlers
+            initializeLab();
+            setupEventListeners();
+        }
+
+        /**
+         * Create the laboratory layout with walls, furniture, and chemicals
+         * Positions all elements in realistic laboratory arrangement
+         */
+        function initializeLab() {
+            // Create laboratory walls - outer perimeter and internal divisions
+            labState.walls = [
+                { x1: 50, y1: 50, x2: 1150, y2: 50 },    // Top perimeter wall
+                { x1: 50, y1: 50, x2: 50, y2: 650 },     // Left perimeter wall
+                { x1: 1150, y1: 50, x2: 1150, y2: 650 }, // Right perimeter wall
+                { x1: 50, y1: 650, x2: 1150, y2: 650 },  // Bottom perimeter wall
+                { x1: 300, y1: 250, x2: 500, y2: 250 },  // Internal wall section 1
+                { x1: 700, y1: 250, x2: 900, y2: 250 },  // Internal wall section 2
+            ];
+
+            // Create laboratory furniture and equipment with realistic positioning
+            labState.labElements = [
+                // Laboratory benches arranged in rows
+                { type: 'bench', x: 150, y: 180, w: 280, h: 60 },
+                { type: 'bench', x: 500, y: 180, w: 280, h: 60 },
+                { type: 'bench', x: 850, y: 180, w: 250, h: 60 },
+                { type: 'bench', x: 150, y: 400, w: 280, h: 60 },
+                { type: 'bench', x: 500, y: 400, w: 280, h: 60 },
+                { type: 'bench', x: 850, y: 400, w: 250, h: 60 },
+                
+                // Storage shelves along walls
+                { type: 'shelf', x: 100, y: 300, w: 40, h: 80 },
+                { type: 'shelf', x: 1060, y: 300, w: 40, h: 80 },
+                
+                // Laboratory sinks for washing
+                { type: 'sink', x: 920, y: 520, w: 80, h: 60 },
+                { type: 'sink', x: 180, y: 520, w: 80, h: 60 },
+                
+                // Emergency exit door
+                { type: 'door', x: 570, y: 50, w: 60, h: 15 },
+                
+                // Fume hoods for dangerous reactions
+                { type: 'fume_hood', x: 300, y: 100, w: 200, h: 60 },
+                { type: 'fume_hood', x: 700, y: 100, w: 200, h: 60 }
+            ];
+
+            // Place chemicals ON TOP of benches and shelves with corrected positions
+            const chemNames = Object.keys(chemicalDatabase);
+            labState.chemicals = [
+                // Chemicals on main laboratory benches - Y coordinate set to bench top (180 - small offset)
+                { name: chemNames[0], x: 200, y: 175, labeled: false, correct: false },   // On first bench
+                { name: chemNames[1], x: 350, y: 175, labeled: false, correct: false },   // On first bench
+                { name: chemNames[2], x: 600, y: 175, labeled: false, correct: false },   // On second bench
+                { name: chemNames[3], x: 720, y: 175, labeled: false, correct: false },   // On second bench
+                { name: chemNames[4], x: 950, y: 175, labeled: false, correct: false },   // On third bench
+                
+                // Chemicals on bottom row benches - Y coordinate set to bench top (400 - small offset)
+                { name: chemNames[5], x: 200, y: 395, labeled: false, correct: false },   // On fourth bench
+                { name: chemNames[6], x: 600, y: 395, labeled: false, correct: false },   // On fifth bench  
+                { name: chemNames[7], x: 950, y: 395, labeled: false, correct: false },   // On sixth bench
+                
+                // Chemicals on storage shelves - CORRECTED POSITIONING
+                // Left shelf: x=100, w=40, so center is at x=120, moved inward to x=120
+                // Right shelf: x=1060, w=40, so center is at x=1080, moved inward to x=1080
+                { name: chemNames[8], x: 120, y: 295, labeled: false, correct: false },   // On left shelf - centered
+                { name: chemNames[9], x: 1080, y: 295, labeled: false, correct: false }   // On right shelf - centered
+            ];
+
+            // Update initial compliance status
+            updateCompliance();
+        }
+
+        // ===========================================
+        // MAIN DRAWING LOOP
+        // ===========================================
+        
+        /**
+         * Main p5.js draw loop - called 60 times per second
+         * Renders the entire laboratory scene with camera transformations
+         */
+        function draw() {
+            // Draw the laboratory floor background
+            drawRealisticFloor();
+            
+            // Apply camera transformation for panning
+            push();
+            translate(-labState.camera.x, -labState.camera.y);
+            
+            // Render all laboratory elements in order
+            drawRealisticLab();        // Walls and furniture
+            drawRealisticChemicals();  // Chemical containers
+            drawRealisticExtinguishers(); // Fire extinguishers
+            
+            // Show coverage overlay if enabled
+            if (labState.showCoverage) {
+                drawCoverageOverlay();
+            }
+            
+            pop(); // Restore original coordinate system
+        }
+
+        // ===========================================
+        // FLOOR RENDERING SYSTEM
+        // ===========================================
+        
+        /**
+         * Render realistic laboratory floor with tile pattern
+         * Creates depth and texture through alternating colors
+         */
+        function drawRealisticFloor() {
+            // Set base floor color
+            background(240, 245, 250);
+            
+            // Draw individual floor tiles with seamless scrolling
+            for (let x = 0; x < width + 100; x += 40) {
+                for (let y = 0; y < height + 100; y += 40) {
+                    // Calculate tile position accounting for camera movement
+                    let tileX = x - (labState.camera.x % 40);
+                    let tileY = y - (labState.camera.y % 40);
+                    
+                    // Alternate tile colors in checkerboard pattern
+                    if ((Math.floor(x/40) + Math.floor(y/40)) % 2 === 0) {
+                        fill(245, 250, 255); // Light tile color
+                    } else {
+                        fill(235, 240, 245); // Slightly darker alternate
+                    }
+                    
+                    // Draw tile with subtle border
+                    stroke(220, 225, 230);
+                    strokeWeight(1);
+                    rect(tileX, tileY, 40, 40);
+                    
+                    // Add highlight for depth effect
+                    fill(250, 252, 255, 100);
+                    noStroke();
+                    rect(tileX + 2, tileY + 2, 36, 36);
+                }
+            }
+        }
+
+        // ===========================================
+        // LABORATORY STRUCTURE RENDERING
+        // ===========================================
+        
+        /**
+         * Render all laboratory structural elements
+         * Includes walls, furniture, and equipment with realistic shading
+         */
+        function drawRealisticLab() {
+            // Draw walls with three-dimensional appearance
+            labState.walls.forEach(wall => {
+                // Wall drop shadow for depth
+                stroke(80, 90, 100);
+                strokeWeight(12);
+                line(wall.x1 + 2, wall.y1 + 2, wall.x2 + 2, wall.y2 + 2);
+                
+                // Main wall structure
+                stroke(120, 130, 140);
+                strokeWeight(10);
+                line(wall.x1, wall.y1, wall.x2, wall.y2);
+                
+                // Wall highlight for 3D effect
+                stroke(160, 170, 180);
+                strokeWeight(2);
+                line(wall.x1, wall.y1, wall.x2, wall.y2);
+            });
+
+            // Render all laboratory furniture and equipment
+            labState.labElements.forEach(element => {
+                drawLabElement(element);
+            });
+        }
+
+        /**
+         * Render individual laboratory element based on type
+         * Each element type has specialized rendering method
+         */
+        function drawLabElement(element) {
+            push();
+            
+            // Add drop shadow for all elements
+            fill(0, 0, 0, 30);
+            noStroke();
+            rect(element.x + 3, element.y + 3, element.w, element.h);
+            
+            // Render based on element type
+            switch(element.type) {
+                case 'bench':
+                    drawRealisticBench(element);
+                    break;
+                case 'shelf':
+                    drawRealisticShelf(element);
+                    break;
+                case 'sink':
+                    drawRealisticSink(element);
+                    break;
+                case 'door':
+                    drawRealisticDoor(element);
+                    break;
+                case 'fume_hood':
+                    drawRealisticFumeHood(element);
+                    break;
+            }
+            
+            pop();
+        }
+
+        /**
+         * Render laboratory bench with wood grain texture
+         * Includes realistic wood coloring and surface details
+         */
+        function drawRealisticBench(element) {
+            // Create wood grain effect with procedural texture
+            for (let i = 0; i < element.w; i += 20) {
+                let woodShade = map(noise(i * 0.01, element.y * 0.01), 0, 1, 100, 140);
+                fill(woodShade + 20, woodShade, woodShade - 20);
+                noStroke();
+                rect(element.x + i, element.y, Math.min(20, element.w - i), element.h);
+            }
+            
+            // Main bench structure with rounded corners
+            stroke(80, 60, 40);
+            strokeWeight(2);
+            fill(139, 109, 79, 200);
+            rect(element.x, element.y, element.w, element.h, 5);
+            
+            // Add wood texture lines for realism
+            stroke(100, 80, 60, 150);
+            strokeWeight(1);
+            for (let i = 10; i < element.h; i += 15) {
+                line(element.x + 5, element.y + i, element.x + element.w - 5, element.y + i);
+            }
+            
+            // Highlight top edge
+            stroke(180, 150, 120);
+            strokeWeight(1);
+            line(element.x, element.y, element.x + element.w, element.y);
+        }
+
+        /**
+         * Render metal storage shelf with realistic metallic finish
+         */
+        function drawRealisticShelf(element) {
+            // Main shelf structure
+            fill(160, 170, 180);
+            stroke(100, 110, 120);
+            strokeWeight(2);
+            rect(element.x, element.y, element.w, element.h, 3);
+            
+            // Shelf divisions for multiple levels
+            stroke(120, 130, 140);
+            strokeWeight(1);
+            for (let i = element.h / 3; i < element.h; i += element.h / 3) {
+                line(element.x + 2, element.y + i, element.x + element.w - 2, element.y + i);
+            }
+            
+            // Metallic highlight effect
+            fill(180, 190, 200, 100);
+            noStroke();
+            rect(element.x + 2, element.y + 2, element.w - 4, element.h - 4);
+        }
+
+        /**
+         * Render laboratory sink with basin and faucet
+         */
+        function drawRealisticSink(element) {
+            // Main sink basin
+            fill(200, 210, 220);
+            stroke(150, 160, 170);
+            strokeWeight(2);
+            rect(element.x, element.y, element.w, element.h, 8);
+            
+            // Inner basin depression
+            fill(180, 190, 200);
+            noStroke();
+            rect(element.x + 5, element.y + 5, element.w - 10, element.h - 10, 5);
+            
+            // Central drain
+            fill(120, 130, 140);
+            ellipse(element.x + element.w/2, element.y + element.h/2, 8, 8);
+            
+            // Faucet fixture
+            stroke(160, 170, 180);
+            strokeWeight(4);
+            line(element.x + element.w/2, element.y - 5, element.x + element.w/2, element.y - 15);
+            line(element.x + element.w/2, element.y - 15, element.x + element.w/2 + 10, element.y - 15);
+            
+            // Sink rim highlight
+            stroke(220, 230, 240);
+            strokeWeight(1);
+            line(element.x + 3, element.y + 3, element.x + element.w - 3, element.y + 3);
+        }
+
+        /**
+         * Render emergency exit door
+         */
+        function drawRealisticDoor(element) {
+            // Main door panel
+            fill(139, 69, 19);
+            stroke(100, 50, 10);
+            strokeWeight(2);
+            rect(element.x, element.y, element.w, element.h, 2);
+            
+            // Door handle
+            fill(180, 170, 160);
+            noStroke();
+            ellipse(element.x + element.w - 8, element.y + element.h/2, 3, 3);
+        }
+
+        /**
+         * Render fume hood with glass sash and ventilation
+         */
+        function drawRealisticFumeHood(element) {
+            // Main fume hood structure
+            fill(240, 245, 250);
+            stroke(180, 185, 190);
+            strokeWeight(2);
+            rect(element.x, element.y, element.w, element.h, 5);
+            
+            // Glass sash (partially lowered for safety)
+            fill(200, 220, 255, 100);
+            stroke(150, 160, 170);
+            strokeWeight(1);
+            rect(element.x + 5, element.y + element.h - 25, element.w - 10, 20, 2);
+            
+            // Ventilation grilles at top
+            stroke(160, 170, 180);
+            strokeWeight(1);
+            for (let i = 10; i < element.w - 10; i += 15) {
+                line(element.x + i, element.y + 5, element.x + i, element.y + 15);
+            }
+        }
+
+        // ===========================================
+        // CHEMICAL CONTAINER RENDERING - ALL TOP VIEW
+        // ===========================================
+        
+        /**
+         * Render all chemical containers with realistic details
+         * Shows visual feedback for labeling status
+         */
+        function drawRealisticChemicals() {
+            labState.chemicals.forEach((chemical, index) => {
+                const data = chemicalDatabase[chemical.name];
+                
+                push();
+                translate(chemical.x, chemical.y);
+                
+                // Drop shadow for depth
+                fill(0, 0, 0, 40);
+                noStroke();
+                ellipse(2, 4, 38, 15);
+                
+                // Shake animation for incorrectly labeled chemicals
+                if (chemical.labeled && !chemical.correct) {
+                    translate(sin(frameCount * 8) * 2, 0);
+                }
+                
+                // Render appropriate container type - ALL IN TOP VIEW
+                drawChemicalContainer(data, chemical.name);
+                
+                // Status indicator for labeled chemicals
+                if (chemical.labeled) {
+                    fill(chemical.correct ? 0 : 255, chemical.correct ? 200 : 0, 0);
+                    stroke(255);
+                    strokeWeight(1);
+                    ellipse(18, -18, 10, 10);
+                }
+                
+                pop();
+                
+                // Chemical name label
+                fill(40, 50, 60);
+                noStroke();
+                textAlign(CENTER, CENTER);
+                textSize(9);
+                textStyle(BOLD);
+                text(chemical.name.split(' ')[0], chemical.x, chemical.y + 35);
+            });
+        }
+
+        /**
+         * Render specific container type with realistic details
+         * ALL CONTAINERS NOW IN TOP VIEW
+         */
+        function drawChemicalContainer(data, name) {
+            const liquidColor = data.liquidColor;
+            const containerType = data.container;
+            
+            // Render ALL container types in top-down view
+            switch(containerType) {
+                case 'beaker':
+                    drawTopViewBeaker(liquidColor);
+                    break;
+                case 'flask':
+                    drawTopViewFlask(liquidColor);
+                    break;
+                case 'vial':
+                    drawTopViewVial(liquidColor);
+                    break;
+            }
+        }
+
+        /**
+         * Render beaker in top-down view
+         * Shows circular opening with liquid inside and measurement markings
+         */
+        function drawTopViewBeaker(liquidColor) {
+            // Outer beaker rim (glass thickness)
+            stroke(120, 140, 160, 180);
+            strokeWeight(3);
+            fill(255, 255, 255, 80);
+            ellipse(0, 0, 35, 35);
+            
+            // Inner beaker opening
+            stroke(100, 120, 140, 150);
+            strokeWeight(2);
+            fill(240, 245, 250, 100);
+            ellipse(0, 0, 28, 28);
+            
+            // Liquid surface inside beaker
+            fill(liquidColor);
+            noStroke();
+            ellipse(0, 0, 24, 24);
+            
+            // Liquid surface reflection/meniscus effect
+            fill(255, 255, 255, 100);
+            ellipse(-3, -3, 8, 8);
+            
+            // Measurement markings around rim
+            stroke(100, 120, 140, 120);
+            strokeWeight(1);
+            for (let angle = 0; angle < 360; angle += 45) {
+                let x1 = cos(radians(angle)) * 14;
+                let y1 = sin(radians(angle)) * 14;
+                let x2 = cos(radians(angle)) * 16;
+                let y2 = sin(radians(angle)) * 16;
+                line(x1, y1, x2, y2);
+            }
+            
+            // Spout indication (small notch)
+            stroke(120, 140, 160, 180);
+            strokeWeight(2);
+            line(15, -2, 18, -2);
+            line(15, 2, 18, 2);
+            
+            // Glass shine effect
+            stroke(255, 255, 255, 200);
+            strokeWeight(1);
+            noFill();
+            ellipse(-5, -5, 12, 8);
+        }
+
+        /**
+         * Render Erlenmeyer flask in top-down view
+         * Shows circular neck opening with wider base visible
+         */
+        function drawTopViewFlask(liquidColor) {
+            // Flask base outline (wider circular base)
+            stroke(120, 140, 160, 120);
+            strokeWeight(2);
+            fill(255, 255, 255, 40);
+            ellipse(0, 0, 40, 40);
+            
+            // Flask base inner area
+            stroke(100, 120, 140, 100);
+            strokeWeight(1);
+            fill(240, 245, 250, 60);
+            ellipse(0, 0, 36, 36);
+            
+            // Liquid in base area
+            fill(liquidColor);
+            noStroke();
+            ellipse(0, 0, 30, 30);
+            
+            // Flask neck (smaller circle in center)
+            stroke(120, 140, 160, 180);
+            strokeWeight(2);
+            fill(255, 255, 255, 80);
+            ellipse(0, 0, 16, 16);
+            
+            // Neck opening (inner)
+            stroke(100, 120, 140, 150);
+            strokeWeight(1);
+            fill(240, 245, 250, 100);
+            ellipse(0, 0, 12, 12);
+            
+            // Liquid surface in neck area
+            fill(liquidColor[0], liquidColor[1], liquidColor[2], liquidColor[3] * 0.7);
+            noStroke();
+            ellipse(0, 0, 8, 8);
+            
+            // Glass reflection on neck
+            stroke(255, 255, 255, 180);
+            strokeWeight(1);
+            noFill();
+            ellipse(-2, -2, 6, 4);
+            
+            // Base reflection
+            stroke(255, 255, 255, 120);
+            strokeWeight(1);
+            ellipse(-8, -8, 15, 10);
+            
+            // Flask shape indicators (subtle lines showing conical transition)
+            stroke(120, 140, 160, 80);
+            strokeWeight(1);
+            for (let angle = 0; angle < 360; angle += 90) {
+                let x1 = cos(radians(angle)) * 8;
+                let y1 = sin(radians(angle)) * 8;
+                let x2 = cos(radians(angle)) * 18;
+                let y2 = sin(radians(angle)) * 18;
+                line(x1, y1, x2, y2);
+            }
+        }
+
+        /**
+         * Render test tube/vial in top-down view
+         * Shows circular opening with glass tube walls
+         */
+        function drawTopViewVial(liquidColor) {
+            // Outer vial rim (glass thickness)
+            stroke(120, 140, 160, 180);
+            strokeWeight(3);
+            fill(255, 255, 255, 80);
+            ellipse(0, 0, 25, 25);
+            
+            // Inner vial opening
+            stroke(100, 120, 140, 150);
+            strokeWeight(2);
+            fill(240, 245, 250, 100);
+            ellipse(0, 0, 20, 20);
+            
+            // Liquid surface inside vial
+            fill(liquidColor);
+            noStroke();
+            ellipse(0, 0, 16, 16);
+            
+            // Liquid surface reflection/meniscus effect
+            fill(255, 255, 255, 120);
+            ellipse(-2, -2, 6, 6);
+            
+            // Vial wall thickness indicators
+            stroke(120, 140, 160, 100);
+            strokeWeight(1);
+            for (let angle = 0; angle < 360; angle += 60) {
+                let x1 = cos(radians(angle)) * 10;
+                let y1 = sin(radians(angle)) * 10;
+                let x2 = cos(radians(angle)) * 12;
+                let y2 = sin(radians(angle)) * 12;
+                line(x1, y1, x2, y2);
+            }
+            
+            // Cap/stopper outline (visible from top)
+            stroke(80, 90, 100, 150);
+            strokeWeight(2);
+            noFill();
+            ellipse(0, 0, 26, 26);
+            
+            // Cap texture/grip lines
+            stroke(60, 70, 80, 120);
+            strokeWeight(1);
+            for (let angle = 0; angle < 360; angle += 30) {
+                let x1 = cos(radians(angle)) * 11;
+                let y1 = sin(radians(angle)) * 11;
+                let x2 = cos(radians(angle)) * 13;
+                let y2 = sin(radians(angle)) * 13;
+                line(x1, y1, x2, y2);
+            }
+            
+            // Glass shine effect
+            stroke(255, 255, 255, 200);
+            strokeWeight(1);
+            noFill();
+            ellipse(-4, -4, 8, 6);
+        }
+
+        // ===========================================
+        // FIRE EXTINGUISHER RENDERING
+        // ===========================================
+        
+        /**
+         * Render fire extinguishers with enhanced visual feedback
+         * Shows pulsing animation for incorrectly placed units
+         */
+        function drawRealisticExtinguishers() {
+            labState.extinguishers.forEach((ext, index) => {
+                push();
+                translate(ext.x, ext.y);
+                
+                // Drop shadow
+                fill(0, 0, 0, 50);
+                noStroke();
+                ellipse(2, 4, 40, 18); // Slightly larger shadow
+                
+                // Pulsing effect for incorrect placement
+                if (!isExtinguisherCorrectlyPlaced(ext)) {
+                    let pulseScale = 1 + sin(frameCount * 6) * 0.1;
+                    scale(pulseScale);
+                }
+                
+                // Main extinguisher cylinder (top view)
+                fill(220, 20, 20);
+                stroke(180, 15, 15);
+                strokeWeight(2);
+                ellipse(0, 0, 35, 35); // Increased size
+                
+                // Extinguisher top detail ring
+                fill(200, 200, 200);
+                stroke(150, 150, 150);
+                strokeWeight(1);
+                ellipse(0, 0, 20, 20); // Increased inner detail
+                
+                // Pressure gauge
+                fill(255, 255, 255);
+                stroke(100, 100, 100);
+                strokeWeight(1);
+                ellipse(0, 0, 10, 10); // Larger gauge
+                
+                // Gauge needle indicator
+                stroke(200, 0, 0);
+                strokeWeight(2);
+                line(0, 0, 4, -3); // Adjusted for larger size
+                
+                // Discharge hose attachment
+                stroke(50, 50, 50);
+                strokeWeight(4);
+                line(12, 6, 22, 15); // Extended hose
+                
+                // Hose nozzle end
+                fill(80, 80, 80);
+                noStroke();
+                ellipse(22, 15, 8, 8); // Larger nozzle
+                
+                // Safety pin detail
+                stroke(255, 200, 0);
+                strokeWeight(2);
+                line(-10, -10, -8, -12); // Adjusted position
+                line(-8, -12, -6, -10);
+                
+                // Label/instruction panel
+                fill(255, 255, 255);
+                stroke(100, 100, 100);
+                strokeWeight(1);
+                rect(-6, 8, 12, 6, 1);
+                
+                pop();
+            });
+        }
+
+        // ===========================================
+        // COVERAGE VISUALIZATION
+        // ===========================================
+        
+        /**
+         * Draw fire extinguisher coverage overlay
+         * Shows effective range for each placed extinguisher
+         * INCREASED RANGE from 75ft to 100ft as requested
+         */
+        function drawCoverageOverlay() {
+            labState.extinguishers.forEach(ext => {
+                // Coverage circle with increased radius
+                fill(255, 100, 100, 40);
+                stroke(255, 50, 50, 120);
+                strokeWeight(2);
+                ellipse(ext.x, ext.y, 200, 200); // INCREASED from 150 to 200 (100ft radius)
+                
+                // Inner coverage zone
+                fill(255, 150, 150, 20);
+                stroke(255, 100, 100, 80);
+                strokeWeight(1);
+                ellipse(ext.x, ext.y, 160, 160); // Effective range indicator
+                
+                // Coverage radius text - 
+                fill(200, 50, 50);
+                noStroke();
+                textAlign(CENTER, CENTER);
+                textSize(12);
+                textStyle(BOLD);
+                text('100ft', ext.x, ext.y + 110);
+                
+                // Direction indicator
+                stroke(255, 100, 100, 150);
+                strokeWeight(2);
+                line(ext.x, ext.y, ext.x, ext.y - 100);
+                
+                // Coverage effectiveness indicator
+                textSize(8);
+                fill(150, 30, 30);
+                text('EFFECTIVE', ext.x, ext.y - 110);
+            });
+        }
+
+        // ===========================================
+        // USER INTERACTION HANDLERS
+        // ===========================================
+        
+        /**
+         * Handle mouse press events for tool interactions
+         * Manages chemical selection and extinguisher placement
+         */
+        function mousePressed() {
+            // Convert screen coordinates to world coordinates
+            const worldX = mouseX + labState.camera.x;
+            const worldY = mouseY + labState.camera.y;
+            
+            if (labState.currentTool === 'select') {
+                // Check for clicks on chemical containers
+                labState.chemicals.forEach((chemical, index) => {
+                    const distance = dist(worldX, worldY, chemical.x, chemical.y);
+                    if (distance < 25) { // Increased click area
+                        showChemicalPopup(chemical, index);
+                        return;
+                    }
+                });
+                
+                // Initialize camera dragging
+                labState.dragging = true;
+                labState.dragStart = { x: mouseX, y: mouseY };
+                
+            } else if (labState.currentTool === 'extinguisher') {
+                // Place extinguisher near walls only
+                if (isNearWall(worldX, worldY)) {
+                    labState.extinguishers.push({ x: worldX, y: worldY });
+                    updateCompliance();
+                }
+            }
+        }
+
+        /**
+         * Handle mouse drag events for camera panning
+         */
+        function mouseDragged() {
+            if (labState.dragging && labState.currentTool === 'select') {
+                // Update camera position based on drag movement
+                labState.camera.x -= (mouseX - labState.dragStart.x);
+                labState.camera.y -= (mouseY - labState.dragStart.y);
+                labState.dragStart = { x: mouseX, y: mouseY };
+            }
+        }
+
+        /**
+         * Handle mouse release events
+         */
+        function mouseReleased() {
+            labState.dragging = false;
+        }
+
+        /**
+         * Handle keyboard input for camera panning
+         */
+        function keyPressed() {
+            const panSpeed = 25;
+            if (keyCode === LEFT_ARROW) labState.camera.x -= panSpeed;
+            if (keyCode === RIGHT_ARROW) labState.camera.x += panSpeed;
+            if (keyCode === UP_ARROW) labState.camera.y -= panSpeed;
+            if (keyCode === DOWN_ARROW) labState.camera.y += panSpeed;
+        }
+
+        // ===========================================
+        // UTILITY FUNCTIONS
+        // ===========================================
+        
+        /**
+         * Check if position is near a wall for extinguisher placement
+         */
+        function isNearWall(x, y) {
+            return labState.walls.some(wall => {
+                const distance = distanceToLineSegment(x, y, wall.x1, wall.y1, wall.x2, wall.y2);
+                return distance < 30; // Increased placement tolerance
+            });
+        }
+
+        /**
+         * Calculate shortest distance from point to line segment
+         */
+        function distanceToLineSegment(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            
+            if (length === 0) return dist(px, py, x1, y1);
+            
+            const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (length * length)));
+            const projX = x1 + t * dx;
+            const projY = y1 + t * dy;
+            
+            return dist(px, py, projX, projY);
+        }
+
+        /**
+         * Check if fire extinguisher is correctly placed
+         * : Now uses 100ft range instead of 75ft
+         */
+        function isExtinguisherCorrectlyPlaced(extinguisher) {
+            const coverageRadius = 100; // INCREASED from 75 to 100
+            let coversHazards = false;
+            
+            // Check if extinguisher covers any chemicals
+            labState.chemicals.forEach(chemical => {
+                const distance = dist(extinguisher.x, extinguisher.y, chemical.x, chemical.y);
+                if (distance <= coverageRadius) {
+                    coversHazards = true;
+                }
+            });
+            
+            return coversHazards;
+        }
+
+        // ===========================================
+        // CHEMICAL LABELING SYSTEM
+        // ===========================================
+        
+        /**
+         * Display chemical identification popup
+         * Allows user to select hazard classifications
+         */
+        function showChemicalPopup(chemical, index) {
+            hidePopup(); // Close any existing popup
+            
+            const data = chemicalDatabase[chemical.name];
+            
+            // Create popup element
+            popup = document.createElement('div');
+            popup.className = 'popup';
+            popup.style.left = (mouseX + 20) + 'px';
+            popup.style.top = (mouseY - 50) + 'px';
+            
+            // Populate popup content
+            popup.innerHTML = `
+                <h3>🧪 ${chemical.name}</h3>
+                <p><strong>Container:</strong> ${data.container.charAt(0).toUpperCase() + data.container.slice(1)}</p>
+                <p><strong>Description:</strong> ${data.description || 'Chemical compound'}</p>
+                <p>Select the correct hazard classification(s):</p>
+                <div class="hazard-options">
+                    ${hazardTypes.map(hazard => `
+                        <div class="hazard-option" data-hazard="${hazard}">
+                            ${hazard.charAt(0).toUpperCase() + hazard.slice(1)}
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="popup-buttons">
+                    <button class="btn btn-secondary" onclick="hidePopup()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitHazardLabeling(${index})">Submit</button>
+                </div>
+            `;
+            
+            document.body.appendChild(popup);
+            
+            // Add click handlers for hazard selection
+            popup.querySelectorAll('.hazard-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    this.classList.toggle('selected');
+                });
+            });
+        }
+
+        /**
+         * Process hazard labeling submission
+         * Compares user selection with correct classification
+         */
+        window.submitHazardLabeling = function(chemicalIndex) {
+            // Get selected hazards from popup
+            const selectedHazards = Array.from(popup.querySelectorAll('.hazard-option.selected'))
+                .map(el => el.dataset.hazard);
+            
+            const chemical = labState.chemicals[chemicalIndex];
+            const correctHazards = chemicalDatabase[chemical.name].hazards;
+            
+            // Update chemical status
+            chemical.labeled = true;
+            chemical.selectedHazards = selectedHazards;
+            chemical.correct = arraysEqual(selectedHazards.sort(), correctHazards.sort());
+            
+            hidePopup();
+            updateCompliance();
+        };
+
+        /**
+         * Close and remove popup window
+         */
+        window.hidePopup = function() {
+            if (popup) {
+                popup.remove();
+                popup = null;
+            }
+        };
+
+        /**
+         * Compare two arrays for equality (order independent)
+         */
+        function arraysEqual(a, b) {
+            return a.length === b.length && a.every((val, i) => val === b[i]);
+        }
+
+        // ===========================================
+        // COMPLIANCE TRACKING SYSTEM
+        // ===========================================
+        
+        /**
+         * Update compliance status indicators
+         * Tracks chemical labeling and extinguisher placement progress
+         */
+        function updateCompliance() {
+            // Count correctly labeled chemicals
+            const labeledCorrectly = labState.chemicals.filter(c => c.labeled && c.correct).length;
+            const totalChemicals = labState.chemicals.length;
+            
+            // Count properly placed extinguishers
+            const properExtinguishers = labState.extinguishers.filter(isExtinguisherCorrectlyPlaced).length;
+            const minExtinguishers = 3; // Required minimum
+            
+            // Update display counters
+            document.getElementById('chemicalCount').textContent = `${labeledCorrectly}/${totalChemicals}`;
+            document.getElementById('extinguisherCount').textContent = `${properExtinguishers}/${minExtinguishers}`;
+            
+            // Determine completion status
+            const chemicalComplete = labeledCorrectly === totalChemicals;
+            const extinguisherComplete = properExtinguishers >= minExtinguishers;
+            
+            // Update status icons
+            document.getElementById('chemicalStatus').textContent = chemicalComplete ? '✅' : '❌';
+            document.getElementById('extinguisherStatus').textContent = extinguisherComplete ? '✅' : '❌';
+            document.getElementById('overallStatus').textContent = 
+                (chemicalComplete && extinguisherComplete) ? '✅' : '❌';
+        }
+
+        // ===========================================
+        // USER INTERFACE SETUP
+        // ===========================================
+        
+        /**
+         * Initialize event listeners for UI controls
+         */
+        function setupEventListeners() {
+            // Tool selection buttons
+            document.getElementById('selectTool').addEventListener('click', () => {
+                setActiveTool('select');
+            });
+            
+            document.getElementById('extinguisherTool').addEventListener('click', () => {
+                setActiveTool('extinguisher');
+            });
+            
+            // Coverage overlay toggle
+            document.getElementById('toggleOverlay').addEventListener('click', () => {
+                labState.showCoverage = !labState.showCoverage;
+            });
+            
+            // Reset simulation button
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                // Reset all chemical states
+                labState.chemicals.forEach(chemical => {
+                    chemical.labeled = false;
+                    chemical.correct = false;
+                    chemical.selectedHazards = [];
+                });
+                
+                // Clear all extinguishers
+                labState.extinguishers = [];
+                
+                // Update compliance display
+                updateCompliance();
+            });
+        }
+
+        /**
+         * Set active tool and update UI indicators
+         */
+        function setActiveTool(tool) {
+            labState.currentTool = tool;
+            
+            // Remove active class from all tools
+            document.querySelectorAll('.tool-item').forEach(btn => btn.classList.remove('active'));
+            
+            // Add active class to selected tool
+            if (tool === 'select') {
+                document.getElementById('selectTool').classList.add('active');
+            } else if (tool === 'extinguisher') {
+                document.getElementById('extinguisherTool').classList.add('active');
+            }
+        }
+
+        // ===========================================
+        // GLOBAL FUNCTION EXPORTS
+        // ===========================================
+        
+        // Make p5.js functions globally available
+        window.setup = setup;
+        window.draw = draw;
+        window.mousePressed = mousePressed;
+        window.mouseDragged = mouseDragged;
+        window.mouseReleased = mouseReleased;
+        window.keyPressed = keyPressed;
+    </script>
+</body>
+</html>

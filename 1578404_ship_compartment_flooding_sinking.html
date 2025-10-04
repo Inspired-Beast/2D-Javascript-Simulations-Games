@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realistic Ship Compartment Flooding Simulation</title>
+    <!-- Importing Libraries -->
+    <script type="importmap">
+    {
+        "imports": {
+            "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"
+        }
+    }
+    </script>
+    <!-- Styling -->
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            color: white;
+        }
+        h1 {
+            text-align: center;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+        #canvasContainer {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(238, 90, 36, 0.4);
+            margin: 0 10px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(238, 90, 36, 0.6);
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .info-panel {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-top: 15px;
+            font-size: 14px;
+            flex-wrap: wrap;
+        }
+        .info-item {
+            background: rgba(0,0,0,0.3);
+            padding: 8px 15px;
+            border-radius: 10px;
+            min-width: 120px;
+            text-align: center;
+            margin: 5px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ecdc4, #44a08d);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .sinking-warning {
+            color: #ff4757;
+            font-weight: bold;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <h1>🚢 Realistic Ship Compartment Flooding Simulation</h1>
+    <div id="canvasContainer">
+        <div id="p5-canvas"></div>
+        <div class="info-panel">
+            <div class="info-item">
+                <strong>Displacement:</strong><br>
+                <span id="displacement">12500 tons</span>
+            </div>
+            <div class="info-item">
+                <strong>Buoyancy Force:</strong><br>
+                <span id="buoyancy">122625 kN</span>
+            </div>
+            <div class="info-item">
+                <strong>Status:</strong><br>
+                <span id="stability">Afloat</span>
+            </div>
+            <div class="info-item">
+                <strong>Flooded:</strong><br>
+                <span id="flooded">0%</span>
+            </div>
+            <div class="info-item">
+                <strong>List Angle:</strong><br>
+                <span id="listAngle">0°</span>
+            </div>
+            <div class="info-item">
+                <strong>Depth:</strong><br>
+                <span id="depth">0m</span>
+            </div>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="controls">
+            <button id="startBtn">Start Flooding</button>
+            <button id="resetBtn">Reset Simulation</button>
+            <button id="pauseBtn">Pause</button>
+        </div>
+    </div>
+    <!-- Main Script -->
+    <script type="module">
+        import 'p5';
+        // BUBBLE PARTICLE CLASS
+        // Represents individual bubbles that rise during sinking
+        class Bubble {
+            constructor(x, y, size, speed) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.speed = speed;
+                this.life = 1.0; // Alpha value for fading
+                this.wobble = Math.random() * Math.PI * 2; // Random wobble offset
+            }
+            
+            // Update bubble position and properties
+            update() {
+                this.y -= this.speed; // Rise upward
+                this.x += Math.sin(this.wobble) * 0.5; // Slight horizontal wobble
+                this.wobble += 0.1;
+                this.life -= 0.008; // Gradually fade out
+            }
+            
+            // Check if bubble should be removed
+            isDead() {
+                return this.life <= 0 || this.y < -50;
+            }
+            
+            // Draw the bubble
+            draw(p) {
+                p.push();
+                p.fill(150, 200, 255, this.life * 120); // Semi-transparent blue-white
+                p.noStroke();
+                p.ellipse(this.x, this.y, this.size, this.size);
+                
+                // Add highlight for realism
+                p.fill(255, 255, 255, this.life * 80);
+                p.ellipse(this.x - this.size * 0.2, this.y - this.size * 0.2, this.size * 0.4, this.size * 0.4);
+                p.pop();
+            }
+        }
+
+        // MAIN SIMULATION CLASS
+        class ShipFloodingSimulation {
+            constructor() {
+                // Canvas setup - Extended vertically for full submersion
+                this.canvas = null;
+                this.canvasWidth = 1400;
+                this.canvasHeight = 1000;              // Extended canvas for full submersion view
+                
+                // Ship object with all properties
+                this.ship = {
+                    x: 250,                    // Current X position
+                    y: 350,                    // Current Y position
+                    width: 900,                // Ship width in pixels
+                    height: 140,               // Ship height in pixels
+                    compartments: 12,          // Number of compartments
+                    compartmentWidth: 70,      // Width of each compartment
+                    compartmentGap: 5,         // Gap between compartments
+                    baseY: 350,                // Original Y position (surface level)
+                    baseX: 250,                // Original X position (centered)
+                    rotation: 0,               // Ship pitch/trim angle
+                    listAngle: 0,              // Ship roll/list angle
+                    emptyMass: 12500,          // Ship's empty weight in tons
+                    volume: 85000,             // Ship's total volume in cubic meters
+                    sinkingVelocity: 0,        // Vertical sinking speed
+                    verticalVelocity: 0,       // Current vertical velocity
+                    lateralVelocity: 0,        // Current horizontal velocity
+                    isSunk: false,             // Whether ship has completely sunk
+                    isListing: false,          // Whether ship is currently listing
+                    waveOffset: 0,             // Wave animation offset
+                    targetListAngle: 0,        // Target angle for smooth transitions
+                    isStartingSink: false,     // Whether sinking process has begun
+                    sinkProgress: 0,           // Progress of sinking (0-1)
+                    allCompartmentsFilled: false,  // Track when all compartments are completely filled
+                    maxTiltAchieved: 0         // Track maximum tilt achieved to prevent premature reduction
+                };
+                
+                // Water and physics properties
+                this.waterLevel = 450;               // Y-coordinate of water surface
+                this.waterDensity = 1.025;           // Seawater density (tons per cubic meter)
+                this.gravity = 9.81;                 // Gravitational acceleration
+                
+                // Flooding system arrays
+                this.compartmentWaterLevels = new Array(this.ship.compartments).fill(0);    // Water level in each compartment (0-1)
+                this.compartmentFloodingActive = new Array(this.ship.compartments).fill(false); // Which compartments are actively flooding
+                this.currentFloodingCompartment = 0; // Index of compartment currently being flooded
+                this.floodingSpeed = 0.52;           // Rate of water filling (adjustable for realism)
+                
+                // Animation and control states
+                this.isFlooding = false;             // Whether flooding simulation is active
+                this.isPaused = false;               // Whether simulation is paused
+                this.isSimulationComplete = false;   // Whether simulation has finished
+                this.time = 0;                       // Global time counter for animations
+                this.waveOffset = 0;                 // Offset for wave animations
+                
+                // Bubble effect system
+                this.bubbles = [];                   // Array to store bubble particles
+                this.bubbleSpawnTimer = 0;           // Timer for spawning new bubbles
+                
+                // Initialize the simulation
+                this.initializeUI();
+                this.initializeFlooding();
+            }
+            
+            // Set up event listeners for UI controls
+            initializeUI() {
+                const startBtn = document.getElementById('startBtn');
+                const resetBtn = document.getElementById('resetBtn');
+                const pauseBtn = document.getElementById('pauseBtn');
+                
+                startBtn.addEventListener('click', () => this.startFlooding());
+                resetBtn.addEventListener('click', () => this.resetSimulation());
+                pauseBtn.addEventListener('click', () => this.togglePause());
+            }
+            
+            // Initialize the flooding sequence (start with first compartment)
+            initializeFlooding() {
+                this.compartmentFloodingActive[0] = true;
+            }
+            
+            // P5.js setup function - called once at start
+            setup(p) {
+                this.canvas = p.createCanvas(this.canvasWidth, this.canvasHeight);
+                this.canvas.parent('p5-canvas');
+                p.background(30, 60, 100);
+            }
+            
+            // P5.js main draw loop - called continuously
+            draw(p) {
+                this.drawBackground(p);                    // Draw ocean background
+                
+                // Update simulation if active
+                if (this.isFlooding && !this.isPaused && !this.isSimulationComplete) {
+                    this.updateFlooding();
+                    this.updateBubbles(p);                 // Update bubble effects
+                }
+                
+                this.calculatePhysics();                   // Calculate ship physics
+                this.drawWaterSurface(p);                  // Draw animated water surface
+                this.drawShip(p);                          // Draw ship with compartments
+                this.drawBubbles(p);                       // Draw bubble effects
+                this.drawDepthMarkers(p);                  // Draw depth scale
+                this.updateUI();                           // Update information display
+                
+                // Increment animation timers
+                this.time += 0.016;
+                this.waveOffset += 0.05;
+            }
+            
+            // Draw gradient ocean background with subtle lighting effects
+            drawBackground(p) {
+                // Create vertical gradient from surface to deep water - extended for full canvas height
+                for (let i = 0; i <= this.canvasHeight; i++) {
+                    let inter = p.map(i, 0, this.canvasHeight, 0, 1);
+                    let c = p.lerpColor(p.color(30, 60, 100), p.color(5, 15, 35), inter);
+                    p.stroke(c);
+                    p.line(0, i, this.canvasWidth, i);
+                }
+                
+                // Add subtle underwater lighting effects
+                p.fill(10, 50, 80, 30);
+                p.noStroke();
+                for (let i = 0; i < 3; i++) {
+                    let lightX = 200 + i * 400;
+                    let lightY = this.waterLevel + 100;
+                    p.ellipse(lightX, lightY, 200, 300);
+                }
+                
+                // Add deeper underwater lighting for extended depth
+                p.fill(5, 25, 40, 20);
+                for (let i = 0; i < 2; i++) {
+                    let deepLightX = 300 + i * 500;
+                    let deepLightY = this.waterLevel + 300;
+                    p.ellipse(deepLightX, deepLightY, 300, 400);
+                }
+            }
+            
+            // Draw animated water surface with realistic wave patterns
+            drawWaterSurface(p) {
+                p.fill(50, 150, 200, 180);
+                p.noStroke();
+                
+                // Create water surface shape with multiple wave frequencies
+                p.beginShape();
+                for (let x = 0; x <= this.canvasWidth; x += 8) {
+                    let waveHeight = p.sin(x * 0.008 + this.waveOffset) * 6 +      // Large waves
+                                   p.sin(x * 0.02 + this.waveOffset * 1.5) * 4 +    // Medium waves
+                                   p.sin(x * 0.04 + this.waveOffset * 2) * 2;       // Small ripples
+                    let y = this.waterLevel + waveHeight;
+                    p.vertex(x, y);
+                }
+                // Complete the water area - extend to full canvas height
+                p.vertex(this.canvasWidth, this.canvasHeight);
+                p.vertex(0, this.canvasHeight);
+                p.endShape(p.CLOSE);
+                
+                // Add wave caps/whitecaps for additional realism
+                p.stroke(100, 200, 255, 200);
+                p.strokeWeight(3);
+                for (let x = 0; x < this.canvasWidth; x += 20) {
+                    let waveHeight = p.sin(x * 0.008 + this.waveOffset) * 6;
+                    p.line(x, this.waterLevel + waveHeight, x + 15, this.waterLevel + waveHeight);
+                }
+            }
+            
+            // Draw depth measurement markers on the left side - extended for full depth
+            drawDepthMarkers(p) {
+                p.stroke(255, 255, 255, 120);
+                p.strokeWeight(1);
+                p.fill(255, 255, 255, 180);
+                p.textAlign(p.LEFT, p.CENTER);
+                p.textSize(12);
+                
+                // Draw depth markers every 50 meters - extended to cover full depth
+                for (let depth = 0; depth <= 500; depth += 50) {
+                    let y = this.waterLevel + depth;
+                    if (y < this.canvasHeight) {
+                        p.line(20, y, 50, y);                    // Tick mark
+                        p.text(`${depth}m`, 55, y);              // Depth label
+                    }
+                }
+            }
+            
+            // Main ship drawing function with rotation and translation
+            drawShip(p) {
+                p.push();
+                
+                // Apply ship rotation and list angle from center point
+                let shipCenterX = this.ship.x + this.ship.width/2;
+                let shipCenterY = this.ship.y + this.ship.height/2;
+                p.translate(shipCenterX, shipCenterY);
+                p.rotate(this.ship.rotation);          // Bow/stern tilt (trim)
+                p.rotate(this.ship.listAngle);         // Port/starboard tilt (list)
+                p.translate(-shipCenterX, -shipCenterY);
+                
+                // Draw ship components in order
+                this.drawRealisticHull(p);             // Main hull structure
+                this.drawCompartments(p);              // Compartments with water
+                this.drawEnhancedShipDetails(p);       // Superstructure and details
+                
+                p.pop();
+                
+                // Draw underwater hull overlay (outside rotation context)
+                this.drawSubmergedHull(p);
+            }
+            
+            // Draw the main ship hull with realistic shape and details
+            drawRealisticHull(p) {
+                p.stroke(40, 40, 40);
+                p.strokeWeight(6);
+                p.fill(160, 160, 160);
+                
+                // Create ship hull outline with bow and stern tapering
+                p.beginShape();
+                // Port side from bow to stern
+                p.vertex(this.ship.x, this.ship.y + this.ship.height * 0.3);                    // Bow waterline
+                p.vertex(this.ship.x + 30, this.ship.y + this.ship.height * 0.15);              // Bow curve
+                p.vertex(this.ship.x + 60, this.ship.y + this.ship.height * 0.05);              // Bow tip area
+                p.vertex(this.ship.x + 90, this.ship.y);                                        // Bow peak
+                
+                // Deck line
+                p.vertex(this.ship.x + this.ship.width - 90, this.ship.y);                      // Stern peak
+                
+                // Starboard side from stern to bow
+                p.vertex(this.ship.x + this.ship.width - 60, this.ship.y + this.ship.height * 0.05);  // Stern tip area
+                p.vertex(this.ship.x + this.ship.width - 30, this.ship.y + this.ship.height * 0.15);  // Stern curve
+                p.vertex(this.ship.x + this.ship.width, this.ship.y + this.ship.height * 0.3);        // Stern waterline
+                p.vertex(this.ship.x + this.ship.width, this.ship.y + this.ship.height * 0.75);       // Stern bottom curve
+                
+                // Bottom of hull
+                p.vertex(this.ship.x + this.ship.width - 40, this.ship.y + this.ship.height);         // Stern bottom
+                p.vertex(this.ship.x + 40, this.ship.y + this.ship.height);                           // Bow bottom
+                p.vertex(this.ship.x, this.ship.y + this.ship.height * 0.75);                         // Port bottom curve
+                p.endShape(p.CLOSE);
+                
+                // Add hull plating details
+                p.stroke(100, 100, 100);
+                p.strokeWeight(2);
+                for (let i = 1; i < 4; i++) {
+                    let plateY = this.ship.y + (this.ship.height * i / 4);
+                    p.line(this.ship.x + 40, plateY, this.ship.x + this.ship.width - 40, plateY);
+                }
+                
+                // Draw waterline (Plimsoll line)
+                p.stroke(200, 200, 0);
+                p.strokeWeight(3);
+                p.line(this.ship.x + 30, this.ship.y + this.ship.height * 0.7, 
+                       this.ship.x + this.ship.width - 30, this.ship.y + this.ship.height * 0.7);
+                
+                // Add bow detail
+                p.stroke(120, 120, 120);
+                p.strokeWeight(4);
+                p.fill(140, 140, 140);
+                p.beginShape();
+                p.vertex(this.ship.x, this.ship.y + this.ship.height * 0.3);
+                p.vertex(this.ship.x + 15, this.ship.y + this.ship.height * 0.4);
+                p.vertex(this.ship.x + 25, this.ship.y + this.ship.height * 0.6);
+                p.vertex(this.ship.x + 15, this.ship.y + this.ship.height * 0.75);
+                p.vertex(this.ship.x, this.ship.y + this.ship.height * 0.75);
+                p.endShape(p.CLOSE);
+            }
+            
+            // Draw ship compartments with animated water filling
+            drawCompartments(p) {
+                for (let i = 0; i < this.ship.compartments; i++) {
+                    // Calculate compartment dimensions and positions
+                    let hullStartX = this.ship.x + 90;                           // Start of cargo area
+                    let hullEndX = this.ship.x + this.ship.width - 90;          // End of cargo area
+                    let availableWidth = hullEndX - hullStartX;
+                    let totalCompartmentSpace = this.ship.compartments * this.ship.compartmentWidth + 
+                                              (this.ship.compartments - 1) * this.ship.compartmentGap;
+                    
+                    // Scale compartments to fit available hull space
+                    let scaleFactor = availableWidth / totalCompartmentSpace;
+                    let adjustedCompartmentWidth = this.ship.compartmentWidth * scaleFactor;
+                    let adjustedGap = this.ship.compartmentGap * scaleFactor;
+                    
+                    // Calculate compartment position
+                    let compX = hullStartX + i * (adjustedCompartmentWidth + adjustedGap);
+                    let compY = this.ship.y + 25;
+                    let compWidth = adjustedCompartmentWidth;
+                    let compHeight = this.ship.height - 50;
+                    
+                    // Draw compartment walls (bulkheads)
+                    p.stroke(20, 20, 20);
+                    p.strokeWeight(6);
+                    p.line(compX, compY, compX, compY + compHeight);             // Left wall
+                    if (i === this.ship.compartments - 1) {                     // Right wall only for last compartment
+                        p.line(compX + compWidth, compY, compX + compWidth, compY + compHeight);
+                    }
+                    
+                    // Draw compartment floor
+                    p.strokeWeight(4);
+                    p.line(compX, compY + compHeight, compX + compWidth, compY + compHeight);
+                    
+                    // Draw water if compartment is flooded
+                    if (this.compartmentWaterLevels[i] > 0) {
+                        let waterLevel = this.compartmentWaterLevels[i];
+                        let waterHeight = waterLevel * compHeight;
+                        
+                        p.fill(30, 100, 200, 255);                              // Water color
+                        p.noStroke();
+                        
+                        // Create tapered water shape (wider at bottom due to hull shape)
+                        let bottomWidth = compWidth - 10;
+                        let topWidth = compWidth - 2;
+                        let currentWidth = p.lerp(bottomWidth, topWidth, 1 - waterLevel);
+                        let widthOffset = (compWidth - currentWidth) / 2;
+                        
+                        // Draw water surface with animated waves
+                        p.beginShape();
+                        p.vertex(compX + widthOffset, compY + compHeight);       // Bottom left
+                        p.vertex(compX + compWidth - widthOffset, compY + compHeight); // Bottom right
+                        p.vertex(compX + compWidth - widthOffset, compY + compHeight - waterHeight); // Top right
+                        
+                        // Create wavy water surface
+                        for (let wx = compX + compWidth - widthOffset; wx >= compX + widthOffset; wx -= 3) {
+                            let waveHeight = p.sin(wx * 0.05 + this.waveOffset * 6) * (2 * waterLevel);
+                            p.vertex(wx, compY + compHeight - waterHeight + waveHeight);
+                        }
+                        p.endShape(p.CLOSE);
+                        
+                        // Add water surface highlights
+                        p.stroke(150, 220, 255, 200);
+                        p.strokeWeight(2);
+                        for (let wx = compX + widthOffset; wx <= compX + compWidth - widthOffset; wx += 5) {
+                            let waveHeight = p.sin(wx * 0.05 + this.waveOffset * 6) * (2 * waterLevel);
+                            p.point(wx, compY + compHeight - waterHeight + waveHeight);
+                        }
+                        
+                        // Add reflection lines for deeper water
+                        if (waterLevel > 0.3) {
+                            p.stroke(80, 160, 255, 100);
+                            p.strokeWeight(1);
+                            for (let ref = 1; ref <= 3; ref++) {
+                                let refY = compY + compHeight - waterHeight + (ref * 8);
+                                if (refY < compY + compHeight) {
+                                    p.line(compX + widthOffset + 3, refY, compX + compWidth - widthOffset - 3, refY);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Draw compartment gaps (represent internal structure)
+                    if (i < this.ship.compartments - 1) {
+                        p.fill(0, 0, 0, 200);
+                        p.noStroke();
+                        p.rect(compX + compWidth, compY + 5, adjustedGap, compHeight - 10);
+                    }
+                }
+            }
+            
+            // Draw ship superstructure, decks, and detailed features
+            drawEnhancedShipDetails(p) {
+                // Draw multiple deck levels
+                for (let level = 0; level < 4; level++) {
+                    let deckY = this.ship.y - 40 - (level * 35);                // Deck height
+                    let deckWidth = 280 - (level * 35);                         // Narrower at higher levels
+                    let deckX = this.ship.x + 320 + (level * 18);               // Offset for taper
+                    
+                    // Draw deck structure
+                    p.fill(180 - level * 15, 180 - level * 15, 180 - level * 15, 255);
+                    p.stroke(60, 60, 60, 255);
+                    p.strokeWeight(3);
+                    p.rect(deckX, deckY, deckWidth, 30, 4);
+                    
+                    // Draw windows on each deck
+                    p.fill(220, 240, 255, 255);
+                    p.stroke(100, 100, 100, 255);
+                    p.strokeWeight(1);
+                    for (let w = 0; w < Math.floor(deckWidth / 30); w++) {
+                        let windowX = deckX + 15 + w * 30;
+                        let windowY = deckY + 8;
+                        p.rect(windowX, windowY, 20, 14, 2);                     // Window frame
+                        
+                        // Window cross-bars
+                        p.stroke(80, 80, 80, 255);
+                        p.line(windowX + 10, windowY, windowX + 10, windowY + 14);      // Vertical
+                        p.line(windowX, windowY + 7, windowX + 20, windowY + 7);        // Horizontal
+                    }
+                    
+                    // Deck edge details
+                    p.stroke(120, 120, 120, 255);
+                    p.strokeWeight(2);
+                    p.line(deckX, deckY, deckX + deckWidth, deckY);             // Top edge
+                    p.line(deckX, deckY + 30, deckX + deckWidth, deckY + 30);   // Bottom edge
+                }
+                
+                // Draw ship's funnel (smokestack)
+                let funnelY = this.ship.y - 160;
+                p.fill(180, 60, 60, 255);
+                p.stroke(140, 40, 40, 255);
+                p.strokeWeight(4);
+                p.rect(this.ship.x + 280, funnelY, 60, 90, 30);
+                
+                // Funnel details (bands)
+                p.stroke(200, 200, 200, 255);
+                p.strokeWeight(3);
+                p.line(this.ship.x + 285, funnelY + 20, this.ship.x + 335, funnelY + 20);
+                p.line(this.ship.x + 285, funnelY + 70, this.ship.x + 335, funnelY + 70);
+                
+                // Draw smoke if ship is stable and funnel is above water
+                if (funnelY + 45 >= this.waterLevel && !this.ship.isListing) {
+                    p.fill(60, 60, 60, 180);
+                    p.noStroke();
+                    for (let s = 0; s < 6; s++) {
+                        let smokeX = this.ship.x + 310 + p.sin(this.time + s) * 25;
+                        let smokeY = funnelY - 10 - s * 12;
+                        let smokeSize = 25 - s * 3;
+                        p.ellipse(smokeX, smokeY, smokeSize, smokeSize * 0.8);
+                    }
+                }
+                
+                // Draw masts
+                p.stroke(100, 100, 100, 255);
+                p.strokeWeight(5);
+                // Forward mast
+                p.line(this.ship.x + 180, this.ship.y - 10, this.ship.x + 180, this.ship.y - 140);
+                p.strokeWeight(3);
+                p.line(this.ship.x + 160, this.ship.y - 100, this.ship.x + 200, this.ship.y - 100); // Cross beam
+                
+                // Aft mast
+                p.strokeWeight(5);
+                p.line(this.ship.x + 750, this.ship.y - 10, this.ship.x + 750, this.ship.y - 120);
+                p.strokeWeight(3);
+                p.line(this.ship.x + 730, this.ship.y - 80, this.ship.x + 770, this.ship.y - 80);   // Cross beam
+                
+                // Navigation lights
+                p.fill(255, 0, 0, 255);                                         // Port (red)
+                p.noStroke();
+                p.ellipse(this.ship.x + 100, this.ship.y + 10, 8, 8);
+                
+                p.fill(0, 255, 0, 255);                                         // Starboard (green)
+                p.ellipse(this.ship.x + this.ship.width - 100, this.ship.y + 10, 8, 8);
+                
+                // Lifeboats
+                p.fill(255, 140, 0, 255);
+                p.stroke(200, 100, 0, 255);
+                p.strokeWeight(2);
+                for (let i = 0; i < 4; i++) {
+                    let boatX = this.ship.x + 200 + i * 150;
+                    p.ellipse(boatX, this.ship.y - 15, 40, 15);
+                }
+                
+                // Deck cranes
+                p.fill(200, 100, 0, 255);
+                p.stroke(150, 70, 0, 255);
+                p.strokeWeight(3);
+                for (let c = 0; c < 6; c++) {
+                    let craneX = this.ship.x + 150 + c * 120;
+                    let craneY = this.ship.y - 5;
+                    p.line(craneX, craneY, craneX, craneY - 60);                 // Vertical pole
+                    p.line(craneX, craneY - 60, craneX + 40, craneY - 60);       // Horizontal arm
+                    p.ellipse(craneX + 40, craneY - 60, 8, 8);                  // Hook
+                }
+                
+                // Cargo hatches
+                p.fill(100, 50, 0, 255);
+                p.stroke(80, 40, 0, 255);
+                p.strokeWeight(2);
+                for (let h = 0; h < 8; h++) {
+                    let hatchX = this.ship.x + 120 + h * 90;
+                    let hatchY = this.ship.y + 5;
+                    p.rect(hatchX, hatchY, 60, 8, 2);
+                }
+                
+                // Radar/radio equipment
+                p.fill(150, 150, 150, 255);
+                p.stroke(100, 100, 100, 255);
+                p.strokeWeight(2);
+            }
+            
+            // Draw semi-transparent overlay for submerged portions of hull
+            drawSubmergedHull(p) {
+                let submergedAmount = Math.max(0, this.waterLevel - this.ship.y);
+                if (submergedAmount > 0) {
+                    p.fill(20, 80, 150, 120);                                   // Blue-green underwater tint
+                    p.noStroke();
+                    
+                    p.push();
+                    // Apply same rotation as ship for accurate overlay
+                    let shipCenterX = this.ship.x + this.ship.width/2;
+                    let shipCenterY = this.ship.y + this.ship.height/2;
+                    p.translate(shipCenterX, shipCenterY);
+                    p.rotate(this.ship.rotation);
+                    p.rotate(this.ship.listAngle);
+                    p.translate(-shipCenterX, -shipCenterY);
+                    
+                    // Draw rectangular overlay for submerged portion
+                    p.rect(this.ship.x, Math.max(this.ship.y, this.waterLevel - submergedAmount), 
+                           this.ship.width, Math.min(submergedAmount, this.ship.height));
+                    p.pop();
+                }
+            }
+            
+            // Update flooding progression - ALL compartments now fill sequentially one by one
+            updateFlooding() {
+                /*
+                 * flooding for ALL compartments
+                 * Previously, the last compartments were filling simultaneously causing abrupt flooding
+                 * Now ALL compartments (0-11) fill one by one in sequence
+                 */
+                
+                // Only flood one compartment at a time - the current flooding compartment
+                if (this.currentFloodingCompartment < this.ship.compartments) {
+                    // Fill the current compartment gradually
+                    this.compartmentWaterLevels[this.currentFloodingCompartment] += this.floodingSpeed * 0.018;
+                    
+                    // When current compartment is fully filled, move to next compartment
+                    if (this.compartmentWaterLevels[this.currentFloodingCompartment] >= 1) {
+                        this.compartmentWaterLevels[this.currentFloodingCompartment] = 1;
+                        this.currentFloodingCompartment++;
+                        
+                        // Activate next compartment for flooding (if not at end)
+                        if (this.currentFloodingCompartment < this.ship.compartments) {
+                            this.compartmentFloodingActive[this.currentFloodingCompartment] = true;
+                        }
+                    }
+                }
+                
+                // Check if all compartments are completely filled
+                this.ship.allCompartmentsFilled = this.compartmentWaterLevels.every(level => level >= 1.0);
+            }
+            
+            // Update bubble particle system
+            updateBubbles(p) {
+                // Generate new bubbles during sinking
+                if (this.ship.isStartingSink) {
+                    this.bubbleSpawnTimer += 0.016;
+                    
+                    // Spawn bubbles at regular intervals
+                    if (this.bubbleSpawnTimer > 0.1) {  // Every 0.1 seconds
+                        this.bubbleSpawnTimer = 0;
+                        
+                        // Create multiple bubbles around the ship
+                        for (let i = 0; i < 3; i++) {
+                            let bubbleX = this.ship.x + Math.random() * this.ship.width;
+                            let bubbleY = this.ship.y + this.ship.height + Math.random() * 20;
+                            let bubbleSize = 3 + Math.random() * 8;
+                            let bubbleSpeed = 0.5 + Math.random() * 1.5;
+                            
+                            this.bubbles.push(new Bubble(bubbleX, bubbleY, bubbleSize, bubbleSpeed));
+                        }
+                    }
+                }
+                
+                // Update all existing bubbles
+                for (let i = this.bubbles.length - 1; i >= 0; i--) {
+                    this.bubbles[i].update();
+                    
+                    // Remove dead bubbles
+                    if (this.bubbles[i].isDead()) {
+                        this.bubbles.splice(i, 1);
+                    }
+                }
+            }
+            
+            // Draw all bubble particles
+            drawBubbles(p) {
+                for (let bubble of this.bubbles) {
+                    bubble.draw(p);
+                }
+            }
+            
+            // Calculate ship physics including buoyancy, stability, and motion
+            calculatePhysics() {
+                let totalWaterMass = 0;
+                let leftWater = 0, rightWater = 0, frontWater = 0, backWater = 0;
+                let n = this.ship.compartments;
+                
+                // Calculate water distribution and total mass
+                for (let i = 0; i < n; i++) {
+                    let mass = this.compartmentWaterLevels[i] * this.waterDensity * 
+                              this.ship.compartmentWidth * this.ship.height * 0.001;
+                    totalWaterMass += mass;
+                    
+                    // Track water distribution for list and trim calculations
+                    if (i < n/2) leftWater += this.compartmentWaterLevels[i];     // Port side
+                    if (i >= n/2) rightWater += this.compartmentWaterLevels[i];   // Starboard side
+                    if (i < n/4) frontWater += this.compartmentWaterLevels[i];    // Forward
+                    if (i >= 3*n/4) backWater += this.compartmentWaterLevels[i];  // Aft
+                }
+                
+                // Calculate basic ship properties
+                let totalMass = this.ship.emptyMass + totalWaterMass;
+                let submergedRatio = Math.max(0, (this.waterLevel - this.ship.y + this.ship.height) / this.ship.height);
+                submergedRatio = Math.min(1, submergedRatio);
+                
+                // Calculate buoyancy forces
+                let displacedVolume = submergedRatio * this.ship.volume * 0.001;
+                let buoyantForce = displacedVolume * this.waterDensity * this.gravity;
+                let shipWeight = totalMass * this.gravity;
+                
+                // STABLE SHIP MOTION: Gentle wave motion when not sinking
+                if (!this.ship.isSunk && !this.ship.isListing && !this.ship.isStartingSink) {
+                    let waveInfluence = Math.sin(this.ship.baseX * 0.01 + this.waveOffset) * 3;
+                    this.ship.y = this.ship.baseY + waveInfluence + (totalWaterMass / this.ship.emptyMass) * 45;
+                    
+                    // Keep ship centered horizontally
+                    this.ship.x += (this.ship.baseX - this.ship.x) * 0.01;
+                    
+                    // Natural pitch motion from waves
+                    let shipWaveOffset = this.ship.baseX * 0.008 + this.waveOffset;
+                    this.ship.rotation = Math.sin(shipWaveOffset) * 0.012 + Math.sin(shipWaveOffset * 1.1) * 0.005;
+                }
+                
+                // Calculate list angle based on flooding pattern
+                this.calculateSlowTilt();
+                
+                // Apply tilt smoothly to prevent jerky motion
+                if (!this.ship.isSunk) {
+                    this.ship.listAngle += (this.ship.targetListAngle - this.ship.listAngle) * 0.008;
+                }
+                
+                // TRIGGER SINKING: Start sinking after 4th compartment is flooded
+                if (!this.ship.isStartingSink && this.currentFloodingCompartment > 3) {
+                    this.ship.isStartingSink = true;
+                    this.ship.verticalVelocity = 0.15;                          // Initial sinking speed
+                }
+                
+                // SINKING MOTION: Continuous descent until ship disappears off screen
+                if (this.ship.isStartingSink && !this.ship.isSunk) {
+                    this.ship.verticalVelocity += 0.28;                         // Gravity acceleration
+                    this.ship.y += this.ship.verticalVelocity * 0.013;          // Apply velocity
+                    
+                    // Check if ship has completely disappeared off the bottom of canvas
+                    if (this.ship.y > this.canvasHeight + 200) {                // Extra margin for complete disappearance
+                        this.ship.isSunk = true;
+                        this.isSimulationComplete = true;
+                        this.isFlooding = false;
+                    }
+                }
+                
+                // TRIM CALCULATION: Bow/stern tilt from uneven water distribution (minimize during sinking)
+                let trimImbalance = (backWater - frontWater) * 0.1;            // Reduced trim effect during sinking
+                if (!this.ship.isListing && !this.ship.isStartingSink) {
+                    this.ship.rotation += trimImbalance * 0.004;
+                    this.ship.rotation *= 0.95;                                 // Damping
+                } else if (this.ship.isStartingSink) {
+                    // Gradually reduce trim/pitch as ship sinks to prevent forward tilting
+                    this.ship.rotation *= 0.98;                                // Strong damping during sinking
+                }
+                
+                // DETERMINE SHIP STATUS based on current conditions
+                let status = 'Afloat';
+                let floodedPercentage = (totalWaterMass / (this.ship.emptyMass * 0.8)) * 100;
+                let listAngleDegrees = Math.abs(this.ship.listAngle * 180 / Math.PI);
+                
+                if (this.ship.isSunk) {
+                    status = 'Sunk';
+                } else if (this.ship.allCompartmentsFilled && this.ship.isStartingSink) {
+                    status = 'Fully Flooded - Leveling Out';
+                } else if (listAngleDegrees > 25) {
+                    status = 'Critical Listing';
+                } else if (this.ship.isStartingSink) {
+                    status = 'Sinking';
+                } else if (listAngleDegrees > 8) {
+                    status = 'Listing';
+                } else if (shipWeight > buoyantForce * 0.95) {
+                    status = 'Critical - Low Stability';
+                } else if (totalWaterMass > 0) {
+                    status = 'Taking Water';
+                }
+                
+                // Store calculated values for UI updates
+                this.calculatedValues = {
+                    displacement: totalMass.toFixed(0),
+                    buoyancy: buoyantForce.toFixed(0),
+                    status: status,
+                    floodedPercentage: Math.min(100, floodedPercentage).toFixed(1),
+                    listAngle: (this.ship.listAngle * 180 / Math.PI).toFixed(1),
+                    depth: Math.max(0, this.ship.y - this.ship.baseY).toFixed(1),
+                    isEmergency: status.includes('Critical') || status === 'Sunk' || status === 'Sinking'
+                };
+            }
+            
+            // Calculate progressive list angle based on flooding progression - FIXED VERSION
+            calculateSlowTilt() {
+                let tiltMaxRad = 0.7;                                           // Maximum tilt (~40 degrees)
+                let fill = 0;
+                
+                // Calculate total flooding in first 4 compartments
+                for (let i = 0; i < 4; i++) fill += this.compartmentWaterLevels[i];
+                let tiltFactor = Math.min(1, fill / 4);
+                
+                // Calculate left/right water imbalance for list direction
+                let left = 0, right = 0, n = this.ship.compartments;
+                for (let i = 0; i < n; i++) {
+                    if (i < n/2) left += this.compartmentWaterLevels[i];
+                    else right += this.compartmentWaterLevels[i];
+                }
+                let sign = left > right ? -1 : 1;
+                
+                // Track maximum tilt achieved and prevent reduction until fully flooded
+                let currentTiltTarget = sign * tiltMaxRad * tiltFactor * 0.93;
+                
+                if (!this.ship.isStartingSink) {
+                    // PHASE 1: Progressive tilt build-up during initial flooding
+                    this.ship.targetListAngle = currentTiltTarget;
+                    // Track maximum tilt achieved
+                    if (Math.abs(currentTiltTarget) > Math.abs(this.ship.maxTiltAchieved)) {
+                        this.ship.maxTiltAchieved = currentTiltTarget;
+                    }
+                } else if (this.ship.isStartingSink && !this.ship.allCompartmentsFilled) {
+                    // PHASE 2: MAINTAIN MAXIMUM TILT during sinking until all compartments are filled
+                    // NEVER reduce tilt during this phase - use maximum achieved tilt
+                    this.ship.targetListAngle = this.ship.maxTiltAchieved;
+                    // DO NOT increment sinkProgress during this phase
+                    this.ship.sinkProgress = 0;
+                } else if (this.ship.isStartingSink && this.ship.allCompartmentsFilled) {
+                    // PHASE 3: ONLY NOW start gradually reducing tilt to become parallel
+                    // Begin flattening process only when ship is completely flooded
+                    this.ship.sinkProgress += 0.002;  // Very slow leveling progress
+                    if (this.ship.sinkProgress > 1) this.ship.sinkProgress = 1;
+                    
+                    // Gradually reduce list angle towards zero (parallel to seabed)
+                    let levelingFactor = 1 - this.ship.sinkProgress;
+                    this.ship.targetListAngle = this.ship.maxTiltAchieved * levelingFactor;
+                }
+            }
+            
+            // Update all UI elements with current simulation data
+            updateUI() {
+                if (this.calculatedValues) {
+                    // Update text displays
+                    document.getElementById('displacement').textContent = `${this.calculatedValues.displacement} tons`;
+                    document.getElementById('buoyancy').textContent = `${this.calculatedValues.buoyancy} kN`;
+                    document.getElementById('stability').textContent = this.calculatedValues.status;
+                    document.getElementById('flooded').textContent = `${this.calculatedValues.floodedPercentage}%`;
+                    document.getElementById('listAngle').textContent = `${this.calculatedValues.listAngle}°`;
+                    document.getElementById('depth').textContent = `${this.calculatedValues.depth}m`;
+                    
+                    // Update progress bar
+                    document.getElementById('progressFill').style.width = `${Math.min(100, this.calculatedValues.floodedPercentage)}%`;
+                    
+                    // Update status color and animation based on severity
+                    const stabilityElement = document.getElementById('stability');
+                    stabilityElement.className = this.calculatedValues.isEmergency ? 'sinking-warning' : '';
+                    stabilityElement.style.color = 
+                        this.calculatedValues.status === 'Sunk' ? '#8B0000' :
+                        this.calculatedValues.status === 'Fully Flooded - Leveling Out' ? '#DAA520' :
+                        this.calculatedValues.status.includes('Critical') ? '#ff4757' :
+                        this.calculatedValues.status === 'Sinking' ? '#ff6b6b' :
+                        this.calculatedValues.status === 'Listing' ? '#ffa502' :
+                        this.calculatedValues.status === 'Taking Water' ? '#ff9f43' : '#2ed573';
+                }
+                
+                // Update button states
+                const startBtn = document.getElementById('startBtn');
+                const pauseBtn = document.getElementById('pauseBtn');
+                
+                startBtn.disabled = this.isFlooding && !this.isSimulationComplete;
+                pauseBtn.disabled = !this.isFlooding || this.isSimulationComplete;
+                
+                // Update button text based on current state
+                startBtn.textContent = this.ship.isSunk ? 'Ship Sunk' : 
+                    this.isSimulationComplete ? 'Simulation Complete' :
+                    this.isFlooding ? 'Flooding...' : 'Start Flooding';
+                    
+                pauseBtn.textContent = this.isPaused ? 'Resume' : 'Pause';
+            }
+            
+            // Start the flooding simulation
+            startFlooding() {
+                if (!this.isFlooding && !this.isSimulationComplete) {
+                    this.isFlooding = true;
+                    this.isPaused = false;
+                }
+            }
+            
+            // Toggle pause state of simulation
+            togglePause() {
+                if (this.isFlooding && !this.isSimulationComplete) {
+                    this.isPaused = !this.isPaused;
+                }
+            }
+            
+            // Reset simulation to initial state
+            resetSimulation() {
+                // Reset compartment flooding
+                this.compartmentWaterLevels.fill(0);
+                this.compartmentFloodingActive.fill(false);
+                this.compartmentFloodingActive[0] = true;
+                this.currentFloodingCompartment = 0;
+                
+                // Reset simulation states
+                this.isFlooding = false;
+                this.isPaused = false;
+                this.isSimulationComplete = false;
+                
+                // Reset ship position and physics
+                this.ship.x = this.ship.baseX;
+                this.ship.y = this.ship.baseY;
+                this.ship.rotation = 0;
+                this.ship.listAngle = 0;
+                this.ship.targetListAngle = 0;
+                this.ship.sinkingVelocity = 0;
+                this.ship.verticalVelocity = 0;
+                this.ship.lateralVelocity = 0;
+                this.ship.isSunk = false;
+                this.ship.isListing = false;
+                this.ship.isStartingSink = false;
+                this.ship.sinkProgress = 0;
+                this.ship.allCompartmentsFilled = false;
+                this.ship.maxTiltAchieved = 0; // Reset the maximum tilt tracker
+                
+                // Reset animation timers
+                this.time = 0;
+                
+                // Clear bubble effects
+                this.bubbles = [];
+                this.bubbleSpawnTimer = 0;
+                
+                // Reset UI display
+                this.updateInitialUI();
+            }
+            
+            // Set UI to initial values
+            updateInitialUI() {
+                document.getElementById('displacement').textContent = '12500 tons';
+                document.getElementById('buoyancy').textContent = '122625 kN';
+                document.getElementById('stability').textContent = 'Afloat';
+                document.getElementById('stability').style.color = '#2ed573';
+                document.getElementById('stability').className = '';
+                document.getElementById('flooded').textContent = '0%';
+                document.getElementById('listAngle').textContent = '0°';
+                document.getElementById('depth').textContent = '0m';
+                document.getElementById('progressFill').style.width = '0%';
+            }
+        }
+        
+        // Initialize simulation
+        let simulation;
+        
+        // P5.js setup - create simulation instance
+        new p5((p) => {
+            p.setup = () => {
+                simulation = new ShipFloodingSimulation();
+                simulation.setup(p);
+            };
+            
+            p.draw = () => {
+                simulation.draw(p);
+            };
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LDR Light Sensor Simulation</title>
+    <!-- Styling -->
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+        
+        .canvas-container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            margin-bottom: 30px;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            color: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .info-panel {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .info-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .info-item h3 {
+            margin: 0 0 10px 0;
+            color: #FFD700;
+        }
+        
+        .info-item p {
+            margin: 5px 0;
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LDR Light Sensor Simulation</h1>
+        <p class="subtitle">Watch how a Light-Dependent Resistor responds to changing sunlight conditions</p>
+        
+        <div class="canvas-container">
+            <div id="sketch-container"></div>
+        </div>
+        
+        <div class="controls">
+            <button id="resetBtn">Reset Simulation</button>
+            <button id="pauseBtn">Pause</button>
+        </div>
+        
+        <div class="info-panel">
+            <h2>How LDR Works</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <h3>Light Intensity</h3>
+                    <p>As clouds block sunlight, the light intensity decreases</p>
+                    <p>Range: 0-100 lux</p>
+                </div>
+                <div class="info-item">
+                    <h3>LDR Resistance</h3>
+                    <p>Lower resistance in brighter conditions</p>
+                    <p>Range: 1kΩ - 100kΩ</p>
+                </div>
+                <div class="info-item">
+                    <h3>Output Voltage</h3>
+                    <p>Higher voltage in bright light</p>
+                    <p>Vout = Vin × R_fixed/(R_LDR+R_fixed)</p>
+                </div>
+                <div class="info-item">
+                    <h3>Applications</h3>
+                    <p>Street lights, camera exposure, solar panels</p>
+                    <p>Security systems, garden lights</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Importing Modules -->
+    <script type="importmap">
+        {
+            "imports": {
+                "p5": "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"
+            }
+        }
+    </script>
+    <!-- Main script  -->
+    <script type="module">
+        import "p5";
+
+        let canvas;
+        let simulation = {
+            time: 0,
+            lightIntensity: 100,
+            resistance: 1000,
+            voltage: 0,
+            cloudX: -200,
+            cloudSpeed: 0.5,
+            isRunning: true,
+            resistanceHistory: [],
+            voltageHistory: [],
+            timeHistory: [],
+            cloudCover: 0 
+        };
+        
+        const CANVAS_WIDTH = 1000;
+        const CANVAS_HEIGHT = 700;
+        const FIXED_RESISTOR = 10000; // 10kΩ fixed resistor
+        const SUPPLY_VOLTAGE = 5; // 5V supply
+        
+        function setup() {
+            canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+            canvas.parent('sketch-container');
+            
+            // Initialize simulation
+            resetSimulation();
+        }
+        
+        function draw() {
+            // Sky gradient background
+            drawSky();
+            
+            if (simulation.isRunning) {
+                updateSimulation();
+            }
+            
+            // Draw scene elements
+            drawSun();
+            drawClouds();
+            drawLDR();
+            drawCircuit();
+            drawGraphs();
+            drawReadings();
+        }
+        
+        function drawSky() {
+            //Make sky much brighter in sunlight, darker under cloud
+            // Use simulation.lightIntensity for brightness, but clamp for more dramatic effect
+            let skyBrightness = map(simulation.lightIntensity, 0, 100, 30, 255); // max 255 for full sunlight
+            
+            for (let i = 0; i <= height; i++) {
+                let alpha = map(i, 0, height, 0, 1);
+                //Use skyBrightness for all channels for a more "washed" effect
+                let r = lerp(100 + skyBrightness * 0.4, 25, alpha);
+                let g = lerp(150 + skyBrightness * 0.3, 25, alpha);
+                let b = lerp(200 + skyBrightness * 0.2, 112, alpha);
+                
+                stroke(r, g, b);
+                line(0, i, width, i);
+            }
+        }
+        
+        function drawSun() {
+            push();
+            translate(150, 100);
+            
+            // Sun glow and body dim when cloud is over sun
+            // Use simulation.cloudCover for direct dimming
+            let cloudAlpha = simulation.cloudCover || 0;
+            let sunBrightness = 1 - cloudAlpha; // 1 = full bright, 0 = fully covered
+            
+            // Sun glow based on light intensity and cloud cover
+            let glowSize = map(simulation.lightIntensity, 0, 100, 30, 80);
+            let glowAlpha = map(simulation.lightIntensity, 0, 100, 20, 60) * sunBrightness;
+            fill(255, 255, 0, glowAlpha);
+            noStroke();
+            ellipse(0, 0, glowSize * 2);
+            
+            // Sun body
+            let sunAlpha = map(simulation.lightIntensity, 0, 100, 100, 255) * sunBrightness;
+            fill(255, 255, 0, sunAlpha);
+            ellipse(0, 0, 60);
+            
+            // Sun rays
+            stroke(255, 255, 0, sunAlpha);
+            strokeWeight(3);
+            for (let i = 0; i < 8; i++) {
+                let angle = (TWO_PI / 8) * i;
+                let rayLength = map(simulation.lightIntensity, 0, 100, 35, 55);
+                let x1 = cos(angle) * 35;
+                let y1 = sin(angle) * 35;
+                let x2 = cos(angle) * rayLength;
+                let y2 = sin(angle) * rayLength;
+                line(x1, y1, x2, y2);
+            }
+            
+            // Draw a shadow over the sun if cloud is directly over
+            if (cloudAlpha > 0.05) {
+                fill(80, 80, 80, 120 * cloudAlpha);
+                noStroke();
+                ellipse(0, 0, 70);
+            }
+            
+            pop();
+        }
+        
+        function drawClouds() {
+            push();
+            
+            // Main cloud casting shadow
+            fill(80, 80, 80, 180);
+            noStroke();
+            
+            translate(simulation.cloudX, 120);
+            
+            // Cloud shape
+            ellipse(0, 0, 100, 60);
+            ellipse(-40, -15, 70, 50);
+            ellipse(40, -15, 70, 50);
+            ellipse(-20, 15, 60, 35);
+            ellipse(20, 15, 60, 35);
+            
+            // Additional decorative clouds
+            fill(120, 120, 120, 120);
+            translate(400, -50);
+            ellipse(0, 0, 60, 35);
+            ellipse(-20, -5, 45, 30);
+            ellipse(20, -5, 45, 30);
+            
+            pop();
+        }
+        
+        function drawLDR() {
+            push();
+            translate(400, 350);
+            
+            // LDR body
+            fill(139, 69, 19);
+            stroke(100, 50, 50);
+            strokeWeight(2);
+            rect(-50, -20, 100, 40, 10);
+            
+            // LDR symbol (zigzag resistor)
+            stroke(100, 50, 200);
+            strokeWeight(4);
+            noFill();
+            
+            // Draw zigzag pattern
+            beginShape();
+            vertex(-40, 0);
+            vertex(-30, -15);
+            vertex(-20, 15);
+            vertex(-10, -15);
+            vertex(0, 15);
+            vertex(10, -15);
+            vertex(20, 15);
+            vertex(30, -15);
+            vertex(40, 0);
+            endShape();
+            
+            // Light arrows pointing at LDR
+            let arrowAlpha = map(simulation.lightIntensity, 0, 100, 50, 255);
+            stroke(255, 255, 0, arrowAlpha);
+            strokeWeight(3);
+            
+            // Draw light arrows
+            for (let i = 0; i < 3; i++) {
+                let x = -60 + i * 30;
+                let y = -60;
+                line(x, y, x + 10, y + 20);
+                line(x + 10, y + 20, x + 5, y + 15);
+                line(x + 10, y + 20, x + 15, y + 15);
+            }
+            
+            // Connection wires
+            stroke(255, 0, 0);
+            strokeWeight(3);
+            line(-50, 0, -80, 0);  // Left connection to junction
+            line(50, 0, 80, 0);    // Right connection to ground
+            
+            // Label
+            fill(255);
+            noStroke();
+            textAlign(CENTER);
+            textSize(16);
+            text("LDR", 0, 50);
+            
+            pop();
+        }
+        
+        function drawCircuit() {
+            push();
+            
+            // Circuit connections
+            stroke(255, 0, 0);
+            strokeWeight(3);
+            
+            // Voltage divider circuit - LDR on bottom for higher voltage in light
+            // Top: 5V -> Fixed Resistor -> Junction -> LDR -> Ground
+            
+            // Power supply to fixed resistor
+            line(600, 160, 600, 200);
+            
+            // Fixed resistor to junction point
+            line(600, 240, 600, 300);
+            
+            // Junction to LDR
+            line(320, 350, 600, 350);
+            line(600, 300, 600, 350);
+            
+            // LDR to ground
+            line(480, 350, 600, 350);
+            line(600, 350, 600, 400);
+            
+            // Fixed resistor (vertical) - now on top
+            fill(200, 100, 100);
+            stroke(100, 50, 50);
+            strokeWeight(2);
+            rect(590, 200, 20, 40);
+            
+            // Fixed resistor zigzag
+            stroke(100, 50, 200);
+            strokeWeight(3);
+            noFill();
+            beginShape();
+            vertex(600, 210);
+            vertex(595, 215);
+            vertex(605, 220);
+            vertex(595, 225);
+            vertex(605, 230);
+            vertex(600, 235);
+            endShape();
+            
+            // Output voltage measurement point (junction between resistors)
+            fill(255, 255, 0);
+            noStroke();
+            ellipse(600, 300, 10);
+            
+            // Voltage source
+            fill(0, 255, 0);
+            stroke(0, 200, 0);
+            strokeWeight(2);
+            rect(590, 160, 20, 30);
+            
+            // Ground symbol
+            stroke(255);
+            strokeWeight(3);
+            line(590, 410, 610, 410);
+            line(592, 415, 608, 415);
+            line(594, 420, 606, 420);
+            
+            // Labels
+            fill(255);
+            noStroke();
+            textAlign(CENTER);
+            textSize(12);
+            text("R_fixed = 10kΩ", 650, 220);
+            text("Vout", 650, 305);
+            text("5V", 650, 175);
+            text("GND", 650, 425);
+                        
+            // Current flow indicators
+            if (simulation.isRunning) {
+                let flowAlpha = map(simulation.voltage, 0, 5, 50, 200);
+                fill(255, 255, 0, flowAlpha);
+                noStroke();
+                
+                // Animated current flow dots
+                let dotPos = (millis() * 0.1) % 100;
+                ellipse(600, 160 + dotPos * 2.4, 6);
+                ellipse(320 + dotPos * 2.8, 350, 6);
+            }
+            
+            pop();
+        }
+        
+        function drawGraphs() {
+            // Resistance graph
+            drawGraph(50, 450, 400, 120, "Resistance (kΩ)", simulation.resistanceHistory, color(255, 100, 100), 1, 100, "kΩ");
+            
+            // Voltage graph
+            drawGraph(550, 450, 400, 120, "Voltage (V)", simulation.voltageHistory, color(100, 255, 100), 0, 5, "V");
+        }
+        
+        function drawGraph(x, y, w, h, title, data, graphColor, minVal, maxVal, unit) {
+            push();
+            translate(x, y);
+            
+            // Graph background
+            fill(0, 0, 0, 150);
+            stroke(255, 255, 255, 100);
+            strokeWeight(1);
+            rect(0, 0, w, h);
+            
+            // Title
+            fill(255);
+            noStroke();
+            textAlign(CENTER);
+            textSize(14);
+            text(title, w/2, -10);
+            
+            // Grid lines and scale labels
+            stroke(255, 255, 255, 50);
+            strokeWeight(1);
+            textAlign(RIGHT);
+            textSize(10);
+            
+            for (let i = 0; i <= 5; i++) {
+                let gridY = (h / 5) * i;
+                line(0, gridY, w, gridY);
+                
+                // Scale labels
+                let scaleValue = map(i, 0, 5, maxVal, minVal);
+                if (unit === "kΩ") {
+                    text(scaleValue.toFixed(0) + unit, -5, gridY + 4);
+                } else {
+                    text(scaleValue.toFixed(1) + unit, -5, gridY + 4);
+                }
+            }
+            
+            // Data plot
+            if (data.length > 1) {
+                stroke(graphColor);
+                strokeWeight(2);
+                noFill();
+                
+                beginShape();
+                for (let i = 0; i < data.length; i++) {
+                    let plotX = map(i, 0, data.length - 1, 0, w);
+                    let plotY;
+                    
+                    if (unit === "kΩ") {
+                        plotY = map(data[i]/1000, minVal, maxVal, h, 0);
+                    } else {
+                        plotY = map(data[i], minVal, maxVal, h, 0);
+                    }
+                    
+                    vertex(plotX, plotY);
+                }
+                endShape();
+            }
+            
+            // Current value indicator
+            if (data.length > 0) {
+                fill(graphColor);
+                noStroke();
+                let currentY;
+                if (unit === "kΩ") {
+                    currentY = map(data[data.length - 1]/1000, minVal, maxVal, h, 0);
+                } else {
+                    currentY = map(data[data.length - 1], minVal, maxVal, h, 0);
+                }
+                ellipse(w - 5, currentY, 8);
+                
+                // Current value text
+                fill(255);
+                textAlign(LEFT);
+                textSize(12);
+                if (unit === "kΩ") {
+                    text((data[data.length - 1]/1000).toFixed(1) + unit, w + 10, currentY + 4);
+                } else {
+                    text(data[data.length - 1].toFixed(2) + unit, w + 10, currentY + 4);
+                }
+            }
+            
+            pop();
+        }
+        
+        function drawReadings() {
+            // Current readings display
+            push();
+            
+            fill(0, 0, 0, 150);
+            stroke(255, 255, 255, 200);
+            strokeWeight(2);
+            rect(750, 50, 200, 150, 10);
+            
+            fill(255);
+            noStroke();
+            textAlign(LEFT);
+            textSize(14);
+            text("Current Readings:", 760, 75);
+            
+            textSize(12);
+            text(`Light: ${simulation.lightIntensity.toFixed(1)} lux`, 760, 100);
+            text(`Resistance: ${(simulation.resistance/1000).toFixed(1)} kΩ`, 760, 120);
+            text(`Voltage: ${simulation.voltage.toFixed(2)} V`, 760, 140);
+            text(`Time: ${simulation.time.toFixed(1)} s`, 760, 160);
+            
+            pop();
+        }
+        
+        function updateSimulation() {
+            simulation.time += 0.1;
+            
+            // Move cloud across the screen
+            simulation.cloudX += simulation.cloudSpeed;
+            
+            // Calculate light intensity based on cloud position
+            let cloudCover = 0;
+            if (simulation.cloudX > 100 && simulation.cloudX < 500) {
+                // Cloud is over the LDR area
+                let coverageAmount = map(abs(simulation.cloudX - 300), 0, 200, 1, 0);
+                cloudCover = coverageAmount * 0.7; // 70% maximum coverage
+            }
+            simulation.cloudCover = cloudCover; // 
+            
+            // Base light intensity is higher without cloud
+            let baseLight = 100;
+            simulation.lightIntensity = baseLight * (1 - cloudCover);
+            
+            // Calculate LDR resistance (inverse relationship with light)
+            // More light = less resistance, less light = more resistance
+            simulation.resistance = map(simulation.lightIntensity, 0, 100, 100000, 1000);
+            
+            // Calculate output voltage using voltage divider
+            // Vout = Vin * R_fixed / (R_LDR + R_fixed)
+            simulation.voltage = SUPPLY_VOLTAGE * FIXED_RESISTOR / (simulation.resistance + FIXED_RESISTOR);
+            
+            // Store history for graphs
+            simulation.resistanceHistory.push(simulation.resistance);
+            simulation.voltageHistory.push(simulation.voltage);
+            simulation.timeHistory.push(simulation.time);
+            
+            // Limit history length
+            if (simulation.resistanceHistory.length > 200) {
+                simulation.resistanceHistory.shift();
+                simulation.voltageHistory.shift();
+                simulation.timeHistory.shift();
+            }
+            
+            // Reset cloud position when it goes off screen
+            if (simulation.cloudX > width + 100) {
+                simulation.cloudX = -200;
+            }
+        }
+        
+        function resetSimulation() {
+            simulation.time = 0;
+            simulation.cloudX = -200;
+            simulation.lightIntensity = 100;
+            simulation.resistance = 1000;
+            simulation.voltage = SUPPLY_VOLTAGE * FIXED_RESISTOR / (simulation.resistance + FIXED_RESISTOR);
+            simulation.resistanceHistory = [];
+            simulation.voltageHistory = [];
+            simulation.timeHistory = [];
+            simulation.isRunning = true;
+            simulation.cloudCover = 0; 
+            
+            // Update button text
+            document.getElementById('pauseBtn').textContent = 'Pause';
+        }
+        
+        function togglePause() {
+            simulation.isRunning = !simulation.isRunning;
+            document.getElementById('pauseBtn').textContent = simulation.isRunning ? 'Pause' : 'Resume';
+        }
+        
+        // Event listeners
+        document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+        document.getElementById('pauseBtn').addEventListener('click', togglePause);
+        
+        // Make functions global for p5.js
+        window.setup = setup;
+        window.draw = draw;
+    </script>
+</body>
+</html>

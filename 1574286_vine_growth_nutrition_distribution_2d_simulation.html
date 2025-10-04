@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Realistic Wall Vine Growth (Stable Speed & Thickness)</title>
+  <style>
+    /* Basic page and UI styling */
+    body { margin:0; overflow:hidden; background:#eaf4ea; font-family:sans-serif; }
+    #canvas-container { position:relative; width:100vw; height:100vh; }
+    .ui {
+      position:absolute;top:18px;left:18px;z-index:9;
+      padding:16px 20px;border-radius:12px;background:#ffffffee;
+      box-shadow:0 6px 20px rgba(0,0,0,0.15);font-size:14px;
+      user-select:none;backdrop-filter:blur(10px);
+    }
+    .ui h3{margin:0 0 8px 0;font-size:16px;color:#2d5a2d;font-weight:600}
+    .ui button{
+      padding:8px 16px;border:none;border-radius:8px;
+      background:#4a7c59;color:#fff;cursor:pointer;font-size:13px;margin:3px;
+      transition:all 0.2s ease;
+    }
+    .ui button:hover{background:#5c8c69;transform:translateY(-1px)}
+    .nutrition-info {
+      margin-top:12px;padding:8px;background:#f8fff8;border-radius:6px;
+      border-left:3px solid #4a7c59;font-size:12px;
+    }
+    .nutrition-bar {
+      width: 120px; height: 14px; border-radius: 7px; background: #eee; margin: 6px 0 2px 0; position: relative;
+      box-shadow: 0 1px 3px #0001 inset;
+    }
+    .nutrition-bar-inner {
+      height: 100%; border-radius: 7px; position: absolute; left: 0; top: 0;
+      background: linear-gradient(90deg, #ff4444 0%, #ffaa44 50%, #44bb44 100%);
+    }
+    small {
+      display: block;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #666;
+      line-height: 1.4;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+<div class="ui">
+  <h3>🌿 Wall Vine Nutrition Simulation</h3>
+  <button id="reset-btn">🔄 Reset</button>
+  <div class="nutrition-info">
+    <strong>Nutrition Level:</strong>
+    <div class="nutrition-bar"><div id="nutrition-bar-inner" class="nutrition-bar-inner"></div></div>
+    <span id="nutrition-value" style="font-weight:bold;font-size:15px"></span>
+    <div style="margin-top:4px">
+      <span style="color:#ff4444">Low</span> &mdash; <span style="color:#ffaa44">Medium</span> &mdash; <span style="color:#44bb44">High</span>
+    </div>
+    <div style="margin-top:4px">
+      <span style="color:#888">Affects branching, leaves, flowers</span>
+    </div>
+  </div>
+  <small>
+    • 100% viewport wall<br>
+    • Realistic obstacles (windows, pipes, AC)<br>
+    • Vine hugs/follows obstacles<br>
+    • No soil, no ground, no sky
+  </small>
+</div>
+<div id="canvas-container"></div>
+<script type="module">
+import p5 from "p5";
+
+// Constants controlling vine growth and appearance
+const BASE_SEG_LEN = 5;               // Length of each vine segment
+const BASE_GROW_INTERVAL = 60;        // Growth update interval (ms), constant speed
+const BASE_BRANCH_CHANCE = 0.06;      // Base chance to branch
+const BASE_TOP_BRANCH_CHANCE = 0.012; // Branch chance near top
+const OBSTACLE_MARGIN = 8;            // Margin around obstacles for collision
+const MIN_BRANCH_DIST = 10;           // Minimum segments between branches
+const MAX_BRANCH_DEPTH = 4;           // Max depth of branching
+const PIPE_ARC_LIMIT = 15;            // Max steps to follow pipe arc
+const LOOKAHEAD_REDUCTION = 0.9;      // Lookahead distance multiplier for obstacle detection
+const MAX_SEGMENTS = 15000;           // Max total vine segments to limit growth
+const BASE_GRAVITY = 0.012;           // Gravity effect on vine growth direction
+const BASE_DIRECTIONAL_BIAS = 0.11;   // Upward bias for vine growth
+const NOISE_SCALE = 0.01;             // Scale for Perlin noise in growth direction
+const NOISE_STRENGTH = 0.13;          // Strength of noise angle variation
+const BASE_LEAF_DENSITY = 0.38;       // Base leaf density factor
+const BASE_FLOWER_DENSITY = 0.08;     // Base flower density factor
+const MIN_LEAF_DENSITY = 0.12;        // Minimum leaf density even at low nutrition
+
+// Nutrition level affecting branching, leaves, flowers (0.2 to 1.0)
+let nutrition = 0.7;
+
+const sketch = (p) => {
+  // Arrays to hold obstacles and vine shoots (branches)
+  let obstacles = [];
+  let shoots = [];
+  let lastGrow = 0; // Timestamp of last growth update
+  let wallGraphic;  // Offscreen graphics buffer for wall texture
+  let wallLeft, wallRight, wallTop, wallBottom, wallW; // Wall boundaries
+
+  // Variables controlling vine growth parameters (set on reset)
+  let SEG_LEN, GROW_INTERVAL, BRANCH_CHANCE, TOP_BRANCH_CHANCE, GRAVITY, DIRECTIONAL_BIAS, LEAF_DENSITY, FLOWER_DENSITY;
+
+  // Update wall boundary variables based on canvas size
+  const updateWallBounds = () => {
+    wallLeft = 0;
+    wallRight = p.width;
+    wallTop = 0;
+    wallBottom = p.height;
+    wallW = p.width;
+  };
+
+  // --- Obstacle Classes ---
+
+  // Window obstacle: rectangular with glass and frame
+  class WindowOb {
+    constructor(x, y, w = 90, h = 60) {
+      this.x = x; this.y = y; this.w = w; this.h = h; this.type = 'window';
+    }
+    // Check if point is inside obstacle (with margin)
+    contains(px, py) {
+      return px > this.x - this.w / 2 - OBSTACLE_MARGIN && px < this.x + this.w / 2 + OBSTACLE_MARGIN &&
+             py > this.y - this.h / 2 - OBSTACLE_MARGIN && py < this.y + this.h / 2 + OBSTACLE_MARGIN;
+    }
+    // Return nearest vertical edge x coordinate to a point
+    nearestEdge(px) {
+      let left = this.x - this.w / 2 - OBSTACLE_MARGIN;
+      let right = this.x + this.w / 2 + OBSTACLE_MARGIN;
+      return (Math.abs(px - left) < Math.abs(px - right)) ? left : right;
+    }
+    // Return closest point on obstacle perimeter to given point
+    getPerimeterPoint(px, py) {
+      let left = this.x - this.w / 2 - OBSTACLE_MARGIN;
+      let right = this.x + this.w / 2 + OBSTACLE_MARGIN;
+      let top = this.y - this.h / 2 - OBSTACLE_MARGIN;
+      let bottom = this.y + this.h / 2 + OBSTACLE_MARGIN;
+      let distToLeft = Math.abs(px - left);
+      let distToRight = Math.abs(px - right);
+      let distToTop = Math.abs(py - top);
+      let distToBottom = Math.abs(py - bottom);
+      let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+      if (minDist === distToLeft) return { x: left, y: py };
+      if (minDist === distToRight) return { x: right, y: py };
+      if (minDist === distToTop) return { x: px, y: top };
+      return { x: px, y: bottom };
+    }
+    // Draw the window obstacle with frame and glass
+    draw() {
+      p.fill(120, 100, 80);
+      p.stroke(80, 60, 40);
+      p.strokeWeight(5);
+      p.rect(this.x - this.w / 2 - 6, this.y - this.h / 2 - 6, this.w + 12, this.h + 12, 8);
+      p.fill(180, 200, 230, 210);
+      p.stroke(140, 160, 190);
+      p.strokeWeight(2);
+      p.rect(this.x - this.w / 2, this.y - this.h / 2, this.w, this.h, 5);
+      p.fill(255, 255, 255, 60);
+      p.noStroke();
+      p.rect(this.x - this.w / 2 + 8, this.y - this.h / 2 + 8, this.w / 3, this.h / 2, 3);
+      p.stroke(100, 80, 60, 120);
+      p.strokeWeight(3);
+      p.line(this.x, this.y - this.h / 2, this.x, this.y + this.h / 2);
+      p.line(this.x - this.w / 2, this.y, this.x + this.w / 2, this.y);
+    }
+  }
+
+  // Pipe obstacle: circular pipe with shading
+  class PipeOb {
+    constructor(x, y, r = 28) {
+      this.x = x; this.y = y; this.r = r; this.type = 'pipe'; this.seed = p.random(10000);
+    }
+    // Check if point is inside pipe (with margin)
+    contains(px, py) {
+      return p.dist(px, py, this.x, this.y) < this.r + OBSTACLE_MARGIN;
+    }
+    // Get closest point on pipe perimeter to given point
+    getPerimeterPoint(px, py) {
+      let angle = p.atan2(py - this.y, px - this.x);
+      return {
+        x: this.x + p.cos(angle) * (this.r + OBSTACLE_MARGIN),
+        y: this.y + p.sin(angle) * (this.r + OBSTACLE_MARGIN)
+      };
+    }
+    // Return nearest horizontal edge x coordinate to a point
+    nearestEdge(px) {
+      return (px < this.x) ? this.x - this.r - OBSTACLE_MARGIN : this.x + this.r + OBSTACLE_MARGIN;
+    }
+    // Draw pipe with shading and highlights
+    draw() {
+      p.randomSeed(this.seed);
+      p.fill(0, 0, 0, 30);
+      p.noStroke();
+      p.ellipse(this.x + 4, this.y + 4, this.r * 2.3);
+      p.fill(140, 140, 140);
+      p.stroke(100, 100, 100);
+      p.strokeWeight(4);
+      p.ellipse(this.x, this.y, this.r * 2);
+      p.fill(30, 30, 30);
+      p.noStroke();
+      p.ellipse(this.x, this.y, this.r * 1.4);
+      p.fill(80, 80, 80);
+      p.noStroke();
+      p.ellipse(this.x, this.y, this.r * 1.2);
+      p.fill(15, 15, 15);
+      p.noStroke();
+      p.ellipse(this.x, this.y, this.r * 0.9);
+      p.fill(180, 180, 180);
+      p.noStroke();
+      p.ellipse(this.x - this.r / 3, this.y - this.r / 3, this.r * 1.2);
+      p.stroke(80, 80, 80);
+      p.strokeWeight(2);
+      p.noFill();
+      p.ellipse(this.x, this.y, this.r * 1.8);
+      p.ellipse(this.x, this.y, this.r * 1.6);
+      p.randomSeed();
+    }
+  }
+
+  // Air Conditioner obstacle: rectangular with grille and logo
+  class ACOb {
+    constructor(x, y, w = 60, h = 38) {
+      this.x = x; this.y = y; this.w = w; this.h = h; this.type = 'ac';
+    }
+    // Check if point is inside AC (with margin)
+    contains(px, py) {
+      return px > this.x - this.w / 2 - OBSTACLE_MARGIN && px < this.x + this.w / 2 + OBSTACLE_MARGIN &&
+             py > this.y - this.h / 2 - OBSTACLE_MARGIN && py < this.y + this.h / 2 + OBSTACLE_MARGIN;
+    }
+    // Get closest point on AC perimeter to given point
+    getPerimeterPoint(px, py) {
+      let left = this.x - this.w / 2 - OBSTACLE_MARGIN;
+      let right = this.x + this.w / 2 + OBSTACLE_MARGIN;
+      let top = this.y - this.h / 2 - OBSTACLE_MARGIN;
+      let bottom = this.y + this.h / 2 + OBSTACLE_MARGIN;
+      let distToLeft = Math.abs(px - left);
+      let distToRight = Math.abs(px - right);
+      let distToTop = Math.abs(py - top);
+      let distToBottom = Math.abs(py - bottom);
+      let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+      if (minDist === distToLeft) return { x: left, y: py };
+      if (minDist === distToRight) return { x: right, y: py };
+      if (minDist === distToTop) return { x: px, y: top };
+      return { x: px, y: bottom };
+    }
+    // Return nearest horizontal edge x coordinate to a point
+    nearestEdge(px) {
+      return (px < this.x) ? this.x - this.w / 2 - OBSTACLE_MARGIN : this.x + this.w / 2 + OBSTACLE_MARGIN;
+    }
+    // Draw AC unit with grille and logo
+    draw() {
+      p.fill(220, 220, 230);
+      p.stroke(120, 120, 140);
+      p.strokeWeight(3);
+      p.rect(this.x - this.w / 2, this.y - this.h / 2, this.w, this.h, 7);
+      p.stroke(170, 170, 190, 120);
+      p.strokeWeight(1.5);
+      for (let i = 0; i < 6; i++) {
+        let gx = this.x - this.w / 2 + 8 + i * 8;
+        p.line(gx, this.y - this.h / 2 + 6, gx, this.y + this.h / 2 - 6);
+      }
+      p.noStroke();
+      p.fill(120, 160, 220, 120);
+      p.ellipse(this.x + this.w / 2 - 14, this.y + this.h / 2 - 10, 10, 6);
+    }
+  }
+
+  // --- Vine Segment Class ---
+  class Segment {
+    constructor(x, y, branch, segmentIndex) {
+      this.pos = p.createVector(x, y);  // Position vector of segment
+      this.branch = branch;              // Reference to parent branch
+      this.segmentIndex = segmentIndex; // Index in branch
+
+      // Thickness fixed, slightly thinner for deeper branches
+      this.thickness = 3.5 * (1.1 - branch.depth * 0.13);
+
+      // Generate stable random seed based on position and index for consistent leaf/flower properties
+      this.rngSeed = (x * 73856093 ^ y * 19349663 ^ segmentIndex * 83492791) >>> 0;
+      let rng = mulberry32(this.rngSeed);
+
+      // Calculate leaf probability based on branch depth and nutrition, with minimum density
+      let depthFactor = p.map(this.branch.depth, 0, MAX_BRANCH_DEPTH, 1.0, 0.3);
+      let leafProb = Math.max(BASE_LEAF_DENSITY * depthFactor * nutrition, MIN_LEAF_DENSITY * depthFactor);
+      this.hasLeaf = (segmentIndex >= 5) && (rng() < leafProb) && (segmentIndex % 3 === 0);
+
+      // Stable leaf angle and size
+      this.leafAngle = rng() * p.PI - p.PI / 2;
+      this.leafSize = (0.9 + rng() * 0.5) * (1.3 - 0.2 * branch.depth);
+
+      // Calculate flower probability similarly
+      let flowerDepthFactor = p.map(this.branch.depth, 0, MAX_BRANCH_DEPTH, 1.0, 0.5);
+      let flowerProb = BASE_FLOWER_DENSITY * flowerDepthFactor * nutrition;
+      this.hasFlower = (segmentIndex >= 12) && (rng() < flowerProb) && (segmentIndex % Math.round(p.map(nutrition, 0.2, 1.0, 18, 8)) === 0);
+
+      // Stable flower properties
+      this.flowerAngle = rng() * p.PI - p.PI / 2;
+      this.flowerSize = (0.7 + rng() * 0.5) * (1.2 + 0.5 * nutrition);
+      this.flowerColor = p.color(
+        p.lerp(180, 255, nutrition) + (rng() - 0.5) * 20,
+        p.lerp(120, 200, nutrition) + (rng() - 0.5) * 20,
+        p.lerp(180, 255, nutrition) + (rng() - 0.5) * 20
+      );
+    }
+  }
+
+  // Stable pseudo-random number generator for consistent leaf/flower properties
+  function mulberry32(a) {
+    return function() {
+      var t = a += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+  }
+
+  // --- Vine Branch (Shoot) Class ---
+  class Shoot {
+    constructor(x, y, dir, depth = 0, parent = null) {
+      this.segs = [];               // Array of segments in this branch
+      this.dir = dir.copy().normalize(); // Current growth direction vector
+      this.depth = depth;           // Branch depth (0 = main vine)
+      this.growing = true;          // Is this branch still growing?
+      this.state = 'normal';        // Growth state (normal, following obstacle)
+      this.targetOb = null;         // Obstacle being followed (if any)
+      this.edgeX = null;            // Edge x coordinate for obstacle following
+      this.lastBranchAt = 0;        // Segment index of last branch
+      this.segmentCount = 0;        // Number of segments grown
+      this.pipeArcSteps = 0;        // Steps following pipe arc
+      this.noiseSeed = p.random(10000); // Seed for Perlin noise in growth
+      this.segs.push(new Segment(x, y, this, this.segmentCount++)); // Initial segment
+    }
+    // Get tip segment of branch
+    tip() { return this.segs[this.segs.length - 1]; }
+
+    // Perform one growth step for this branch
+    stepGrowth() {
+      if (!this.growing) return;
+
+      // Stop growing if total segments exceed max allowed
+      let totalSegments = shoots.reduce((sum, shoot) => sum + shoot.segs.length, 0);
+      if (totalSegments > MAX_SEGMENTS) {
+        this.growing = false;
+        return;
+      }
+
+      let t = this.tip();
+      let pos = t.pos.copy();
+      let dir = this.dir.copy();
+      let next = null;
+
+      // Handle obstacle following states
+      if (this.state === 'followingWindow' && this.targetOb) {
+        // Follow window perimeter edges
+        let left = this.targetOb.x - (this.targetOb.w ? this.targetOb.w / 2 : this.targetOb.r) - OBSTACLE_MARGIN;
+        let right = this.targetOb.x + (this.targetOb.w ? this.targetOb.w / 2 : this.targetOb.r) + OBSTACLE_MARGIN;
+        let top = this.targetOb.y - (this.targetOb.h ? this.targetOb.h / 2 : this.targetOb.r) - OBSTACLE_MARGIN;
+        let bottom = this.targetOb.y + (this.targetOb.h ? this.targetOb.h / 2 : this.targetOb.r) + OBSTACLE_MARGIN;
+
+        // Move along edges with simple logic to hug obstacle
+        if (Math.abs(pos.x - left) < 3) {
+          if (pos.y > top) next = p.createVector(left, pos.y - SEG_LEN);
+          else next = p.createVector(pos.x + SEG_LEN, top);
+        } else if (Math.abs(pos.x - right) < 3) {
+          if (pos.y > top) next = p.createVector(right, pos.y - SEG_LEN);
+          else next = p.createVector(pos.x - SEG_LEN, top);
+        } else if (Math.abs(pos.y - top) < 3) {
+          if (this.edgeX === left) {
+            next = p.createVector(pos.x + SEG_LEN, top);
+            if (pos.x >= this.targetOb.x) {
+              this.state = 'normal';
+              this.targetOb = null;
+              this.dir = p.createVector(0, -1);
+            }
+          } else {
+            next = p.createVector(pos.x - SEG_LEN, top);
+            if (pos.x <= this.targetOb.x) {
+              this.state = 'normal';
+              this.targetOb = null;
+              this.dir = p.createVector(0, -1);
+            }
+          }
+        } else {
+          // Move to closest perimeter point
+          let perimPoint = this.targetOb.getPerimeterPoint(pos.x, pos.y);
+          next = p.createVector(perimPoint.x, perimPoint.y);
+        }
+      }
+      else if (this.state === 'followingPipe' && this.targetOb) {
+        // Follow pipe arc around circular obstacle
+        let angle = p.atan2(pos.y - this.targetOb.y, pos.x - this.targetOb.x);
+        angle -= 0.15 - p.random(0.03);
+        let radius = this.targetOb.r + OBSTACLE_MARGIN;
+        let nx = this.targetOb.x + p.cos(angle) * radius;
+        let ny = this.targetOb.y + p.sin(angle) * radius - 0.8;
+        next = p.createVector(nx, ny);
+        this.pipeArcSteps = (this.pipeArcSteps || 0) + 1;
+        if (ny < this.targetOb.y - radius - 5 || this.pipeArcSteps > PIPE_ARC_LIMIT) {
+          this.state = 'normal';
+          this.targetOb = null;
+          this.dir = p.createVector(0, -1);
+          this.pipeArcSteps = 0;
+        }
+      }
+      else {
+        // Normal growth: check for obstacles ahead
+        let lookahead = pos.copy().add(dir.copy().mult(SEG_LEN * 1.5 * LOOKAHEAD_REDUCTION));
+        let found = false;
+        for (let ob of obstacles) {
+          if (ob.contains(lookahead.x, lookahead.y)) {
+            found = true;
+            if (ob.type === 'window' || ob.type === 'ac') {
+              this.state = 'followingWindow';
+              this.targetOb = ob;
+              this.edgeX = ob.nearestEdge(pos.x);
+              let perimPoint = ob.getPerimeterPoint(pos.x, pos.y);
+              next = p.createVector(perimPoint.x, perimPoint.y);
+              break;
+            } else if (ob.type === 'pipe') {
+              this.state = 'followingPipe';
+              this.targetOb = ob;
+              let perimPoint = ob.getPerimeterPoint(pos.x, pos.y);
+              next = p.createVector(perimPoint.x, perimPoint.y);
+              this.pipeArcSteps = 0;
+              break;
+            }
+          }
+        }
+        if (!found) {
+          // Apply Perlin noise and gravity to growth direction
+          let noiseVal = p.noise(this.noiseSeed, this.segs.length * NOISE_SCALE);
+          let angle = p.map(noiseVal, 0, 1, -NOISE_STRENGTH, NOISE_STRENGTH);
+          dir.rotate(angle);
+          dir.y += GRAVITY;
+          dir.y -= DIRECTIONAL_BIAS;
+          dir.normalize();
+
+          // Grow forward by segment length
+          let segmentLength = SEG_LEN;
+          let nx = p.constrain(pos.x + dir.x * segmentLength, wallLeft + 2, wallRight - 2);
+          let ny = pos.y + dir.y * segmentLength;
+          next = p.createVector(nx, ny);
+          this.dir = p.createVector(nx - pos.x, ny - pos.y).normalize();
+        }
+      }
+
+      // Add new segment if next position is valid
+      if (next) {
+        this.segs.push(new Segment(next.x, next.y, this, this.segmentCount++));
+        if (next.y < wallTop + 30) this.growing = false; // Stop if near top
+      }
+
+      // Branching logic: chance increases with nutrition and proximity to bottom
+      if (
+        this.depth < MAX_BRANCH_DEPTH &&
+        this.segs.length > 8 &&
+        this.segs.length - this.lastBranchAt > MIN_BRANCH_DIST &&
+        totalSegments < MAX_SEGMENTS * 0.8
+      ) {
+        let y = this.tip().pos.y;
+        let branchChance = p.map(y, wallBottom, wallTop, BRANCH_CHANCE, TOP_BRANCH_CHANCE, true);
+        if (this.depth <= 1) branchChance *= 1.8;
+        branchChance *= nutrition;
+        if (p.random() < branchChance) {
+          let angle = p.random(-p.PI / 2.8, p.PI / 2.8);
+          let upwardness = p.map(y, wallBottom, wallTop, 0.4, 0.85, true);
+          let branchDir = p5.Vector.lerp(
+            this.dir.copy().rotate(angle),
+            p.createVector(0, -1),
+            upwardness
+          );
+          shoots.push(new Shoot(this.tip().pos.x, this.tip().pos.y, branchDir, this.depth + 1, this));
+          this.lastBranchAt = this.segs.length;
+        }
+      }
+    }
+  }
+
+  // Draw brick wall texture to offscreen buffer for performance
+  function drawWallToBuffer() {
+    wallGraphic.background(235, 225, 210);
+    wallGraphic.noStroke();
+    wallGraphic.rect(0, 0, wallW, p.height);
+    wallGraphic.stroke(200, 185, 165);
+    wallGraphic.strokeWeight(2);
+    let brickW = 45, brickH = 20;
+    for (let y = 0; y < p.height; y += brickH) {
+      for (let x = 0; x < wallW; x += brickW) {
+        let offsetX = (Math.floor(y / brickH) % 2) * (brickW / 2);
+        wallGraphic.fill(p.random(220, 240), p.random(200, 220), p.random(180, 200));
+        wallGraphic.rect(x + offsetX, y, brickW - 2, brickH - 2, 2);
+      }
+    }
+    // Add subtle noise dots for texture
+    for (let i = 0; i < 60; i++) {
+      wallGraphic.fill(0, 0, 0, p.random(5, 15));
+      wallGraphic.noStroke();
+      let x = p.random(0, wallW);
+      let y = p.random(0, p.height);
+      wallGraphic.ellipse(x, y, p.random(1, 3));
+    }
+  }
+
+  // Draw the wall texture buffer on canvas
+  function drawWall() {
+    p.image(wallGraphic, wallLeft, wallTop);
+  }
+
+  // Draw all obstacles
+  function drawObstacles() {
+    obstacles.forEach(ob => ob.draw());
+  }
+
+  // Draw all vine branches with leaves and flowers
+  function drawVines() {
+    shoots.forEach(branch => {
+      // Vine color interpolates with nutrition level
+      let vineColor = p.lerpColor(p.color(120, 180, 60), p.color(40, 200, 40), nutrition);
+      p.stroke(vineColor);
+      // Thickness fixed, thinner for deeper branches
+      p.strokeWeight(3.5 * (2.2 - branch.depth * 0.5));
+      p.noFill();
+
+      // Draw smooth curve through segments
+      p.beginShape();
+      if (branch.segs.length > 2) {
+        p.curveVertex(branch.segs[0].pos.x, branch.segs[0].pos.y);
+      }
+      for (let seg of branch.segs) {
+        p.curveVertex(seg.pos.x, seg.pos.y);
+      }
+      if (branch.segs.length > 2) {
+        let last = branch.segs[branch.segs.length - 1];
+        p.curveVertex(last.pos.x, last.pos.y);
+      }
+      p.endShape();
+
+      // Draw leaves and flowers on segments
+      branch.segs.forEach(seg => {
+        if (seg.hasLeaf) {
+          drawLeaf(seg.pos.x, seg.pos.y, seg.leafAngle, seg.leafSize, branch.depth);
+        }
+        if (seg.hasFlower) {
+          drawFlower(seg.pos.x, seg.pos.y, seg.flowerAngle, seg.flowerSize, seg.flowerColor);
+        }
+      });
+
+      // Highlight growing tip with glow
+      if (branch.growing) {
+        let tip = branch.tip().pos;
+        p.noStroke();
+        p.fill(70, 200, 90, 150);
+        p.ellipse(tip.x, tip.y, 12);
+        p.fill(90, 255, 110, 100);
+        p.ellipse(tip.x, tip.y, 8);
+      }
+    });
+  }
+
+  // Draw a realistic leaf using Bezier curves and veins
+  function drawLeaf(x, y, angle, size, depth) {
+    p.push();
+    p.translate(x, y);
+    p.rotate(angle);
+    p.scale(size);
+
+    // Leaf base color interpolates with branch depth
+    let baseGreen = p.lerpColor(p.color(60, 180, 80), p.color(30, 120, 40), depth / MAX_BRANCH_DEPTH);
+
+    // Leaf shape: smooth asymmetric Bezier curve
+    p.noStroke();
+    p.beginShape();
+    p.fill(baseGreen);
+    p.vertex(0, 0);
+    p.bezierVertex(8, -12, 18, 8, 0, 18);
+    p.bezierVertex(-18, 8, -8, -12, 0, 0);
+    p.endShape(p.CLOSE);
+
+    // Central vein
+    p.stroke(220, 255, 220, 120);
+    p.strokeWeight(1.1);
+    p.line(0, 2, 0, 14);
+
+    // Side veins for subtle detail
+    p.stroke(200, 240, 200, 80);
+    p.strokeWeight(0.7);
+    for (let i = 1; i < 4; i++) {
+      let t = i / 4;
+      p.line(0, 4 + 3 * i, 6 * t, 8 + 6 * t);
+      p.line(0, 4 + 3 * i, -6 * t, 8 + 6 * t);
+    }
+    p.pop();
+  }
+
+  // Draw a simple 5-petal flower with center
+  function drawFlower(x, y, angle, size, color) {
+    p.push();
+    p.translate(x, y);
+    p.rotate(angle);
+    p.scale(size);
+
+    let petalCount = 5;
+    let petalLen = 12;
+    let petalW = 7;
+
+    // Draw petals with smooth Bezier curves
+    for (let i = 0; i < petalCount; i++) {
+      let a = (p.TWO_PI / petalCount) * i;
+      p.push();
+      p.rotate(a);
+      p.noStroke();
+      p.fill(color);
+      p.beginShape();
+      p.vertex(0, 0);
+      p.bezierVertex(petalW, -petalLen * 0.3, petalW, -petalLen * 0.7, 0, -petalLen);
+      p.bezierVertex(-petalW, -petalLen * 0.7, -petalW, -petalLen * 0.3, 0, 0);
+      p.endShape();
+      p.pop();
+    }
+
+    // Flower center with subtle glow
+    p.noStroke();
+    p.fill(255, 230, 80, 230);
+    p.ellipse(0, 0, 7, 7);
+    p.fill(255, 255, 255, 180);
+    p.ellipse(0, 0, 3.5, 3.5);
+    p.pop();
+  }
+
+  // p5.js setup function: initialize canvas and simulation
+  p.setup = () => {
+    p.createCanvas(window.innerWidth, window.innerHeight).parent('canvas-container');
+    updateWallBounds();
+    wallGraphic = p.createGraphics(wallW, p.height);
+    drawWallToBuffer();
+    resetSimulation();
+
+    // Reset button event
+    document.getElementById('reset-btn').onclick = resetSimulation;
+  };
+
+  // Handle window resize: update canvas and reset simulation
+  p.windowResized = () => {
+    p.resizeCanvas(window.innerWidth, window.innerHeight);
+    updateWallBounds();
+    wallGraphic = p.createGraphics(wallW, p.height);
+    drawWallToBuffer();
+    resetSimulation();
+  };
+
+  // Main draw loop: update and render simulation
+  p.draw = () => {
+    p.background(235, 245, 235);
+    drawWall();
+    drawObstacles();
+
+    // Grow vines at fixed intervals
+    if (p.millis() - lastGrow > GROW_INTERVAL) {
+      shoots.forEach(b => b.stepGrowth());
+      lastGrow = p.millis();
+    }
+
+    drawVines();
+
+    // Display segment count for debugging/performance
+    p.fill(0, 0, 0);
+    p.textAlign(p.LEFT);
+    p.textSize(14);
+    let totalSegments = shoots.reduce((sum, shoot) => sum + shoot.segs.length, 0);
+    p.text(`Segments: ${totalSegments}/${MAX_SEGMENTS}`, p.width - 200, 30);
+  };
+
+  // Reset simulation: randomize nutrition and initialize obstacles and vines
+  function resetSimulation() {
+    nutrition = p.random(0.2, 1.0);
+
+    // Set vine growth parameters (speed constant, others vary with nutrition)
+    SEG_LEN = BASE_SEG_LEN;
+    GROW_INTERVAL = BASE_GROW_INTERVAL; // constant speed
+    BRANCH_CHANCE = BASE_BRANCH_CHANCE * p.map(nutrition, 0.2, 1.0, 0.5, 2.5);
+    TOP_BRANCH_CHANCE = BASE_TOP_BRANCH_CHANCE * p.map(nutrition, 0.2, 1.0, 0.5, 2.5);
+    GRAVITY = BASE_GRAVITY * p.map(nutrition, 0.2, 1.0, 0.7, 1.2);
+    DIRECTIONAL_BIAS = BASE_DIRECTIONAL_BIAS * p.map(nutrition, 0.2, 1.0, 0.7, 1.2);
+    LEAF_DENSITY = BASE_LEAF_DENSITY * p.map(nutrition, 0.2, 1.0, 0.5, 2.2);
+    FLOWER_DENSITY = BASE_FLOWER_DENSITY * p.map(nutrition, 0.2, 1.0, 0.5, 2.5);
+
+    // Update UI nutrition display
+    document.getElementById('nutrition-value').textContent = nutrition.toFixed(2);
+    let bar = document.getElementById('nutrition-bar-inner');
+    bar.style.width = (nutrition * 100) + "%";
+    bar.style.background = "linear-gradient(90deg, #ff4444 0%, #ffaa44 50%, #44bb44 100%)";
+
+    // Center coordinates for obstacle placement
+    let cx = p.width * 0.5;
+    let cy = p.height * 0.5;
+
+    // Initialize obstacles at fixed relative positions
+    obstacles = [
+      new WindowOb(cx - p.width * 0.18, cy - p.height * 0.22, 100, 60),
+      new PipeOb(cx + p.width * 0.22, cy - p.height * 0.28, 32),
+      new WindowOb(cx + p.width * 0.19, cy + p.height * 0.13, 90, 60),
+      new PipeOb(cx - p.width * 0.23, cy + p.height * 0.18, 26),
+      new ACOb(cx + p.width * 0.05, cy - p.height * 0.13, 70, 40),
+      new ACOb(cx - p.width * 0.21, cy + p.height * 0.32, 60, 38)
+    ];
+
+    // Initialize vine shoots (branches) at bottom with spread based on nutrition
+    shoots = [];
+    let baseY = wallBottom - 18;
+    let nVines = Math.round(p.map(nutrition, 0.2, 1.0, 2, 8));
+    for (let i = 0; i < nVines; i++) {
+      let spread = p.map(nutrition, 0.2, 1.0, 40, 120);
+      let angle = p.map(i, 0, nVines - 1, -spread, spread);
+      shoots.push(new Shoot(cx + angle, baseY, p.createVector(angle * 0.01, -1), 0));
+    }
+
+    lastGrow = p.millis();
+  }
+};
+
+// Create p5 instance and attach to container div
+new p5(sketch, document.getElementById('canvas-container'));
+</script>
+</body>
+</html>

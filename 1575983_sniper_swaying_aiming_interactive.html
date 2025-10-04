@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=700, initial-scale=1.0">
+    <title>Sniper Scope Sway Simulation</title>
+    <style>
+        /* Styles */
+        body { margin: 0; padding: 0; background: #0a0a0a; font-family: 'Courier New', monospace; color: #00ff00; overflow: hidden; cursor: none; }
+        #container { width: 100vw; height: 100vh; }
+        #controls { position: fixed; left: 0; top: 30%; transform: translateY(-50%); background: rgba(0, 0, 0, 0.92); padding: 22px 24px 22px 24px; border-radius: 12px; border: 2px solid #00ff00; z-index: 1000; min-width: 280px; max-width: 320px; box-shadow: 0 0 24px #00ff0033; cursor: default !important; }
+        .control-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-size: 14px; color: #00ff00; }
+        input[type="range"] { width: 100%; height: 8px; background: #333; outline: none; border-radius: 5px; -webkit-appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; background: #00ff00; border-radius: 50%; cursor: pointer; }
+        input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; background: #00ff00; border-radius: 50%; cursor: pointer; border: none; }
+        .value-display { color: #00ff00; font-size: 12px; margin-top: 5px; }
+        button { background: #00ff00; color: #000; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; font-family: 'Courier New', monospace; transition: all 0.3s ease; margin-right: 10px; }
+        button.active, button:active, button:focus { background: #ff6600 !important; color: #fff; }
+        button:hover { background: #00cc00; transform: translateY(-2px); }
+        #info { position: fixed; bottom: 40px; left: 5px; background: rgba(0, 0, 0, 0.92); padding: 18px 22px; border-radius: 10px; border: 2px solid #00ff00; color: #00ff00; font-size: 12px; z-index: 1000; max-width: 320px; box-shadow: 0 0 24px #00ff0033; cursor: default !important; }
+        #accuracy-display { position: fixed; top: 40px; right: 40px; background: rgba(0, 0, 0, 0.92); padding: 18px 22px; border-radius: 10px; border: 2px solid #00ff00; color: #00ff00; font-size: 14px; z-index: 1000; min-width: 180px; box-shadow: 0 0 24px #00ff0033; cursor: default !important; }
+        #shot-info { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.95); padding: 24px 32px; border-radius: 15px; border: 3px solid #ff6600; color: #ff6600; font-size: 16px; z-index: 2000; display: none; text-align: center; min-width: 300px; cursor: default !important; }
+        #canvas-flex-center { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; }
+        #canvas-container { width: 600px; height: 600px; background: #111; border: 4px solid #00ff00; border-radius: 20px; box-shadow: 0 0 40px #00ff0033; overflow: hidden; z-index: 10; cursor: none !important; }
+        .wind-indicator { position: absolute; top: 50px; right: 50px; color: #00ccff; font-size: 12px; z-index: 1000; }
+        #continue-c-btn, #shot-info button[onclick*="closeShotInfo"]:not([style]) { display: none !important; }
+        @media (max-width: 1100px) { #controls { position: static; transform: none; margin: 0 auto 24px auto; display: block; width: 90vw; max-width: 98vw; } #canvas-flex-center { flex-direction: column; align-items: center; justify-content: flex-start; } }
+        @media (max-width: 700px) { #canvas-container { width: 98vw; height: 98vw; max-width: 98vw; max-height: 98vw; } #controls, #info, #accuracy-display { left: 10px !important; right: 10px !important; max-width: 95vw; } }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <!-- Controls Panel -->
+        <div id="controls">
+            <h3>🎯 Sniper Scope Control</h3>
+            <div class="control-group">
+                <label for="windSpeed">💨 Wind Speed</label>
+                <input type="range" id="windSpeed" min="0" max="15" value="0">
+                <div class="value-display" id="windSpeedValue">0 mph</div>
+            </div>
+            <div class="control-group">
+                <label for="rainIntensity">🌧️ Rain Intensity</label>
+                <input type="range" id="rainIntensity" min="0" max="20" value="8" step="1">
+                <div class="value-display" id="rainIntensityValue">8%</div>
+                <div id="rainPreview" style="height:18px; margin-top:6px; display:flex; align-items:center;"></div>
+            </div>
+            <button id="resetButton">🔄 Reset</button>
+            <button id="holdBreathButton">🫁 Hold Breath</button>
+        </div>
+        <!-- Canvas Centering Flexbox -->
+        <div id="canvas-flex-center">
+            <div id="canvas-container"></div>
+        </div>
+        <!-- Info Panel -->
+        <div id="info">
+            <div><strong>📋 Mission Briefing:</strong></div>
+            <div>• Target: 800 meters</div>
+            <div>• Keep scope centered on target</div>
+            <div>• Compensate for wind & rain</div>
+            <div>• Use breath control for stability</div>
+            <div>• Move mouse to adjust aim</div>
+            <div>• <strong>Click to shoot!</strong></div>
+            <div style="margin-top:8px; color:#ff0;">
+                <b>Keyboard:</b> ←/→ wind, ↑/↓ rain, R reset, H hold breath, <b>C continue</b>
+            </div>
+        </div>
+        <!-- Accuracy Stats Panel -->
+        <div id="accuracy-display">
+            <div><strong>🎯 Accuracy Stats:</strong></div>
+            <div>On Target: <span id="onTargetTime">0.0s</span></div>
+            <div>Accuracy: <span id="accuracyPercent">0%</span></div>
+            <div>Distance: <span id="distanceFromTarget">0.0cm</span></div>
+            <div>Shots Fired: <span id="shotsFired">0</span></div>
+            <div>Hits: <span id="hits">0</span></div>
+        </div>
+        <!-- Shot Result Modal -->
+        <div id="shot-info">
+            <div id="shot-result"></div>
+            <div id="shot-details"></div>
+            <div style="margin-top: 10px; color:#fff; font-size:13px;">
+                Press <b>C</b> to continue
+            </div>
+        </div>
+    </div>
+    <!-- Import maps for p5 and matter-js -->
+    <script type="importmap">
+        {
+          "imports": {
+            "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm",
+            "matter-js": "https://cdn.jsdelivr.net/npm/matter-js@0.19.0/+esm"
+          }
+        }
+    </script>
+    <script type="module">
+    // Import p5.js and Matter.js
+    import p5 from 'p5';
+    import Matter from 'matter-js';
+
+    // --- Simulation State Variables ---
+    let canvas, engine, world, scopeBody;
+    let scopeRadius = 200;
+    let scopePos = { x: 0, y: 0 }; // Current scope position
+    let targetPos = { x: 0, y: 0 }; // Target position (center)
+    let mouseInput = { x: 0, y: 0 }; // Mouse position in canvas
+    let lastMousePos = { x: 0, y: 0 };
+    let mouseVelocity = { x: 0, y: 0 };
+    let isMouseMoving = false;
+    let windSpeed = 0, windDirection = 90, rainIntensity = 8;
+    let holdingBreath = false;
+    let windSway = { x: 0, y: 0 };
+    let time = 0, breathHoldTime = 0, maxBreathHoldTime = 8;
+    let rainParticles = [], windParticles = [], leaves = [], trees = [], clouds = [];
+    let shotsFired = 0, hits = 0, lastShotPos = { x: 0, y: 0 }, muzzleFlash = 0;
+    let totalTime = 0, onTargetTime = 0;
+    let controls = {};
+    let simulationPaused = false;
+
+    const SIM_WIDTH = 600, SIM_HEIGHT = 600;
+
+    // --- Main p5 Sketch ---
+    const sketch = (p) => {
+        p.setup = () => {
+            // Create canvas and physics world
+            canvas = p.createCanvas(SIM_WIDTH, SIM_HEIGHT);
+            canvas.parent('canvas-container');
+            engine = Matter.Engine.create();
+            world = engine.world;
+            engine.world.gravity.y = 0; // No gravity for scope
+            // Create the scope body (the thing you move)
+            scopeBody = Matter.Bodies.circle(SIM_WIDTH/2, SIM_HEIGHT/2, 8, {
+                frictionAir: 0.08, mass: 3, inertia: Infinity
+            });
+            Matter.World.add(world, scopeBody);
+            // Set initial positions
+            targetPos.x = SIM_WIDTH / 2; targetPos.y = SIM_HEIGHT / 2;
+            mouseInput.x = SIM_WIDTH / 2; mouseInput.y = SIM_HEIGHT / 2;
+            lastMousePos.x = SIM_WIDTH / 2; lastMousePos.y = SIM_HEIGHT / 2;
+            // Initialize environment visuals
+            initializeEnvironment(p);
+            // Setup UI controls and input
+            setupControls();
+            setupMouse(p);
+            setupKeyboard();
+            p.frameRate(60);
+        };
+
+        p.draw = () => {
+            if (simulationPaused) return;
+            // Update time and breath hold
+            time += p.deltaTime / 1000;
+            totalTime += p.deltaTime / 1000;
+            if (holdingBreath) {
+                breathHoldTime += p.deltaTime / 1000;
+                if (breathHoldTime >= maxBreathHoldTime) toggleHoldBreath();
+            }
+            if (muzzleFlash > 0) muzzleFlash--;
+
+            // Update physics and accuracy
+            updatePhysics(p);
+            scopePos.x = scopeBody.position.x; scopePos.y = scopeBody.position.y;
+            updateAccuracy(p);
+
+            // Draw everything
+            p.push();
+            p.noStroke();
+            p.rectMode(p.CORNER);
+            p.drawingContext.save();
+            p.drawingContext.beginPath();
+            p.drawingContext.rect(0, 0, SIM_WIDTH, SIM_HEIGHT);
+            p.drawingContext.clip();
+
+            render(p);
+
+            p.drawingContext.restore();
+            p.pop();
+        };
+    };
+
+    // --- Environment Initialization (rain, wind, leaves, trees, clouds) ---
+    function initializeEnvironment(p) {
+        // Create rain particles
+        rainParticles = [];
+        for (let i = 0; i < 100; i++) {
+            rainParticles.push({
+                x: p.random(SIM_WIDTH + 200),
+                y: p.random(SIM_HEIGHT + 200),
+                speed: p.random(6, 12),
+                length: p.random(8, 18),
+                opacity: p.random(0.2, 0.5),
+                angle: p.random(-0.15, 0.15)
+            });
+        }
+        // Create wind particles (for wind visual)
+        windParticles = [];
+        for (let i = 0; i < 20; i++) {
+            windParticles.push({
+                x: p.random(SIM_WIDTH),
+                y: p.random(SIM_HEIGHT),
+                size: p.random(1, 4),
+                speed: p.random(0.5, 2),
+                opacity: p.random(0.1, 0.3),
+                life: p.random(100, 200)
+            });
+        }
+        // Create leaves
+        leaves = [];
+        for (let i = 0; i < 8; i++) {
+            leaves.push({
+                x: p.random(SIM_WIDTH),
+                y: p.random(SIM_HEIGHT),
+                size: p.random(6, 12),
+                rotation: p.random(360),
+                rotSpeed: p.random(-1, 1),
+                speed: p.random(0.3, 1),
+                opacity: p.random(0.3, 0.6),
+                color: p.random(['#8B4513', '#228B22', '#DAA520', '#CD853F'])
+            });
+        }
+        // Create trees
+        trees = [];
+        for (let i = 0; i < 10; i++) {
+            trees.push({
+                x: p.random(SIM_WIDTH),
+                y: SIM_HEIGHT - p.random(60, 150),
+                height: p.random(80, 200),
+                width: p.random(15, 45),
+                color: p.random(['#2F4F2F', '#228B22', '#006400'])
+            });
+        }
+        // Create clouds
+        clouds = [];
+        for (let i = 0; i < 5; i++) {
+            clouds.push({
+                x: p.random(SIM_WIDTH),
+                y: p.random(20, 100),
+                size: p.random(60, 120),
+                speed: p.random(0.1, 0.5),
+                opacity: p.random(0.2, 0.5)
+            });
+        }
+    }
+
+    // --- Mouse Input Setup ---
+    function setupMouse(p) {
+        // Mouse movement: update mouseInput and velocity
+        canvas.canvas.addEventListener('mousemove', (e) => {
+            if (simulationPaused) return;
+            const rect = canvas.canvas.getBoundingClientRect();
+            const newMouseX = e.clientX - rect.left;
+            const newMouseY = e.clientY - rect.top;
+            mouseVelocity.x = newMouseX - lastMousePos.x;
+            mouseVelocity.y = newMouseY - lastMousePos.y;
+            isMouseMoving = Math.sqrt(mouseVelocity.x * mouseVelocity.x + mouseVelocity.y * mouseVelocity.y) > 2;
+            lastMousePos.x = mouseInput.x; lastMousePos.y = mouseInput.y;
+            mouseInput.x = Math.max(0, Math.min(SIM_WIDTH, newMouseX));
+            mouseInput.y = Math.max(0, Math.min(SIM_HEIGHT, newMouseY));
+        });
+        // Mouse click: shoot
+        canvas.canvas.addEventListener('click', (e) => {
+            if (simulationPaused) return;
+            if (!document.getElementById('shot-info').style.display ||
+                document.getElementById('shot-info').style.display === 'none') {
+                shoot(p);
+            }
+        });
+    }
+
+    // --- Keyboard Input Setup ---
+    function setupKeyboard() {
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            if (simulationPaused && (e.key !== 'c' && e.key !== 'C' && e.key !== 'r' && e.key !== 'R')) return;
+            switch (e.key) {
+                case 'ArrowLeft':
+                    windSpeed = Math.max(0, windSpeed - 1);
+                    controls.windSpeed.value = windSpeed;
+                    updateWindSpeed();
+                    break;
+                case 'ArrowRight':
+                    windSpeed = Math.min(15, windSpeed + 1);
+                    controls.windSpeed.value = windSpeed;
+                    updateWindSpeed();
+                    break;
+                case 'ArrowUp':
+                    rainIntensity = Math.min(20, rainIntensity + 1);
+                    controls.rainIntensity.value = rainIntensity;
+                    updateRainIntensity();
+                    break;
+                case 'ArrowDown':
+                    rainIntensity = Math.max(0, rainIntensity - 1);
+                    controls.rainIntensity.value = rainIntensity;
+                    updateRainIntensity();
+                    break;
+                case 'r':
+                case 'R':
+                    resetScope();
+                    break;
+                case 'h':
+                case 'H':
+                    if (!holdingBreath) toggleHoldBreath();
+                    break;
+                case 'c':
+                case 'C':
+                    if (document.getElementById('shot-info').style.display === 'block') {
+                        closeShotInfo();
+                    }
+                    break;
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'h' || e.key === 'H') {
+                if (holdingBreath) toggleHoldBreath();
+            }
+        });
+    }
+
+    // --- Shooting Logic ---
+    function shoot(p) {
+        shotsFired++;
+        lastShotPos.x = scopePos.x; lastShotPos.y = scopePos.y;
+        muzzleFlash = 25;
+        let shotX = scopePos.x, shotY = scopePos.y;
+        // Wind drift: move shot by wind
+        const windDrift = windSpeed * 0.4;
+        const windRad = p.radians(windDirection);
+        shotX += p.cos(windRad) * windDrift;
+        shotY += p.sin(windRad) * windDrift;
+        // Rain scatter: randomize shot by rain
+        const rainScatter = rainIntensity * 0.2;
+        shotX += p.random(-rainScatter, rainScatter);
+        shotY += p.random(-rainScatter, rainScatter);
+        // Calculate distance from target
+        const distance = p.dist(shotX, shotY, targetPos.x, targetPos.y);
+        let result = "", details = "", isHit = false;
+        // Determine hit quality
+        if (distance <= 8) { result = "🎯 BULLSEYE!"; details = `Perfect shot! Distance: ${(distance * 0.1).toFixed(1)}cm`; isHit = true; hits++; }
+        else if (distance <= 20) { result = "🎯 EXCELLENT!"; details = `Inner ring hit! Distance: ${(distance * 0.1).toFixed(1)}cm`; isHit = true; hits++; }
+        else if (distance <= 35) { result = "✅ GOOD HIT!"; details = `Outer ring hit! Distance: ${(distance * 0.1).toFixed(1)}cm`; isHit = true; hits++; }
+        else if (distance <= 50) { result = "⚠️ NEAR MISS"; details = `Close to target! Distance: ${(distance * 0.1).toFixed(1)}cm`; }
+        else { result = "❌ MISS"; details = `Shot missed target! Distance: ${(distance * 0.1).toFixed(1)}cm`; }
+        details += `\nWind: ${windSpeed}mph East\nRain: ${rainIntensity}%`;
+        if (holdingBreath) details += `\nBreath held for ${breathHoldTime.toFixed(1)}s`;
+        // Show result modal
+        document.getElementById('shot-result').innerHTML = result;
+        document.getElementById('shot-details').innerHTML = details.replace(/\n/g, '<br>');
+        document.getElementById('shot-info').style.display = 'block';
+        updateStats();
+        // Apply recoil to scope
+        const recoilMagnitude = 0.01;
+        Matter.Body.applyForce(scopeBody, scopeBody.position, {
+            x: p.random(-recoilMagnitude, recoilMagnitude),
+            y: p.random(-recoilMagnitude * 0.3, recoilMagnitude)
+        });
+        simulationPaused = true;
+    }
+    // Close shot result modal
+    function closeShotInfo() {
+        document.getElementById('shot-info').style.display = 'none';
+        simulationPaused = false;
+    }
+    // Update stats panel
+    function updateStats() {
+        document.getElementById('shotsFired').textContent = shotsFired;
+        document.getElementById('hits').textContent = hits;
+    }
+
+    // --- UI Controls Setup ---
+    function setupControls() {
+        controls.windSpeed = document.getElementById('windSpeed');
+        controls.rainIntensity = document.getElementById('rainIntensity');
+        controls.resetButton = document.getElementById('resetButton');
+        controls.holdBreathButton = document.getElementById('holdBreathButton');
+        controls.windSpeed.addEventListener('input', updateWindSpeed);
+        controls.rainIntensity.addEventListener('input', updateRainIntensity);
+        controls.resetButton.addEventListener('click', resetScope);
+        controls.holdBreathButton.addEventListener('click', toggleHoldBreath);
+        updateWindSpeed();
+        updateRainIntensity();
+        renderRainPreview();
+    }
+    // Update wind speed from slider
+    function updateWindSpeed() {
+        windSpeed = parseInt(controls.windSpeed.value);
+        document.getElementById('windSpeedValue').textContent = windSpeed + ' mph';
+    }
+    // Update rain intensity from slider
+    function updateRainIntensity() {
+        rainIntensity = parseInt(controls.rainIntensity.value);
+        document.getElementById('rainIntensityValue').textContent = rainIntensity + '%';
+        renderRainPreview();
+    }
+    // Toggle breath hold state
+    function toggleHoldBreath() {
+        holdingBreath = !holdingBreath;
+        if (holdingBreath) {
+            breathHoldTime = 0;
+            controls.holdBreathButton.textContent = '🫁 Holding...';
+            controls.holdBreathButton.classList.add('active');
+            controls.holdBreathButton.style.background = '#ff6600';
+        } else {
+            controls.holdBreathButton.textContent = '🫁 Hold Breath';
+            controls.holdBreathButton.classList.remove('active');
+            controls.holdBreathButton.style.background = '#00ff00';
+        }
+    }
+    // Reset all simulation state
+    function resetScope() {
+        Matter.Body.setPosition(scopeBody, { x: SIM_WIDTH/2, y: SIM_HEIGHT/2 });
+        Matter.Body.setVelocity(scopeBody, { x: 0, y: 0 });
+        totalTime = 0; onTargetTime = 0; shotsFired = 0; hits = 0;
+        controls.windSpeed.value = 0; controls.rainIntensity.value = 8;
+        updateWindSpeed(); updateRainIntensity(); updateStats();
+        holdingBreath = false;
+        controls.holdBreathButton.textContent = '🫁 Hold Breath';
+        controls.holdBreathButton.classList.remove('active');
+        controls.holdBreathButton.style.background = '#00ff00';
+        closeShotInfo();
+        simulationPaused = false;
+    }
+
+    // --- Rain Preview Bar in Controls ---
+    function renderRainPreview() {
+        const preview = document.getElementById('rainPreview');
+        preview.innerHTML = '';
+        for (let i = 0; i <= 20; i++) {
+            const drop = document.createElement('div');
+            drop.style.width = '6px';
+            drop.style.height = '16px';
+            drop.style.marginRight = '2px';
+            drop.style.display = 'inline-block';
+            drop.style.borderRadius = '3px';
+            drop.style.background = 'linear-gradient(to bottom, #aeeaff 60%, #6bb6e6 100%)';
+            drop.style.opacity = Math.max(i / 20, 0.08);
+            drop.style.boxShadow = i == rainIntensity ? '0 0 6px 2px #00e0ff' : '';
+            preview.appendChild(drop);
+        }
+    }
+
+    // --- Physics Update: Only wind speed controls sway, nothing else ---
+    function updatePhysics(p) {
+        // Reset wind sway
+        windSway.x = 0;
+        windSway.y = 0;
+
+        if (windSpeed > 0) {
+            // Calculate wind sway based on wind speed and direction
+            const swayIntensity = windSpeed / 15; // 0 to 1 scale
+            const windRad = p.radians(windDirection);
+            const baseMagnitude = swayIntensity * 0.015; // Sway strength
+            // Add some gust and noise for realism
+            const gustPattern = p.sin(time * 0.3) * 0.5 + p.cos(time * 0.7) * 0.3;
+            const windVariation = p.noise(time * 1.2) - 0.5;
+            windSway.x = p.cos(windRad) * baseMagnitude * (1 + gustPattern + windVariation * 0.5);
+            windSway.y = p.sin(windRad) * baseMagnitude * (1 + gustPattern + windVariation * 0.5);
+
+            // Mouse control: always active
+            const dx = mouseInput.x - scopePos.x;
+            const dy = mouseInput.y - scopePos.y;
+            let mouseForceMagnitude = 0.0004 * 8;
+            if (isMouseMoving) mouseForceMagnitude *= 0.3;
+            const mouseForce = { x: dx * mouseForceMagnitude, y: dy * mouseForceMagnitude };
+
+            // Apply wind sway + mouse control
+            const totalForceX = windSway.x + mouseForce.x;
+            const totalForceY = windSway.y + mouseForce.y;
+
+            Matter.Body.applyForce(scopeBody, scopeBody.position, { x: totalForceX, y: totalForceY });
+            Matter.Engine.update(engine, 1000/60);
+        } else {
+            // No wind: lock scope to mouse, no sway, no drift
+            Matter.Body.setPosition(scopeBody, { x: mouseInput.x, y: mouseInput.y });
+            Matter.Body.setVelocity(scopeBody, { x: 0, y: 0 });
+        }
+        // Update all environment visuals (rain, wind, leaves, clouds)
+        updateEnvironment(p);
+    }
+
+    // --- Update all environment visuals (rain, wind, leaves, clouds) ---
+    function updateEnvironment(p) {
+        // Rain particles
+        for (let particle of rainParticles) {
+            particle.y += particle.speed + windSway.y * 100;
+            particle.x += windSway.x * 150 + particle.angle * particle.speed;
+            if (particle.y > SIM_HEIGHT + 30) {
+                particle.y = -particle.length;
+                particle.x = p.random(-50, SIM_WIDTH + 50);
+            }
+            if (particle.x > SIM_WIDTH + 50) particle.x = -50;
+            else if (particle.x < -50) particle.x = SIM_WIDTH + 50;
+        }
+        // Wind particles (only if wind is present)
+        if (windSpeed > 0) {
+            for (let particle of windParticles) {
+                particle.x += windSway.x * 400 + particle.speed;
+                particle.y += windSway.y * 300 + p.sin(time + particle.x * 0.01) * 0.5;
+                particle.life--;
+                if (particle.life <= 0 || particle.x > SIM_WIDTH + 30 || particle.x < -30) {
+                    particle.x = p.random(-30, SIM_WIDTH + 30);
+                    particle.y = p.random(SIM_HEIGHT);
+                    particle.life = p.random(100, 200);
+                }
+            }
+        }
+        // Leaves
+        for (let leaf of leaves) {
+            leaf.x += windSway.x * 300 + leaf.speed;
+            leaf.y += windSway.y * 200 + p.sin(time * 1.5 + leaf.x * 0.01) * 1;
+            leaf.rotation += leaf.rotSpeed + windSpeed * 0.02;
+            if (leaf.x > SIM_WIDTH + 30) { leaf.x = -30; leaf.y = p.random(SIM_HEIGHT); }
+            else if (leaf.x < -30) { leaf.x = SIM_WIDTH + 30; leaf.y = p.random(SIM_HEIGHT); }
+        }
+        // Clouds
+        for (let cloud of clouds) {
+            cloud.x += cloud.speed + windSway.x * 25;
+            if (cloud.x > SIM_WIDTH + cloud.size) cloud.x = -cloud.size;
+        }
+    }
+
+    // --- Update accuracy stats (on target time, accuracy %, distance) ---
+    function updateAccuracy(p) {
+        const distance = p.dist(scopePos.x, scopePos.y, targetPos.x, targetPos.y);
+        const onTarget = distance < 30;
+        if (onTarget) onTargetTime += p.deltaTime / 1000;
+        document.getElementById('onTargetTime').textContent = onTargetTime.toFixed(1) + 's';
+        document.getElementById('accuracyPercent').textContent = Math.round((onTargetTime / (totalTime || 1)) * 100) + '%';
+        document.getElementById('distanceFromTarget').textContent = (distance * 0.1).toFixed(1) + 'cm';
+    }
+
+    // --- Main Render Function: draws all layers ---
+    function render(p) {
+        drawSky(p);
+        drawBackground(p);
+        drawWeather(p);
+        drawScope(p);
+        if (muzzleFlash > 0) drawMuzzleFlash(p);
+        drawEnvironmentalIndicators(p);
+        if (holdingBreath) drawBreathHoldIndicator(p);
+    }
+
+    // --- Draw sky gradient based on rain intensity ---
+    function drawSky(p) {
+        let skyColor1, skyColor2;
+        if (rainIntensity > 15) { skyColor1 = p.color(50, 60, 70); skyColor2 = p.color(25, 35, 45); }
+        else if (rainIntensity > 8) { skyColor1 = p.color(80, 100, 120); skyColor2 = p.color(40, 60, 80); }
+        else { skyColor1 = p.color(135, 206, 235); skyColor2 = p.color(70, 130, 180); }
+        for (let i = 0; i <= SIM_HEIGHT; i++) {
+            let inter = p.map(i, 0, SIM_HEIGHT, 0, 1);
+            let c = p.lerpColor(skyColor1, skyColor2, inter);
+            p.stroke(c); p.line(0, i, SIM_WIDTH, i);
+        }
+    }
+
+    // --- Draw background: clouds, hills, trees, grass ---
+    function drawBackground(p) {
+        // Clouds
+        for (let cloud of clouds) {
+            p.fill(255, 255, 255, cloud.opacity * 255); p.noStroke();
+            p.ellipse(cloud.x, cloud.y, cloud.size, cloud.size * 0.6);
+            p.ellipse(cloud.x + cloud.size * 0.3, cloud.y, cloud.size * 0.8, cloud.size * 0.5);
+            p.ellipse(cloud.x - cloud.size * 0.3, cloud.y, cloud.size * 0.7, cloud.size * 0.4);
+        }
+        // Hills
+        p.fill(100, 120, 100, 100); p.noStroke();
+        p.beginShape(); p.vertex(0, SIM_HEIGHT);
+        for (let x = 0; x <= SIM_WIDTH; x += 50) p.vertex(x, SIM_HEIGHT - 60 - p.sin(x * 0.01) * 30);
+        p.vertex(SIM_WIDTH, SIM_HEIGHT); p.endShape(p.CLOSE);
+        // Trees
+        for (let tree of trees) {
+            p.fill(tree.color); p.noStroke();
+            p.rect(tree.x - tree.width * 0.1, tree.y, tree.width * 0.2, tree.height * 0.3);
+            p.ellipse(tree.x, tree.y - tree.height * 0.1, tree.width, tree.height * 0.8);
+        }
+        // Grass
+        p.fill(34, 139, 34, 120); p.noStroke();
+        p.rect(0, SIM_HEIGHT - 30, SIM_WIDTH, 30);
+    }
+
+    // --- Draw weather effects: rain, wind, leaves ---
+    function drawWeather(p) {
+        // Rain
+        for (let particle of rainParticles) {
+            let rainAlpha = Math.max(particle.opacity * (rainIntensity / 20), 0.08);
+            if (rainIntensity >= 8) rainAlpha = Math.max(particle.opacity * (rainIntensity / 20), 0.18);
+            p.stroke(150, 180, 220, rainAlpha * 255);
+            p.strokeWeight(1 + rainIntensity * 0.01);
+            p.line(particle.x, particle.y,
+                particle.x + windSway.x * 100 + particle.angle * particle.length,
+                particle.y + particle.length);
+        }
+        // Wind particles
+        if (windSpeed > 0) {
+            for (let particle of windParticles) {
+                p.fill(139, 69, 19, particle.opacity * 255 * (windSpeed / 15));
+                p.noStroke();
+                p.ellipse(particle.x, particle.y, particle.size, particle.size);
+            }
+        }
+        // Leaves
+        for (let leaf of leaves) {
+            p.push();
+            p.translate(leaf.x, leaf.y);
+            p.rotate(p.radians(leaf.rotation));
+            p.fill(leaf.color); p.noStroke();
+            p.ellipse(0, 0, leaf.size, leaf.size * 0.6);
+            p.pop();
+        }
+    }
+
+    // --- Draw the scope and everything inside it ---
+    function drawScope(p) {
+        p.push(); p.translate(scopePos.x, scopePos.y);
+        // Blur effect for rain
+        let blurAmount = 0;
+        if (rainIntensity > 12) {
+            blurAmount = (rainIntensity - 12) * 0.08 + 0.5;
+        } else if (rainIntensity > 3) {
+            blurAmount = (rainIntensity - 3) * 0.015;
+        }
+        if (blurAmount > 0) p.drawingContext.filter = `blur(${blurAmount}px)`;
+        // Scope glass
+        p.fill(40, 60, 40); p.stroke(0, 255, 0, 100); p.strokeWeight(3);
+        p.ellipse(0, 0, scopeRadius * 2, scopeRadius * 2);
+        p.fill(60, 80, 60); p.noStroke();
+        p.ellipse(0, 0, (scopeRadius - 10) * 2, (scopeRadius - 10) * 2);
+        // Draw target and reticle
+        drawTargetInScope(p); drawReticle(p);
+        p.drawingContext.filter = 'none';
+        // Scope rim
+        p.noFill(); p.stroke(0, 255, 0); p.strokeWeight(4);
+        p.ellipse(0, 0, scopeRadius * 2, scopeRadius * 2);
+        p.stroke(0, 150, 0); p.strokeWeight(2);
+        p.ellipse(0, 0, (scopeRadius + 10) * 2, (scopeRadius + 10) * 2);
+        p.pop();
+    }
+
+    // --- Draw the target as seen through the scope ---
+    function drawTargetInScope(p) {
+        const targetRelativeX = targetPos.x - scopePos.x;
+        const targetRelativeY = targetPos.y - scopePos.y;
+        p.push(); p.translate(targetRelativeX, targetRelativeY);
+        p.fill(200, 180, 160); p.noStroke(); p.ellipse(0, 0, 80, 80);
+        p.stroke(50, 50, 50); p.strokeWeight(2); p.noFill();
+        for (let i = 1; i <= 4; i++) p.ellipse(0, 0, i * 16, i * 16);
+        p.fill(255, 50, 50); p.noStroke(); p.ellipse(0, 0, 10, 10);
+        p.fill(255, 255, 255); p.ellipse(0, 0, 3, 3);
+        p.fill(255, 255, 255); p.textAlign(p.CENTER); p.textSize(8);
+        p.text('800m', 0, 55); p.pop();
+    }
+
+    // --- Draw the reticle (crosshair) ---
+    function drawReticle(p) {
+        // Rain only affects reticle jitter, not scope sway
+        const jitterX = rainIntensity > 8 ? (p.noise(time * 25) - 0.5) * (rainIntensity * 0.003) : 0;
+        const jitterY = rainIntensity > 8 ? (p.noise(time * 25 + 100) - 0.5) * (rainIntensity * 0.003) : 0;
+        p.push(); p.translate(jitterX, jitterY);
+        p.stroke(0, 255, 0, 200); p.strokeWeight(2);
+        p.line(-scopeRadius + 20, 0, -15, 0);
+        p.line(15, 0, scopeRadius - 20, 0);
+        p.line(0, -scopeRadius + 20, 0, -15);
+        p.line(0, 15, 0, scopeRadius - 20);
+        p.fill(0, 255, 0); p.noStroke();
+        for (let i = 1; i <= 6; i++) {
+            p.ellipse(i * 20, 0, 3, 3); p.ellipse(-i * 20, 0, 3, 3);
+            p.ellipse(0, i * 20, 3, 3); p.ellipse(0, -i * 20, 3, 3);
+        }
+        p.stroke(0, 255, 0, 120); p.strokeWeight(1);
+        for (let i = 1; i <= 4; i++) {
+            p.line(i * 40, -8, i * 40, 8);
+            p.line(-i * 40, -8, -i * 40, 8);
+            p.line(-8, i * 40, 8, i * 40);
+            p.line(-8, -i * 40, 8, -i * 40);
+        }
+        p.stroke(255, 255, 0); p.strokeWeight(2);
+        p.line(-10, 0, 10, 0); p.line(0, -10, 0, 10);
+        p.fill(255, 255, 0); p.noStroke(); p.ellipse(0, 0, 2, 2);
+        p.pop();
+    }
+
+    // --- Draw muzzle flash when shooting ---
+    function drawMuzzleFlash(p) {
+        p.push(); p.translate(scopePos.x, scopePos.y);
+        p.fill(255, 255, 0, muzzleFlash * 4); p.noStroke();
+        p.ellipse(0, 0, muzzleFlash * 4, muzzleFlash * 4);
+        p.fill(255, 150, 0, muzzleFlash * 2);
+        p.ellipse(0, 0, muzzleFlash * 3, muzzleFlash * 3);
+        p.pop();
+    }
+
+    // --- Draw wind and rain indicators in the corner ---
+    function drawEnvironmentalIndicators(p) {
+        if (windSpeed > 0) {
+            p.push(); p.translate(SIM_WIDTH - 100, 80);
+            p.stroke(0, 200, 255); p.strokeWeight(2);
+            p.rotate(p.radians(windDirection));
+            p.line(0, 0, 0, -windSpeed * 2);
+            p.line(0, -windSpeed * 2, -3, -windSpeed * 2 + 6);
+            p.line(0, -windSpeed * 2, 3, -windSpeed * 2 + 6);
+            p.pop();
+            p.fill(0, 200, 255); p.textAlign(p.CENTER); p.textSize(10);
+            p.text('WIND', SIM_WIDTH - 100, 120);
+            p.text(windSpeed + ' mph', SIM_WIDTH - 100, 135);
+        }
+        if (rainIntensity >= 0) {
+            p.fill(150, 180, 220); p.textAlign(p.CENTER); p.textSize(10);
+            p.text('RAIN', SIM_WIDTH - 100, 160);
+            p.text(rainIntensity + '%', SIM_WIDTH - 100, 175);
+            for (let i = 0; i < 2; i++) {
+                p.stroke(150, 180, 220); p.strokeWeight(1);
+                p.line(SIM_WIDTH - 110 + i * 6, 180, SIM_WIDTH - 108 + i * 6, 186);
+            }
+        }
+    }
+
+    // --- Draw breath hold bar at bottom of screen ---
+    function drawBreathHoldIndicator(p) {
+        const remaining = maxBreathHoldTime - breathHoldTime;
+        const progress = remaining / maxBreathHoldTime;
+        p.push(); p.translate(SIM_WIDTH/2, SIM_HEIGHT - 50);
+        p.fill(50, 50, 50); p.noStroke(); p.rect(-100, -10, 200, 20);
+        p.fill(progress > 0.3 ? p.color(0, 255, 0) : p.color(255, 100, 0));
+        p.rect(-100, -10, 200 * progress, 20);
+        p.fill(255, 255, 255); p.textAlign(p.CENTER); p.textSize(12);
+        p.text('BREATH HOLD: ' + remaining.toFixed(1) + 's', 0, 5);
+        p.pop();
+    }
+
+    // Expose closeShotInfo for modal button
+    window.closeShotInfo = closeShotInfo;
+    // Start the p5 sketch
+    new p5(sketch);
+    </script>
+</body>
+</html>

@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realistic City Navigation Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            background: rgba(52, 73, 94, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        }
+        .info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .status {
+            padding: 8px 16px;
+            background: rgba(44, 62, 80, 0.9);
+            border-radius: 6px;
+            font-size: 14px;
+            border-left: 4px solid #3498db;
+        }
+        .legend {
+            margin-top: 15px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            background: rgba(52, 73, 94, 0.6);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-color {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .canvas-container {
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- Control Panel for simulation interaction -->
+    <div class="controls">
+        <button onclick="resetSimulation()">🔄 Restart</button>
+        <button onclick="togglePause()">⏸️ Pause/Resume</button>
+        <button onclick="addTrafficJam()">🚗 Add Traffic Jam</button>
+        <div class="info">
+            <div class="status" id="timer">⏱️ Time: 0s</div>
+            <div class="status" id="status">🎯 Status: Finding optimal route...</div>
+            <div class="status" id="pathLength">📏 Distance: 0 blocks</div>
+            <div class="status" id="congestion">🚦 Traffic: Normal</div>
+        </div>
+    </div>
+  
+    <!-- Legend explaining map elements -->
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #e74c3c, #c0392b);"></div>
+            <span>🚗 Main Vehicle</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #f39c12, #e67e22);"></div>
+            <span>🚙 Traffic Vehicles</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #2ecc71, #27ae60);"></div>
+            <span>🏁 Destination</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #9b59b6, #8e44ad);"></div>
+            <span>🛣️ Optimal Route</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #95a5a6, #7f8c8d);"></div>
+            <span>🚧 Road Closures</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #ff6b35, #ff4500);"></div>
+            <span>🚦 Traffic Jams</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #27ae60, #229954);"></div>
+            <span>🌳 Trees</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #34495e, #2c3e50);"></div>
+            <span>🏢 Buildings</span>
+        </div>
+    </div>
+
+    <!-- Canvas container where p5.js will render the simulation -->
+    <div class="canvas-container">
+        <!-- Canvas will be inserted here by p5.js -->
+    </div>
+
+    <!-- Import map for modern ES module imports -->
+    <script type="importmap">
+        {
+            "imports": {
+                "p5": "https://cdn.jsdelivr.net/npm/p5@1.9.0/+esm"
+            }
+        }
+    </script>
+
+    <!-- Main simulation script as ES module -->
+    <script type="module">
+        // Import p5.js as an ES module for modern JavaScript
+        import p5 from "p5";
+
+        // --- SIMULATION CONSTANTS ---
+        const GRID_SIZE = 20;      // Number of cells in the grid (20x20)
+        const CELL_SIZE = 35;      // Pixel size of each grid cell
+        const PADDING = 40;        // Padding around the grid for better visual spacing
+
+        // --- GLOBAL SIMULATION STATE ---
+        let canvasWidth, canvasHeight, offsetX, offsetY;  // Canvas dimensions and positioning
+        let grid = [];                                     // 2D array representing the city grid
+        let mainCar, destination;                         // Main player car and destination point
+        let trafficCars = [];                             // Array of AI-controlled traffic cars
+        let buildings = [], trees = [], trafficLights = []; // City infrastructure elements
+        let closedRoads = [], trafficJams = [];           // Dynamic obstacles
+        let currentPath = [];                             // Current optimal path for main car
+        let startTime;                                    // Simulation start time for timer
+        let isPaused = false;                             // Pause state
+        let pathfindingInterval, trafficUpdateInterval;   // Intervals for dynamic updates
+        let destinationReached = false;                   // Flag to track if destination is reached
+
+        // --- COLOR PALETTE ---
+        // Centralized color definitions for consistent theming
+        const COLORS = {
+            road: [52, 73, 94],              // Dark blue-gray for roads
+            roadLine: [236, 240, 241],       // Light gray for road markings
+            sidewalk: [149, 165, 166],       // Medium gray for sidewalks
+            building: [44, 62, 80],          // Dark gray for buildings
+            buildingWindow: [243, 156, 18],  // Orange for lit windows
+            mainCar: [231, 76, 60],          // Red for main player car
+            trafficCar: [52, 152, 219],      // Blue for traffic cars
+            destination: [46, 204, 113],     // Green for destination
+            path: [155, 89, 182],            // Purple for optimal route
+            closedRoad: [255, 107, 53],      // Orange for road closures
+            tree: [39, 174, 96],             // Green for trees
+            trafficLightRed: [231, 76, 60],  // Red traffic light
+            trafficLightGreen: [46, 204, 113], // Green traffic light
+            trafficLightYellow: [241, 196, 15], // Yellow traffic light
+            congestion: [255, 69, 0]         // Red-orange for traffic jams
+        };
+
+        // --- UTILITY FUNCTIONS ---
+
+        /**
+         * Calculate canvas dimensions and positioning offsets for proper centering
+         */
+        function calculateCanvasSize() {
+            canvasWidth = GRID_SIZE * CELL_SIZE + PADDING * 2;
+            canvasHeight = GRID_SIZE * CELL_SIZE + PADDING * 2;
+            offsetX = PADDING;
+            offsetY = PADDING;
+        }
+
+        // --- CAR CLASS ---
+
+        /**
+         * RealisticCar class handles both main player car and AI traffic cars
+         * Features: pathfinding, collision detection, traffic light awareness, realistic movement
+         */
+        class RealisticCar {
+            constructor(x, y, isMain = false) {
+                // Grid position calculation
+                this.gridX = Math.floor(x / CELL_SIZE);
+                this.gridY = Math.floor(y / CELL_SIZE);
+                
+                // Pixel position (centered in grid cell)
+                this.x = this.gridX * CELL_SIZE + CELL_SIZE/2;
+                this.y = this.gridY * CELL_SIZE + CELL_SIZE/2;
+                this.targetX = this.x;
+                this.targetY = this.y;
+                
+                // Car properties
+                this.isMain = isMain;
+                this.speed = isMain ? 2.0 : Math.random() * 0.4 + 0.8; // Main car is faster
+                this.maxSpeed = this.speed;
+                this.path = [];
+                this.pathIndex = 0;
+                this.moving = false;
+                this.direction = 0;
+                
+                // Visual properties
+                this.width = isMain ? 22 : 18;
+                this.height = isMain ? 30 : 26;
+                this.color = isMain ? COLORS.mainCar : this.getRandomCarColor();
+                
+                // Behavior properties
+                this.stuckTimer = 0;
+                this.honkTimer = 0;
+                this.type = isMain ? 'main' : ['sedan', 'suv', 'truck'][Math.floor(Math.random() * 3)];
+                this.waitingAtLight = false;
+                this.blocked = false;
+            }
+
+            /**
+             * Get a random color for traffic cars from predefined palette
+             */
+            getRandomCarColor() {
+                const colors = [
+                    [52, 152, 219], [231, 76, 60], [46, 204, 113], 
+                    [243, 156, 18], [155, 89, 182], [26, 188, 156]
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            /**
+             * Main update loop - handles movement, collision detection, and AI behavior
+             */
+            update() {
+                if (isPaused) return;
+
+                // Reset blocking state each frame
+                this.blocked = false;
+                
+                // Check for traffic conditions and obstacles
+                this.checkCongestion();
+                this.checkTrafficLight();
+
+                // Collision detection for main car
+                if (this.isMain) {
+                    const nextX = this.x + (this.targetX - this.x) * 0.1;
+                    const nextY = this.y + (this.targetY - this.y) * 0.1;
+                  
+                    if (this.checkCollisionWithOtherCars(nextX, nextY)) {
+                        this.blocked = true;
+                        this.waitingAtLight = true;
+                        // Occasional honking when blocked
+                        if (Math.random() < 0.05) this.honkTimer = 40;
+                        return;
+                    }
+                }
+
+                // Calculate movement towards target
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // Move towards target if not blocked and distance is significant
+                if (distance > 2 && !this.waitingAtLight && !this.blocked) {
+                    const moveSpeed = this.isMain ? 0.1 : 0.06;
+                    const moveX = (dx / distance) * this.speed * 8 * moveSpeed;
+                    const moveY = (dy / distance) * this.speed * 8 * moveSpeed;
+                  
+                    this.x += moveX;
+                    this.y += moveY;
+                    this.direction = Math.atan2(dy, dx);
+                    this.moving = true;
+                    this.stuckTimer = 0;
+                } else if (!this.waitingAtLight && !this.blocked) {
+                    // Snap to target when close enough
+                    this.x = this.targetX;
+                    this.y = this.targetY;
+                    this.gridX = Math.floor(this.x / CELL_SIZE);
+                    this.gridY = Math.floor(this.y / CELL_SIZE);
+                    this.moving = false;
+                  
+                    // Move to next path node for main car
+                    if (this.isMain && this.path.length > 0 && this.pathIndex < this.path.length - 1) {
+                        this.pathIndex++;
+                        const nextNode = this.path[this.pathIndex];
+                        this.setTarget(nextNode.x * CELL_SIZE + CELL_SIZE/2, nextNode.y * CELL_SIZE + CELL_SIZE/2);
+                    } else if (!this.isMain) {
+                        // AI cars find new random targets when stuck
+                        this.stuckTimer++;
+                        if (this.stuckTimer > 120) {
+                            this.findNewTarget();
+                        }
+                    }
+                } else {
+                    // Handle waiting/blocked state
+                    this.moving = false;
+                    this.stuckTimer++;
+                }
+
+                // Decrease honk timer
+                if (this.honkTimer > 0) this.honkTimer--;
+            }
+
+            /**
+             * Check for collisions with other cars in the simulation
+             */
+            checkCollisionWithOtherCars(nextX, nextY) {
+                const collisionRadius = 28;
+                for (const car of trafficCars) {
+                    if (car !== this) {
+                        const dist = Math.sqrt((nextX - car.x) ** 2 + (nextY - car.y) ** 2);
+                        if (dist < collisionRadius) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            /**
+             * Check if car should stop at traffic lights
+             */
+            checkTrafficLight() {
+                this.waitingAtLight = false;
+                const currentGridX = Math.floor(this.x / CELL_SIZE);
+                const currentGridY = Math.floor(this.y / CELL_SIZE);
+              
+                for (const light of trafficLights) {
+                    const dist = Math.abs(light.x - currentGridX) + Math.abs(light.y - currentGridY);
+                    if (dist <= 1 && light.isBlocking()) {
+                        this.waitingAtLight = true;
+                        // Occasional honking at red lights
+                        if (Math.random() < 0.02) this.honkTimer = 20;
+                        break;
+                    }
+                }
+            }
+
+            /**
+             * Adjust speed based on nearby traffic density
+             */
+            checkCongestion() {
+                let nearbyTraffic = 0;
+                const checkRadius = 45;
+              
+                // Count nearby cars
+                for (const car of trafficCars) {
+                    if (car !== this) {
+                        const dist = Math.sqrt((this.x - car.x) ** 2 + (this.y - car.y) ** 2);
+                        if (dist < checkRadius) {
+                            nearbyTraffic++;
+                        }
+                    }
+                }
+
+                // Adjust speed based on congestion level
+                if (nearbyTraffic > 2) {
+                    this.speed = this.maxSpeed * 0.3; // Heavy traffic
+                    if (Math.random() < 0.01) this.honkTimer = 30;
+                } else if (nearbyTraffic > 0) {
+                    this.speed = this.maxSpeed * 0.6; // Moderate traffic
+                } else {
+                    this.speed = this.maxSpeed; // Clear road
+                }
+            }
+
+            /**
+             * AI behavior: find a new random target when stuck
+             */
+            findNewTarget() {
+                const directions = [{x: 0, y: 1}, {x: 1, y: 0}, {x: 0, y: -1}, {x: -1, y: 0}];
+                const validMoves = [];
+              
+                // Check all four directions for valid moves
+                for (const dir of directions) {
+                    const newX = this.gridX + dir.x;
+                    const newY = this.gridY + dir.y;
+                  
+                    if (newX >= 0 && newX < GRID_SIZE && 
+                        newY >= 0 && newY < GRID_SIZE && 
+                        grid[newY][newX] === 'road') {
+                        validMoves.push({x: newX, y: newY});
+                    }
+                }
+              
+                // Move to random valid position
+                if (validMoves.length > 0) {
+                    const randomMove = validMoves[Math.floor(Math.random() * validMoves.length)];
+                    this.setTarget(randomMove.x * CELL_SIZE + CELL_SIZE/2, randomMove.y * CELL_SIZE + CELL_SIZE/2);
+                    this.stuckTimer = 0;
+                }
+            }
+
+            /**
+             * Set movement target coordinates
+             */
+            setTarget(x, y) {
+                this.targetX = x;
+                this.targetY = y;
+            }
+
+            /**
+             * Set path for main car to follow
+             */
+            setPath(path) {
+                this.path = path;
+                this.pathIndex = 0;
+                if (path.length > 1) {
+                    this.setTarget(path[1].x * CELL_SIZE + CELL_SIZE/2, path[1].y * CELL_SIZE + CELL_SIZE/2);
+                }
+            }
+
+            /**
+             * Render the car with enhanced visual effects
+             */
+            draw(p) {
+                p.push();
+                p.translate(this.x + offsetX, this.y + offsetY);
+                p.rotate(this.direction + p.PI/2);
+              
+                // Car shadow for depth
+                p.fill(0, 0, 0, 80);
+                p.noStroke();
+                p.ellipse(4, 4, this.width + 8, this.height + 8);
+              
+                // Main car body
+                p.fill(this.color[0], this.color[1], this.color[2]);
+                p.stroke(0, 0, 0, 180);
+                p.strokeWeight(2);
+                p.rectMode(p.CENTER);
+                p.rect(0, 0, this.width, this.height, 6);
+              
+                // Car details based on vehicle type
+                if (this.type === 'truck') {
+                    p.fill(this.color[0] * 0.6, this.color[1] * 0.6, this.color[2] * 0.6);
+                    p.rect(0, -this.height/3, this.width * 0.9, this.height/3, 3);
+                } else {
+                    // Windshield
+                    p.fill(135, 206, 235, 220);
+                    p.rect(0, -this.height/4, this.width * 0.8, this.height/3, 3);
+                }
+              
+                // Headlights
+                p.fill(255, 255, 240);
+                p.noStroke();
+                p.circle(-this.width/3, -this.height/2 + 4, 5);
+                p.circle(this.width/3, -this.height/2 + 4, 5);
+              
+                // Taillights
+                p.fill(255, 60, 60);
+                p.circle(-this.width/3, this.height/2 - 4, 4);
+                p.circle(this.width/3, this.height/2 - 4, 4);
+              
+                p.pop();
+
+                // Special effects for main car
+                if (this.isMain) {
+                    // Pulsing selection circle
+                    p.noFill();
+                    p.stroke(COLORS.mainCar[0], COLORS.mainCar[1], COLORS.mainCar[2]);
+                    p.strokeWeight(5 + p.sin(p.millis() * 0.01) * 2);
+                    p.circle(this.x + offsetX, this.y + offsetY, this.width * 3.5);
+                  
+                    // Movement direction indicator
+                    if (this.moving) {
+                        p.stroke(COLORS.mainCar[0], COLORS.mainCar[1], COLORS.mainCar[2]);
+                        p.strokeWeight(4);
+                        const arrowX = this.x + p.cos(this.direction) * 40;
+                        const arrowY = this.y + p.sin(this.direction) * 40;
+                        p.line(this.x + offsetX, this.y + offsetY, arrowX + offsetX, arrowY + offsetY);
+                      
+                        // Arrow head
+                        p.push();
+                        p.translate(arrowX + offsetX, arrowY + offsetY);
+                        p.rotate(this.direction);
+                        p.fill(COLORS.mainCar[0], COLORS.mainCar[1], COLORS.mainCar[2]);
+                        p.noStroke();
+                        p.triangle(0, 0, -10, -5, -10, 5);
+                        p.pop();
+                    }
+                }
+
+                // Honking visual effect
+                if (this.honkTimer > 0) {
+                    p.noFill();
+                    p.stroke(255, 255, 0, 220);
+                    p.strokeWeight(4);
+                    p.circle(this.x + offsetX, this.y + offsetY, this.honkTimer * 4);
+                  
+                    // Musical note
+                    p.fill(255, 255, 0, 180);
+                    p.textAlign(p.CENTER, p.CENTER);
+                    p.textSize(12);
+                    p.text('♪', this.x + offsetX, this.y + offsetY - 30);
+                }
+            }
+
+            /**
+             * Check if main car has reached the destination
+             */
+            hasReachedDestination() {
+                if (!this.isMain) return false;
+                const dx = this.x - (destination.x - offsetX);
+                const dy = this.y - (destination.y - offsetY);
+                return Math.sqrt(dx * dx + dy * dy) < CELL_SIZE/3;
+            }
+        }
+
+        // --- BUILDING CLASS ---
+
+        /**
+         * Building class creates realistic city buildings with windows and lighting
+         */
+        class Building {
+            constructor(x, y, width = 1, height = 1) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.buildingHeight = Math.random() * 35 + 25; // Random building height
+                this.windows = [];
+                this.type = ['office', 'residential', 'commercial'][Math.floor(Math.random() * 3)];
+                this.generateWindows();
+            }
+
+            /**
+             * Generate random window pattern for the building
+             */
+            generateWindows() {
+                const windowsPerRow = Math.floor(this.width * CELL_SIZE / 12);
+                const windowRows = Math.floor(this.buildingHeight / 12);
+              
+                for (let row = 0; row < windowRows; row++) {
+                    for (let col = 0; col < windowsPerRow; col++) {
+                        // 85% chance of having a window, 70% chance it's lit
+                        if (Math.random() > 0.15) {
+                            this.windows.push({
+                                x: col * 12 + 6,
+                                y: row * 12 + 6,
+                                lit: Math.random() > 0.3
+                            });
+                        }
+                    }
+                }
+            }
+
+            /**
+             * Render the building with 3D effect and lit windows
+             */
+            draw(p) {
+                const baseX = this.x * CELL_SIZE + offsetX;
+                const baseY = this.y * CELL_SIZE + offsetY;
+              
+                // Building shadow
+                p.fill(0, 0, 0, 60);
+                p.noStroke();
+                p.rect(baseX + 4, baseY + 4, this.width * CELL_SIZE, this.height * CELL_SIZE);
+              
+                // Building base
+                p.fill(COLORS.building[0], COLORS.building[1], COLORS.building[2]);
+                p.stroke(0, 0, 0, 140);
+                p.strokeWeight(2);
+                p.rect(baseX, baseY, this.width * CELL_SIZE, this.height * CELL_SIZE);
+              
+                // Building top (3D effect)
+                p.fill(COLORS.building[0] + 25, COLORS.building[1] + 25, COLORS.building[2] + 25);
+                p.rect(baseX, baseY - this.buildingHeight/3, this.width * CELL_SIZE, this.buildingHeight/3);
+              
+                // Draw windows
+                for (const window of this.windows) {
+                    if (window.lit) {
+                        p.fill(COLORS.buildingWindow[0], COLORS.buildingWindow[1], COLORS.buildingWindow[2]);
+                    } else {
+                        p.fill(50, 50, 80);
+                    }
+                    p.noStroke();
+                    p.rect(baseX + window.x, baseY + window.y - this.buildingHeight/3, 5, 6);
+                }
+            }
+        }
+
+        // --- TREE CLASS ---
+
+        /**
+         * Tree class creates animated trees that sway in the wind
+         */
+        class Tree {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.swayOffset = Math.random() * Math.PI * 2; // Random sway phase
+                this.size = Math.random() * 10 + 15; // Random tree size
+                this.trunkHeight = Math.random() * 6 + 12;
+            }
+
+            /**
+             * Render animated tree with swaying motion
+             */
+            draw(p) {
+                const centerX = this.x * CELL_SIZE + CELL_SIZE/2 + offsetX;
+                const centerY = this.y * CELL_SIZE + CELL_SIZE/2 + offsetY;
+                const sway = p.sin(p.millis() * 0.003 + this.swayOffset) * 3; // Wind effect
+              
+                // Tree trunk
+                p.stroke(101, 67, 33);
+                p.strokeWeight(5);
+                p.line(centerX, centerY + 10, centerX + sway * 0.3, centerY + 10 - this.trunkHeight);
+              
+                // Tree foliage (multiple layers for depth)
+                p.fill(COLORS.tree[0], COLORS.tree[1], COLORS.tree[2]);
+                p.noStroke();
+                p.circle(centerX + sway, centerY + 10 - this.trunkHeight - 6, this.size);
+              
+                // Additional foliage layers
+                p.fill(34, 139, 34, 220);
+                p.circle(centerX + sway - 4, centerY + 10 - this.trunkHeight - 4, this.size * 0.8);
+              
+                p.fill(46, 125, 50, 180);
+                p.circle(centerX + sway + 3, centerY + 10 - this.trunkHeight - 8, this.size * 0.6);
+            }
+        }
+
+        // --- TRAFFIC LIGHT CLASS ---
+
+        /**
+         * Enhanced traffic light with realistic timing and glow effects
+         */
+        class EnhancedTrafficLight {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.state = Math.random() > 0.5 ? 'green' : 'red'; // Random initial state
+                this.timer = 0;
+                // Realistic traffic light timing
+                this.greenDuration = Math.random() * 120 + 180;
+                this.yellowDuration = 50;
+                this.redDuration = Math.random() * 100 + 120;
+            }
+
+            /**
+             * Update traffic light state based on timing
+             */
+            update() {
+                if (isPaused) return;
+              
+                this.timer++;
+              
+                // State machine for traffic light phases
+                switch(this.state) {
+                    case 'green':
+                        if (this.timer >= this.greenDuration) {
+                            this.state = 'yellow';
+                            this.timer = 0;
+                        }
+                        break;
+                    case 'yellow':
+                        if (this.timer >= this.yellowDuration) {
+                            this.state = 'red';
+                            this.timer = 0;
+                        }
+                        break;
+                    case 'red':
+                        if (this.timer >= this.redDuration) {
+                            this.state = 'green';
+                            this.timer = 0;
+                        }
+                        break;
+                }
+            }
+
+            /**
+             * Render traffic light with glow effects
+             */
+            draw(p) {
+                const centerX = this.x * CELL_SIZE + CELL_SIZE/2 + offsetX;
+                const centerY = this.y * CELL_SIZE + CELL_SIZE/2 + offsetY;
+              
+                // Traffic light pole
+                p.fill(70);
+                p.noStroke();
+                p.rect(centerX - 4, centerY, 8, 30);
+              
+                // Traffic light housing
+                p.fill(30);
+                p.stroke(0);
+                p.strokeWeight(2);
+                p.rect(centerX - 10, centerY - 35, 20, 25, 4);
+              
+                const lightY = centerY - 22;
+              
+                // Red light with glow effect
+                if (this.state === 'red') {
+                    p.fill(COLORS.trafficLightRed[0], COLORS.trafficLightRed[1], COLORS.trafficLightRed[2]);
+                    p.noStroke();
+                    p.circle(centerX, lightY - 10, 8);
+                    // Glow effect
+                    p.fill(231, 76, 60, 100);
+                    p.circle(centerX, lightY - 10, 15);
+                } else {
+                    p.fill(100, 0, 0);
+                    p.noStroke();
+                    p.circle(centerX, lightY - 10, 6);
+                }
+              
+                // Yellow light with glow effect
+                if (this.state === 'yellow') {
+                    p.fill(COLORS.trafficLightYellow[0], COLORS.trafficLightYellow[1], COLORS.trafficLightYellow[2]);
+                    p.noStroke();
+                    p.circle(centerX, lightY - 2, 8);
+                    // Glow effect
+                    p.fill(241, 196, 15, 100);
+                    p.circle(centerX, lightY - 2, 15);
+                } else {
+                    p.fill(100, 100, 0);
+                    p.noStroke();
+                    p.circle(centerX, lightY - 2, 6);
+                }
+              
+                // Green light with glow effect
+                if (this.state === 'green') {
+                    p.fill(COLORS.trafficLightGreen[0], COLORS.trafficLightGreen[1], COLORS.trafficLightGreen[2]);
+                    p.noStroke();
+                    p.circle(centerX, lightY + 6, 8);
+                    // Glow effect
+                    p.fill(46, 204, 113, 100);
+                    p.circle(centerX, lightY + 6, 15);
+                } else {
+                    p.fill(0, 100, 0);
+                    p.noStroke();
+                    p.circle(centerX, lightY + 6, 6);
+                }
+            }
+
+            /**
+             * Check if traffic light should block car movement
+             */
+            isBlocking() {
+                return this.state === 'red' || this.state === 'yellow';
+            }
+        }
+
+        // --- PATHFINDING ALGORITHM ---
+
+        /**
+         * Breadth-First Search (BFS) pathfinding algorithm
+         * Finds the shortest path while avoiding obstacles
+         */
+        function findPath(start, end) {
+            const queue = [{x: start.x, y: start.y, path: []}];
+            const visited = new Set();
+            visited.add(`${start.x},${start.y}`);
+
+            // Four-directional movement
+            const directions = [{x: 0, y: 1}, {x: 1, y: 0}, {x: 0, y: -1}, {x: -1, y: 0}];
+
+            while (queue.length > 0) {
+                const current = queue.shift();
+              
+                // Check if we've reached the destination
+                if (current.x === end.x && current.y === end.y) {
+                    return [...current.path, {x: current.x, y: current.y}];
+                }
+
+                // Explore all four directions
+                for (const dir of directions) {
+                    const newX = current.x + dir.x;
+                    const newY = current.y + dir.y;
+                    const key = `${newX},${newY}`;
+
+                    // Check if this position is valid and unvisited
+                    if (newX >= 0 && newX < GRID_SIZE && 
+                        newY >= 0 && newY < GRID_SIZE && 
+                        !visited.has(key) && 
+                        isValidPath(newX, newY)) {
+                      
+                        visited.add(key);
+                        queue.push({
+                            x: newX, 
+                            y: newY, 
+                            path: [...current.path, {x: current.x, y: current.y}]
+                        });
+                    }
+                }
+            }
+            return []; // No path found
+        }
+
+        /**
+         * Check if a grid position is valid for pathfinding
+         * Considers roads, closed roads, and traffic jams
+         */
+        function isValidPath(x, y) {
+            // Must be a road
+            if (grid[y][x] !== 'road') return false;
+          
+            // Avoid closed roads
+            for (const closed of closedRoads) {
+                if (closed.x === x && closed.y === y) return false;
+            }
+          
+            // Avoid traffic jams (with buffer zone)
+            for (const jam of trafficJams) {
+                if (Math.abs(jam.x - x) <= 1 && Math.abs(jam.y - y) <= 1) return false;
+            }
+          
+            return true;
+        }
+
+        // --- GRID INITIALIZATION ---
+
+        /**
+         * Initialize the city grid with roads and building zones
+         * Creates a structured road network for realistic city layout
+         */
+        function initializeGrid() {
+            grid = [];
+            for (let y = 0; y < GRID_SIZE; y++) {
+                grid[y] = [];
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    // Create major roads every 4 cells for realistic city blocks
+                    if (x % 4 === 0 || y % 4 === 0) {
+                        grid[y][x] = 'road';
+                    } else {
+                        grid[y][x] = 'building';
+                    }
+                }
+            }
+        }
+
+        // --- SIMULATION INITIALIZATION ---
+
+        /**
+         * Initialize all simulation elements and start the navigation challenge
+         */
+        function initializeSimulation() {
+            // Reset all arrays and state
+            trafficCars = [];
+            buildings = [];
+            trees = [];
+            trafficLights = [];
+            closedRoads = [];
+            trafficJams = [];
+            currentPath = [];
+            destinationReached = false; // Reset destination flag
+
+            // Create main car starting position (top area of map)
+            let startPos;
+            do {
+                startPos = {
+                    x: Math.floor(Math.random() * GRID_SIZE),
+                    y: Math.floor(Math.random() * 3)
+                };
+            } while (grid[startPos.y][startPos.x] !== 'road');
+
+            mainCar = new RealisticCar(
+                startPos.x * CELL_SIZE,
+                startPos.y * CELL_SIZE,
+                true
+            );
+
+            // Create destination (bottom area for longer, more interesting routes)
+            let destPos;
+            do {
+                destPos = {
+                    x: Math.floor(Math.random() * GRID_SIZE),
+                    y: Math.floor(Math.random() * 4) + (GRID_SIZE - 4)
+                };
+            } while (grid[destPos.y][destPos.x] !== 'road' || 
+                     Math.abs(destPos.x - startPos.x) + Math.abs(destPos.y - startPos.y) < 12);
+
+            destination = {
+                x: destPos.x * CELL_SIZE + CELL_SIZE/2 + offsetX,
+                y: destPos.y * CELL_SIZE + CELL_SIZE/2 + offsetY,
+                gridX: destPos.x,
+                gridY: destPos.y
+            };
+
+            // Calculate initial path to avoid placing traffic cars on it
+            const initialPath = findPath(startPos, destPos);
+          
+            // Add AI traffic cars (avoiding main car's initial path)
+            for (let i = 0; i < 8; i++) {
+                let carPos;
+                let attempts = 0;
+                do {
+                    carPos = {
+                        x: Math.floor(Math.random() * GRID_SIZE),
+                        y: Math.floor(Math.random() * GRID_SIZE)
+                    };
+                    attempts++;
+                } while ((grid[carPos.y][carPos.x] !== 'road' || 
+                         initialPath.some(p => Math.abs(p.x - carPos.x) <= 2 && Math.abs(p.y - carPos.y) <= 2)) && 
+                         attempts < 100);
+
+                if (attempts < 100) {
+                    trafficCars.push(new RealisticCar(
+                        carPos.x * CELL_SIZE,
+                        carPos.y * CELL_SIZE
+                    ));
+                }
+            }
+
+            // Generate buildings for all building zones
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (grid[y][x] === 'building') {
+                        buildings.push(new Building(x, y));
+                    }
+                }
+            }
+
+            // Add decorative trees in building areas
+            for (let i = 0; i < 25; i++) {
+                let treePos;
+                do {
+                    treePos = {
+                        x: Math.floor(Math.random() * GRID_SIZE),
+                        y: Math.floor(Math.random() * GRID_SIZE)
+                    };
+                } while (grid[treePos.y][treePos.x] !== 'building' || Math.random() < 0.5);
+
+                trees.push(new Tree(treePos.x, treePos.y));
+            }
+
+            // Add traffic lights at major intersections
+            for (let y = 4; y < GRID_SIZE; y += 4) {
+                for (let x = 4; x < GRID_SIZE; x += 4) {
+                    if (x < GRID_SIZE - 1 && y < GRID_SIZE - 1 && Math.random() > 0.2) {
+                        trafficLights.push(new EnhancedTrafficLight(x, y));
+                    }
+                }
+            }
+
+            // Add road closures (avoiding initial path)
+            for (let i = 0; i < 5; i++) {
+                let closedPos;
+                let attempts = 0;
+                do {
+                    closedPos = {
+                        x: Math.floor(Math.random() * GRID_SIZE),
+                        y: Math.floor(Math.random() * GRID_SIZE)
+                    };
+                    attempts++;
+                } while ((grid[closedPos.y][closedPos.x] !== 'road' || 
+                         initialPath.some(p => p.x === closedPos.x && p.y === closedPos.y)) && 
+                         attempts < 50);
+
+                if (attempts < 50) {
+                    closedRoads.push(closedPos);
+                }
+            }
+
+            // Initialize simulation timing and intervals
+            startTime = Date.now();
+            updatePath();
+          
+            // Clear existing intervals
+            if (pathfindingInterval) clearInterval(pathfindingInterval);
+            if (trafficUpdateInterval) clearInterval(trafficUpdateInterval);
+            
+            // Set up pathfinding updates (recalculate route every 3 seconds)
+            pathfindingInterval = setInterval(updatePath, 3000);
+            
+            // DO NOT start traffic jam spawning immediately - wait for destination
+        }
+
+        // --- TRAFFIC JAM MANAGEMENT ---
+
+        /**
+         * Add a new traffic jam at a random road location
+         * Only allowed after destination is reached
+         */
+        function addTrafficJam() {
+            // Only allow traffic jams after destination is reached
+            if (!destinationReached) return;
+            
+            let jamPos;
+            let attempts = 0;
+            do {
+                jamPos = {
+                    x: Math.floor(Math.random() * GRID_SIZE),
+                    y: Math.floor(Math.random() * GRID_SIZE)
+                };
+                attempts++;
+            } while ((grid[jamPos.y][jamPos.x] !== 'road') && attempts < 50);
+
+            if (attempts < 50) {
+                trafficJams.push({
+                    x: jamPos.x,
+                    y: jamPos.y,
+                    intensity: Math.random() * 7 + 8, // Random intensity
+                    duration: Math.random() * 300 + 400 // Random duration
+                });
+            }
+
+            updateCongestionStatus();
+        }
+
+        /**
+         * Update traffic conditions - remove expired jams and potentially add new ones
+         */
+        function updateTrafficConditions() {
+            // Remove expired traffic jams
+            trafficJams = trafficJams.filter(jam => {
+                jam.duration--;
+                return jam.duration > 0;
+            });
+
+            // 40% chance to add new traffic jam
+            if (Math.random() < 0.4) {
+                addTrafficJam();
+            }
+
+            updateCongestionStatus();
+        }
+
+        /**
+         * Update the traffic congestion status display
+         */
+        function updateCongestionStatus() {
+            const congestionLevel = trafficJams.length;
+            let status = 'Normal';
+            if (congestionLevel > 3) status = 'Heavy';
+            else if (congestionLevel > 1) status = 'Moderate';
+          
+            document.getElementById('congestion').textContent = `🚦 Traffic: ${status}`;
+        }
+
+        /**
+         * Start spawning traffic jams after destination is reached
+         */
+        function startTrafficSpawning() {
+            if (trafficUpdateInterval) clearInterval(trafficUpdateInterval);
+            trafficUpdateInterval = setInterval(() => {
+                addTrafficJam();
+                updateTrafficConditions();
+                // Recalculate path if main car still exists and hasn't reached destination
+                if (mainCar && !destinationReached) {
+                    updatePath();
+                }
+            }, 6000);
+        }
+
+        // --- PATH CALCULATION ---
+
+        /**
+         * Update the optimal path from current position to destination
+         * Considers current traffic conditions and road closures
+         */
+        function updatePath() {
+            if (isPaused || !mainCar || destinationReached) return;
+          
+            const startGrid = {
+                x: Math.floor(mainCar.x / CELL_SIZE),
+                y: Math.floor(mainCar.y / CELL_SIZE)
+            };
+          
+            const newPath = findPath(startGrid, {x: destination.gridX, y: destination.gridY});
+          
+            if (newPath.length > 0) {
+                currentPath = newPath;
+                mainCar.setPath(newPath);
+                document.getElementById('pathLength').textContent = `📏 Distance: ${newPath.length} blocks`;
+                document.getElementById('status').textContent = '🎯 Status: Navigating optimally';
+            } else {
+                document.getElementById('status').textContent = '⚠️ Status: Route blocked - recalculating';
+            }
+        }
+
+        // --- P5.JS SKETCH SETUP ---
+
+        /**
+         * Main p5.js sketch function containing setup, draw, and event handlers
+         */
+        function sketch(p) {
+            /**
+             * p5.js setup function - called once at start
+             */
+            p.setup = function() {
+                calculateCanvasSize();
+                p.createCanvas(canvasWidth, canvasHeight).parent(document.querySelector('.canvas-container'));
+                initializeGrid();
+                initializeSimulation();
+            };
+
+            /**
+             * Handle window resize events
+             */
+            p.windowResized = function() {
+                calculateCanvasSize();
+                p.resizeCanvas(canvasWidth, canvasHeight);
+            };
+
+            /**
+             * Main draw loop - called every frame
+             */
+            p.draw = function() {
+                // 1. Draw gradient background
+                for (let y = 0; y < p.height; y++) {
+                    const alpha = p.map(y, 0, p.height, 0.1, 0.4);
+                    p.stroke(44, 62, 80, alpha * 255);
+                    p.line(0, y, p.width, y);
+                }
+
+                // 2. Draw city grid (roads, sidewalks, markings)
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        const cellX = x * CELL_SIZE + offsetX;
+                        const cellY = y * CELL_SIZE + offsetY;
+
+                        if (grid[y][x] === 'road') {
+                            // Road surface
+                            p.fill(COLORS.road[0], COLORS.road[1], COLORS.road[2]);
+                            p.noStroke();
+                            p.rect(cellX, cellY, CELL_SIZE, CELL_SIZE);
+
+                            // Road markings
+                            p.stroke(COLORS.roadLine[0], COLORS.roadLine[1], COLORS.roadLine[2]);
+                            p.strokeWeight(1.5);
+                          
+                            // Vertical road markings
+                            if (x % 4 === 0 && y % 4 !== 0) {
+                                for (let i = 6; i < CELL_SIZE; i += 16) {
+                                    p.line(cellX + CELL_SIZE/2, cellY + i, cellX + CELL_SIZE/2, cellY + i + 8);
+                                }
+                            }
+                            // Horizontal road markings
+                            if (y % 4 === 0 && x % 4 !== 0) {
+                                for (let i = 6; i < CELL_SIZE; i += 16) {
+                                    p.line(cellX + i, cellY + CELL_SIZE/2, cellX + i + 8, cellY + CELL_SIZE/2);
+                                }
+                            }
+
+                            // Sidewalks
+                            p.fill(COLORS.sidewalk[0], COLORS.sidewalk[1], COLORS.sidewalk[2]);
+                            p.noStroke();
+                            if (x % 4 !== 0) {
+                                p.rect(cellX, cellY, CELL_SIZE, 3);
+                                p.rect(cellX, cellY + CELL_SIZE - 3, CELL_SIZE, 3);
+                            }
+                            if (y % 4 !== 0) {
+                                p.rect(cellX, cellY, 3, CELL_SIZE);
+                                p.rect(cellX + CELL_SIZE - 3, cellY, 3, CELL_SIZE);
+                            }
+                        }
+                    }
+                }
+
+                // 3. Draw traffic jams with maximum visibility
+                for (const jam of trafficJams) {
+                    const jamX = jam.x * CELL_SIZE + CELL_SIZE/2 + offsetX;
+                    const jamY = jam.y * CELL_SIZE + CELL_SIZE/2 + offsetY;
+                    
+                    // Primary warning circle
+                    p.fill(COLORS.congestion[0], COLORS.congestion[1], COLORS.congestion[2], 200);
+                    p.stroke(255, 0, 0, 255);
+                    p.strokeWeight(5);
+                    const jamRadius = jam.intensity * 8;
+                    p.circle(jamX, jamY, jamRadius);
+                    
+                    // Secondary warning circle
+                    p.fill(255, 107, 53, 150);
+                    p.stroke(255, 255, 0, 255);
+                    p.strokeWeight(3);
+                    p.circle(jamX, jamY, jamRadius * 0.7);
+                  
+                    // Warning icon
+                    p.fill(255, 255, 0, 255);
+                    p.noStroke();
+                    p.textAlign(p.CENTER, p.CENTER);
+                    p.textSize(24 + p.sin(p.millis() * 0.015) * 4);
+                    p.text('⚠️', jamX, jamY - 30);
+                    
+                    // JAM text
+                    p.fill(255, 255, 255, 255);
+                    p.textSize(12);
+                    p.text('TRAFFIC JAM', jamX, jamY + 25);
+                    
+                    // Flashing effect
+                    if (p.frameCount % 40 < 20) {
+                        p.noFill();
+                        p.stroke(255, 255, 0, 200);
+                        p.strokeWeight(6);
+                        p.circle(jamX, jamY, jamRadius + 15);
+                    }
+                }
+
+                // 4. Draw closed roads with maximum visibility
+                for (const closed of closedRoads) {
+                    const closedX = closed.x * CELL_SIZE + offsetX;
+                    const closedY = closed.y * CELL_SIZE + offsetY;
+                    
+                    // Bright background
+                    p.fill(COLORS.closedRoad[0], COLORS.closedRoad[1], COLORS.closedRoad[2], 220);
+                    p.stroke(255, 255, 255, 255);
+                    p.strokeWeight(5);
+                    p.rect(closedX, closedY, CELL_SIZE, CELL_SIZE);
+                  
+                    // Diagonal warning stripes
+                    p.stroke(255, 255, 0, 255);
+                    p.strokeWeight(4);
+                    
+                    for (let i = -CELL_SIZE; i < CELL_SIZE * 2; i += 10) {
+                        p.line(closedX + i, closedY, 
+                             closedX + i + CELL_SIZE, closedY + CELL_SIZE);
+                    }
+                  
+                    // Construction icon
+                    p.fill(255, 255, 255, 255);
+                    p.noStroke();
+                    p.textAlign(p.CENTER, p.CENTER);
+                    p.textSize(22);
+                    p.text('🚧', closedX + CELL_SIZE/2, closedY + CELL_SIZE/2 - 8);
+                    
+                    // CLOSED text
+                    p.fill(255, 255, 255, 255);
+                    p.textSize(10);
+                    p.text('ROAD CLOSED', closedX + CELL_SIZE/2, closedY + CELL_SIZE/2 + 15);
+                }
+
+                // 5. Draw optimal path with enhanced visibility
+                if (currentPath.length > 0) {
+                    // Outer path glow
+                    p.stroke(COLORS.path[0], COLORS.path[1], COLORS.path[2]);
+                    p.strokeWeight(16);
+                    p.noFill();
+                    p.beginShape();
+                    for (const node of currentPath) {
+                        p.vertex(node.x * CELL_SIZE + CELL_SIZE/2 + offsetX, node.y * CELL_SIZE + CELL_SIZE/2 + offsetY);
+                    }
+                    p.endShape();
+                  
+                    // Inner path line
+                    p.stroke(200, 150, 255, 255);
+                    p.strokeWeight(8);
+                    p.beginShape();
+                    for (const node of currentPath) {
+                        p.vertex(node.x * CELL_SIZE + CELL_SIZE/2 + offsetX, node.y * CELL_SIZE + CELL_SIZE/2 + offsetY);
+                    }
+                    p.endShape();
+                    
+                    // Direction arrows
+                    for (let i = 0; i < currentPath.length - 1; i++) {
+                        if (i % 2 === 0) {
+                            const current = currentPath[i];
+                            const next = currentPath[i + 1];
+                            const angle = Math.atan2(next.y - current.y, next.x - current.x);
+                            
+                            p.push();
+                            p.translate(current.x * CELL_SIZE + CELL_SIZE/2 + offsetX, current.y * CELL_SIZE + CELL_SIZE/2 + offsetY);
+                            p.rotate(angle);
+                            p.fill(255, 255, 255, 240);
+                            p.noStroke();
+                            p.triangle(10, 0, -6, -4, -6, 4);
+                            p.pop();
+                        }
+                    }
+                }
+
+                // 6. Draw city infrastructure
+                for (const building of buildings) {
+                    building.draw(p);
+                }
+
+                for (const tree of trees) {
+                    tree.draw(p);
+                }
+
+                for (const light of trafficLights) {
+                    light.update();
+                    light.draw(p);
+                }
+
+                // 7. Draw destination with pulsing effect
+                const pulseSize = 30 + p.sin(p.millis() * 0.012) * 6;
+                p.fill(COLORS.destination[0], COLORS.destination[1], COLORS.destination[2]);
+                p.noStroke();
+                p.circle(destination.x, destination.y, pulseSize);
+              
+                p.fill(255);
+                p.textAlign(p.CENTER, p.CENTER);
+                p.textSize(20);
+                p.text('🏁', destination.x, destination.y);
+              
+                p.noFill();
+                p.stroke(COLORS.destination[0], COLORS.destination[1], COLORS.destination[2]);
+                p.strokeWeight(4);
+                p.circle(destination.x, destination.y, pulseSize + 12);
+
+                // 8. Update and draw all cars
+                if (mainCar) {
+                    mainCar.update();
+                    mainCar.draw(p);
+                }
+
+                for (const car of trafficCars) {
+                    car.update();
+                    car.draw(p);
+                }
+
+                // 9. Update timer (only if destination not reached)
+                if (!isPaused && !destinationReached) {
+                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    document.getElementById('timer').textContent = `⏱️ Time: ${elapsed}s`;
+                }
+
+                // 10. Check for destination reached
+                if (mainCar && mainCar.hasReachedDestination()) {
+                    if (!destinationReached) {
+                        destinationReached = true;
+                        document.getElementById('status').textContent = '🎉 Status: Destination reached successfully!';
+                        
+                        // Stop pathfinding updates
+                        if (pathfindingInterval) {
+                            clearInterval(pathfindingInterval);
+                            pathfindingInterval = null;
+                        }
+                        
+                        // Start traffic jam spawning after reaching destination
+                        startTrafficSpawning();
+                    }
+                }
+            };
+        }
+
+        // --- INITIALIZE P5.JS SKETCH ---
+        new p5(sketch);
+
+        // --- GLOBAL BUTTON HANDLERS ---
+        // These functions are exposed globally so HTML buttons can call them
+
+        /**
+         * Reset the entire simulation with new random layout
+         */
+        window.resetSimulation = function() {
+            initializeSimulation();
+        };
+
+        /**
+         * Toggle pause/resume state of the simulation
+         */
+        window.togglePause = function() {
+            isPaused = !isPaused;
+        };
+
+        /**
+         * Manually add a traffic jam (only works after destination reached)
+         */
+        window.addTrafficJam = function() {
+            if (destinationReached) {
+                addTrafficJam();
+            }
+        };
+
+    </script>
+</body>
+</html>

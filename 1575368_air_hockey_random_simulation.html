@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fixed Air Hockey Puck Simulation</title>
+    <!-- Use importmap for p5.js as requested -->
+    <script type="importmap">
+        {
+            "imports": {
+                "p5": "https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"
+            }
+        }
+    </script>
+    <style>
+        /* --- Styling for the simulation and UI --- */
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            color: #00ff88;
+            margin-bottom: 10px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        .controls {
+            margin: 20px 0;
+            text-align: center;
+        }
+        button {
+            background-color: #00ff88;
+            color: #1a1a1a;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #00cc6a;
+        }
+        .info {
+            margin-top: 15px;
+            text-align: center;
+            color: #cccccc;
+            font-size: 14px;
+        }
+        #canvas-container {
+            border: 3px solid #00ff88;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+        .stats-panel {
+            background-color: #2a2a2a;
+            border: 2px solid #00ff88;
+            border-radius: 10px;
+            padding: 20px;
+            min-width: 200px;
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
+        }
+        .stats-panel h3 {
+            color: #00ff88;
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .stat-item {
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stat-label {
+            color: #cccccc;
+            font-size: 14px;
+        }
+        .stat-value {
+            color: #ffffff;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .power-bar {
+            background-color: #333;
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .power-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #ffff00, #ff6600);
+            transition: width 0.3s ease;
+        }
+        .friction-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .friction-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ff6666;
+        }
+        .status {
+            color: #00ff88;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #333;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Air Hockey Puck Simulation</h1>
+    <div class="controls">
+        <button id="resetBtn">Reset Simulation</button>
+    </div>
+    <div class="container">
+        <div id="canvas-container"></div>
+        <div class="stats-panel">
+            <h3>Shot Statistics</h3>
+            <div class="stat-item">
+                <span class="stat-label">Power:</span>
+                <span class="stat-value" id="powerValue">0%</span>
+            </div>
+            <div class="power-bar">
+                <div class="power-fill" id="powerFill" style="width: 0%"></div>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Current Speed:</span>
+                <span class="stat-value" id="speedValue">0 m/s</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Max Speed:</span>
+                <span class="stat-value" id="maxSpeedValue">0 m/s</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Friction:</span>
+                <div class="friction-indicator">
+                    <div class="friction-dot"></div>
+                    <span class="stat-value" id="frictionValue">0.998</span>
+                </div>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Distance:</span>
+                <span class="stat-value" id="distanceValue">0 m</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Bounces:</span>
+                <span class="stat-value" id="bouncesValue">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Angle:</span>
+                <span class="stat-value" id="angleValue">0°</span>
+            </div>
+            <div class="status" id="statusValue">Ready to shoot</div>
+        </div>
+    </div>
+    <div class="info">
+        <p>Air hockey simulation with realistic physics and units!</p>
+        <p>Table: 2.44m × 1.22m | Puck: 6.35cm diameter | Auto-shoots after trajectory preview</p>
+        <p>Puck stays where it stops - click Reset for new position and shot</p>
+    </div>
+    <!-- Use p5.js as a module for importmap compatibility -->
+    <script type="module">
+        import "p5";
+        // --- 2D Vector class for all puck and wall math ---
+        class Vector2D {
+            constructor(x = 0, y = 0) {
+                this.x = x;
+                this.y = y;
+            }
+            add(other) { return new Vector2D(this.x + other.x, this.y + other.y); }
+            subtract(other) { return new Vector2D(this.x - other.x, this.y - other.y); }
+            multiply(scalar) { return new Vector2D(this.x * scalar, this.y * scalar); }
+            dot(other) { return this.x * other.x + this.y * other.y; }
+            magnitude() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+            normalize() {
+                const mag = this.magnitude();
+                return mag > 0 ? new Vector2D(this.x / mag, this.y / mag) : new Vector2D(0, 0);
+            }
+            reflect(normal) {
+                // Reflect this vector about a normal
+                const dotProduct = this.dot(normal);
+                return this.subtract(normal.multiply(2 * dotProduct));
+            }
+        }
+        // --- Wall class for table boundaries ---
+        class Wall {
+            constructor(x1, y1, x2, y2) {
+                this.start = new Vector2D(x1, y1);
+                this.end = new Vector2D(x2, y2);
+                this.normal = this.calculateNormal();
+            }
+            calculateNormal() {
+                // Calculate inward normal for the wall
+                const direction = this.end.subtract(this.start);
+                const normal = new Vector2D(-direction.y, direction.x).normalize();
+                return normal;
+            }
+            distanceToPoint(point) {
+                // Returns the shortest distance from a point to this wall segment
+                const A = this.start;
+                const B = this.end;
+                const P = point;
+                const AB = B.subtract(A);
+                const AP = P.subtract(A);
+                const ABdotAB = AB.dot(AB);
+                if (ABdotAB === 0) return AP.magnitude();
+                const t = Math.max(0, Math.min(1, AP.dot(AB) / ABdotAB));
+                const projection = A.add(AB.multiply(t));
+                return P.subtract(projection).magnitude();
+            }
+            getClosestPoint(point) {
+                // Returns the closest point on the wall to a given point
+                const A = this.start;
+                const B = this.end;
+                const P = point;
+                const AB = B.subtract(A);
+                const AP = P.subtract(A);
+                const ABdotAB = AB.dot(AB);
+                if (ABdotAB === 0) return A;
+                const t = Math.max(0, Math.min(1, AP.dot(AB) / ABdotAB));
+                return A.add(AB.multiply(t));
+            }
+        }
+        // --- Puck class: handles physics, rendering, and stats ---
+        class Puck {
+            constructor(x, y, vx = 0, vy = 0, radius = 15) {
+                this.position = new Vector2D(x, y);
+                this.velocity = new Vector2D(vx, vy);
+                this.radius = radius; // 15 pixels = ~6.35cm (real puck diameter)
+                this.trail = [];
+                this.maxTrailLength = 60;
+                this.isMoving = false;
+                this.totalDistance = 0;
+                this.bounces = 0;
+                this.maxSpeed = 0;
+                this.lastPosition = new Vector2D(x, y);
+                // Physics constants - tuned for realistic air hockey
+                this.frictionCoefficient = 0.998; // Very low friction on air table
+                this.minSpeed = 5; // ~0.12 m/s minimum speed
+                this.bounceEnergyLoss = 0.92; // 8% energy loss per bounce
+                this.dt = 1/60; // Fixed timestep for consistency
+            }
+            shoot(power, angle) {
+                // Launch the puck with a given power and angle
+                // Realistic air hockey puck speeds: 3-20 m/s (amateur to professional)
+                // Converting to pixels: 20 m/s ≈ 800 pixels/s at our scale
+                const maxVelocity = 800; // pixels/s (~20 m/s)
+                const speed = (power / 100) * maxVelocity;
+                this.velocity = new Vector2D(Math.cos(angle) * speed, Math.sin(angle) * speed);
+                this.isMoving = true;
+                this.maxSpeed = speed;
+                this.totalDistance = 0;
+                this.bounces = 0;
+                this.trail = [];
+                this.lastPosition = new Vector2D(this.position.x, this.position.y);
+            }
+            // Single physics step - used by both update and prediction
+            simulateStep(pos, vel, walls) {
+                // Simulate a single physics step for the puck
+                const newPos = pos.add(vel.multiply(this.dt));
+                let newVel = new Vector2D(vel.x, vel.y);
+                let bounced = false;
+                for (let wall of walls) {
+                    const distance = wall.distanceToPoint(newPos);
+                    if (distance <= this.radius + 1) {
+                        // Collision detected: reflect velocity and apply energy loss
+                        const closestPoint = wall.getClosestPoint(newPos);
+                        const collisionNormal = newPos.subtract(closestPoint).normalize();
+                        newVel = newVel.reflect(collisionNormal);
+                        newVel = newVel.multiply(this.bounceEnergyLoss);
+                        // Move position away from wall to prevent sticking
+                        const penetration = (this.radius + 1) - distance;
+                        pos = pos.add(collisionNormal.multiply(penetration + 1));
+                        bounced = true;
+                        break;
+                    }
+                }
+                if (!bounced) {
+                    pos = newPos;
+                }
+                // Apply friction
+                newVel = newVel.multiply(this.frictionCoefficient);
+                return { pos, vel: newVel, bounced };
+            }
+            update(dt, walls) {
+                // Update puck position and stats
+                if (!this.isMoving) return;
+                // Use multiple fixed timesteps for stability
+                const steps = Math.ceil(dt / this.dt);
+                for (let step = 0; step < steps; step++) {
+                    const oldPosition = new Vector2D(this.position.x, this.position.y);
+                    const result = this.simulateStep(this.position, this.velocity, walls);
+                    this.position = result.pos;
+                    this.velocity = result.vel;
+                    if (result.bounced) {
+                        this.bounces++;
+                    }
+                    // Calculate distance traveled
+                    const distanceMoved = this.position.subtract(oldPosition).magnitude();
+                    this.totalDistance += distanceMoved;
+                    // Stop if velocity is too low
+                    if (this.velocity.magnitude() < this.minSpeed) {
+                        this.velocity = new Vector2D(0, 0);
+                        this.isMoving = false;
+                        break;
+                    }
+                }
+                // Update trail for visual effect
+                if (this.isMoving && this.velocity.magnitude() > 10) {
+                    this.trail.push({ x: this.position.x, y: this.position.y });
+                    if (this.trail.length > this.maxTrailLength) {
+                        this.trail.shift();
+                    }
+                }
+            }
+            predictTrajectory(power, angle, walls, maxSteps = 500) {
+                // Predict the puck's trajectory for a given shot (for preview)
+                if (power === 0) return [];
+                // Use IDENTICAL physics as update method
+                const maxVelocity = 800;
+                const speed = (power / 100) * maxVelocity;
+                let pos = new Vector2D(this.position.x, this.position.y);
+                let vel = new Vector2D(Math.cos(angle) * speed, Math.sin(angle) * speed);
+                const trajectory = [];
+                for (let i = 0; i < maxSteps && vel.magnitude() > this.minSpeed; i++) {
+                    // Add point to trajectory every few steps for cleaner visualization
+                    if (i % 4 === 0) {
+                        trajectory.push({ x: pos.x, y: pos.y });
+                    }
+                    // Use the EXACT same physics step
+                    const result = this.simulateStep(pos, vel, walls);
+                    pos = result.pos;
+                    vel = result.vel;
+                }
+                return trajectory;
+            }
+            // Reset to new position
+            fullReset(x, y) {
+                this.position = new Vector2D(x, y);
+                this.velocity = new Vector2D(0, 0);
+                this.trail = [];
+                this.isMoving = false;
+                this.totalDistance = 0;
+                this.bounces = 0;
+                this.maxSpeed = 0;
+                this.lastPosition = new Vector2D(x, y);
+            }
+            render(p) {
+                // Draw trail
+                if (this.trail.length > 1) {
+                    p.strokeWeight(3);
+                    p.noFill();
+                    for (let i = 1; i < this.trail.length; i++) {
+                        const alpha = (i / this.trail.length) * 180;
+                        p.stroke(0, 255, 136, alpha);
+                        p.line(this.trail[i-1].x, this.trail[i-1].y, this.trail[i].x, this.trail[i].y);
+                    }
+                }
+                // Draw puck
+                p.fill(255, 100, 100);
+                p.stroke(255);
+                p.strokeWeight(2);
+                p.circle(this.position.x, this.position.y, this.radius * 2);
+                // Draw velocity indicator
+                const speed = this.velocity.magnitude();
+                if (speed > 20) {
+                    const velIndicator = this.velocity.normalize().multiply(Math.min(speed / 10, 40));
+                    p.stroke(255, 255, 0);
+                    p.strokeWeight(3);
+                    p.line(
+                        this.position.x, 
+                        this.position.y,
+                        this.position.x + velIndicator.x,
+                        this.position.y + velIndicator.y
+                    );
+                }
+            }
+        }
+        // --- Main simulation class: handles table, puck, UI, and logic ---
+        class AirHockeySimulation {
+            constructor() {
+                this.width = 1000;
+                this.height = 700;
+                this.walls = [];
+                this.puck = null;
+                this.power = 75; // Default power
+                this.angle = Math.PI / 4; // Default angle
+                this.showTrajectory = true;
+                this.trajectoryTimer = 0;
+                this.trajectoryDisplayTime = 2500; // Show trajectory for 2.5 seconds
+                this.autoShootTimer = 0;
+                // Conversion factors for realistic units
+                // Air hockey table: 2.44m x 1.22m (8ft x 4ft)
+                // Canvas: 1000x700 pixels
+                this.pixelsToMeters = 2.44 / (this.width - 80); // Account for 40px margin on each side
+                this.metersToPixels = 1 / this.pixelsToMeters;
+                this.setupWalls();
+                this.resetSimulation();
+            }
+            setupWalls() {
+                // Set up the table walls (with angled corners)
+                const margin = 40;
+                const cornerSize = 50;
+                this.walls = [
+                    // Top wall segments
+                    new Wall(margin + cornerSize, margin, this.width - margin - cornerSize, margin),
+                    new Wall(margin, margin + cornerSize, margin + cornerSize, margin),
+                    new Wall(this.width - margin - cornerSize, margin, this.width - margin, margin + cornerSize),
+                    // Bottom wall segments
+                    new Wall(margin + cornerSize, this.height - margin, this.width - margin - cornerSize, this.height - margin),
+                    new Wall(margin, this.height - margin - cornerSize, margin + cornerSize, this.height - margin),
+                    new Wall(this.width - margin - cornerSize, this.height - margin, this.width - margin, this.height - margin - cornerSize),
+                    // Left wall
+                    new Wall(margin, margin + cornerSize, margin, this.height - margin - cornerSize),
+                    // Right wall
+                    new Wall(this.width - margin, margin + cornerSize, this.width - margin, this.height - margin - cornerSize)
+                ];
+            }
+            resetSimulation() {
+                // Full reset - move puck to new random starting position
+                const x = Math.random() * (this.width - 600) + 300;
+                const y = Math.random() * (this.height - 600) + 300;
+                if (this.puck) {
+                    this.puck.fullReset(x, y);
+                } else {
+                    this.puck = new Puck(x, y);
+                }
+                this.generateNewShotParams();
+            }
+            generateNewShotParams() {
+                // Generate new shot parameters
+                this.power = Math.random() * 25 + 70; // 70-95% power
+                // Prefer angles that will hit walls
+                const preferredAngles = [
+                    Math.PI / 6, Math.PI / 4, Math.PI / 3,
+                    2 * Math.PI / 3, 3 * Math.PI / 4, 5 * Math.PI / 6,
+                    7 * Math.PI / 6, 5 * Math.PI / 4, 4 * Math.PI / 3,
+                    5 * Math.PI / 3, 7 * Math.PI / 4, 11 * Math.PI / 6
+                ];
+                this.angle = preferredAngles[Math.floor(Math.random() * preferredAngles.length)] + 
+                           (Math.random() - 0.5) * Math.PI / 6;
+                this.showTrajectory = true;
+                this.trajectoryTimer = 0;
+                this.autoShootTimer = 0;
+                this.updateStats();
+            }
+            shootPuck() {
+                // Shoot the puck (auto or manual)
+                if (!this.puck.isMoving) {
+                    this.puck.shoot(this.power, this.angle);
+                    this.showTrajectory = false;
+                }
+            }
+            update(dt) {
+                // Update simulation state
+                this.trajectoryTimer += dt * 1000;
+                this.autoShootTimer += dt * 1000;
+                // Auto shoot after preview
+                if (this.showTrajectory && this.autoShootTimer > this.trajectoryDisplayTime && !this.puck.isMoving) {
+                    this.puck.shoot(this.power, this.angle);
+                    this.showTrajectory = false;
+                }
+                this.puck.update(dt, this.walls);
+                this.updateStats();
+            }
+            updateStats() {
+                // Update UI stats panel
+                // Convert speeds from pixels/second to meters/second
+                const currentSpeedMs = this.puck.velocity.magnitude() * this.pixelsToMeters;
+                const maxSpeedMs = this.puck.maxSpeed * this.pixelsToMeters;
+                const distanceM = this.puck.totalDistance * this.pixelsToMeters;
+                document.getElementById('powerValue').textContent = Math.round(this.power) + '%';
+                document.getElementById('powerFill').style.width = this.power + '%';
+                document.getElementById('speedValue').textContent = currentSpeedMs.toFixed(2) + ' m/s';
+                document.getElementById('maxSpeedValue').textContent = maxSpeedMs.toFixed(2) + ' m/s';
+                document.getElementById('frictionValue').textContent = this.puck.frictionCoefficient.toFixed(3);
+                document.getElementById('distanceValue').textContent = distanceM.toFixed(2) + ' m';
+                document.getElementById('bouncesValue').textContent = this.puck.bounces;
+                document.getElementById('angleValue').textContent = Math.round(this.angle * 180 / Math.PI) + '°';
+                let status = 'Ready to shoot';
+                if (this.showTrajectory && !this.puck.isMoving) status = 'Showing trajectory - auto-shooting in ' + Math.max(0, Math.ceil((this.trajectoryDisplayTime - this.autoShootTimer) / 1000)) + 's';
+                else if (this.puck.isMoving) status = 'Puck moving';
+                else if (!this.puck.isMoving && this.puck.totalDistance > 0) status = 'Puck stopped - click Reset for new shot';
+                document.getElementById('statusValue').textContent = status;
+            }
+            render(p) {
+                // Draw the table, puck, and trajectory
+                // Clear background
+                p.background(15, 35, 55);
+                // Draw table background
+                p.fill(8, 60, 30);
+                p.stroke(0, 255, 136);
+                p.strokeWeight(3);
+                p.rect(20, 20, this.width - 40, this.height - 40, 15);
+                // Draw center circle
+                p.noFill();
+                p.stroke(0, 255, 136);
+                p.strokeWeight(2);
+                p.circle(this.width / 2, this.height / 2, 120);
+                // Draw center line
+                p.line(this.width / 2, 40, this.width / 2, this.height - 40);
+                // Draw corner markings
+                p.stroke(0, 255, 136, 100);
+                p.strokeWeight(1);
+                for (let i = 0; i < this.walls.length; i += 3) {
+                    if (this.walls[i]) {
+                        p.circle(this.walls[i].start.x, this.walls[i].start.y, 20);
+                        p.circle(this.walls[i].end.x, this.walls[i].end.y, 20);
+                    }
+                }
+                // Draw walls
+                p.stroke(255);
+                p.strokeWeight(6);
+                for (let wall of this.walls) {
+                    p.line(wall.start.x, wall.start.y, wall.end.x, wall.end.y);
+                }
+                // Draw trajectory prediction
+                if (this.showTrajectory && !this.puck.isMoving) {
+                    const trajectory = this.puck.predictTrajectory(this.power, this.angle, this.walls);
+                    if (trajectory.length > 1) {
+                        // Draw trajectory line
+                        p.strokeWeight(2);
+                        p.noFill();
+                        for (let i = 1; i < trajectory.length; i++) {
+                            const alpha = 255 - (i / trajectory.length) * 180;
+                            p.stroke(255, 255, 0, alpha);
+                            p.line(trajectory[i-1].x, trajectory[i-1].y, trajectory[i].x, trajectory[i].y);
+                        }
+                        // Draw trajectory dots
+                        p.fill(255, 255, 0, 180);
+                        p.noStroke();
+                        for (let i = 0; i < trajectory.length; i += 8) {
+                            const size = 6 - (i / trajectory.length) * 3;
+                            p.circle(trajectory[i].x, trajectory[i].y, size);
+                        }
+                    }
+                    // Draw shot direction arrow
+                    const arrowLength = this.power * 0.8;
+                    const arrowX = this.puck.position.x + Math.cos(this.angle) * arrowLength;
+                    const arrowY = this.puck.position.y + Math.sin(this.angle) * arrowLength;
+                    p.stroke(255, 100, 100);
+                    p.strokeWeight(4);
+                    p.line(this.puck.position.x, this.puck.position.y, arrowX, arrowY);
+                    // Arrow head
+                    const headSize = 15;
+                    const headAngle1 = this.angle + Math.PI * 0.8;
+                    const headAngle2 = this.angle - Math.PI * 0.8;
+                    p.line(arrowX, arrowY, arrowX + Math.cos(headAngle1) * headSize, arrowY + Math.sin(headAngle1) * headSize);
+                    p.line(arrowX, arrowY, arrowX + Math.cos(headAngle2) * headSize, arrowY + Math.sin(headAngle2) * headSize);
+                }
+                // Draw puck
+                this.puck.render(p);
+            }
+        }
+        // --- p5.js sketch setup ---
+        let simulation;
+        let lastTime = 0;
+        // p5.js setup function
+        window.setup = function() {
+            const canvas = window.createCanvas(1000, 700);
+            canvas.parent('canvas-container');
+            simulation = new AirHockeySimulation();
+            lastTime = window.millis();
+        };
+        // p5.js draw function
+        window.draw = function() {
+            const currentTime = window.millis();
+            const dt = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+            const cappedDt = Math.min(dt, 1/30);
+            simulation.update(cappedDt);
+            simulation.render(window);
+        };
+        // Button functionality
+        document.getElementById('resetBtn').addEventListener('click', function() {
+            if (simulation) {
+                simulation.resetSimulation();
+            }
+        });
+    </script>
+</body>
+</html>
